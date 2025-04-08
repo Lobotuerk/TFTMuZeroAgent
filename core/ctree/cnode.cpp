@@ -24,7 +24,6 @@ namespace tree {
         this->value_sum = 0;
         this->reward = 0.0;
         this->ptr_node_pool = nullptr;
-        this->children_index = std::vector<int>{};
         this->mappings = std::vector<std::string>{};
     }
 
@@ -37,7 +36,6 @@ namespace tree {
         this->ptr_node_pool = ptr_node_pool;
         this->hidden_state_index_x = -1;
         this->hidden_state_index_y = -1;
-        this->children_index = std::vector<int>{};
         this->mappings = std::vector<std::string>{};
     }
 
@@ -47,16 +45,17 @@ namespace tree {
     // or if we do a weighted softmax which is what is done below.
     // The alpha-go paper uses .67 as their weight but we appear to use e instead.
     void CNode::expand(int hidden_state_index_x, int hidden_state_index_y, float reward,
-                       const std::vector<float> &policy_logits, const std::vector<char*> &mappings, int act_num) {
+                       const std::vector<float> &policy_logits, const std::vector<char*> &py_mappings, int act_num) {
         // Index for finding the hidden state on python side, x is search path location, y is the player
         this->hidden_state_index_x = hidden_state_index_x;
         this->hidden_state_index_y = hidden_state_index_y;
         this->reward = reward;
         // Mapping to turn a set of samples into a 3 dimensional output that the simulation can understand
         this->mappings = std::vector<std::string> {};
-        for (auto i = 0; i < mappings.size(); i++) {
-            this->mappings.push_back(std::string(mappings[i]));
+        for (std::vector<char*>::size_type i = 0; i < py_mappings.size(); i++) {
+            this->mappings.push_back(std::string(py_mappings[i]));
         }
+
         // number of unique actions this node contains. Changes based on number of unique samples
         this->action_num = act_num;
 
@@ -87,7 +86,7 @@ namespace tree {
             // Normalizes the array
             prior = policy[a] / policy_sum;
             int index = ptr_node_pool->size();
-            this->children_index.push_back(index); // DIYING HERE
+            this->children_index.push_back(index);
 
             // Add all of the nodes children to the ptr_node_pool
             ptr_node_pool->push_back(CNode(prior, ptr_node_pool));
@@ -247,7 +246,6 @@ namespace tree {
 
     void cback_propagate(std::vector<CNode*> &search_path, tools::CMinMaxStats &min_max_stats, float value,
                          float discount) {
-        // std::cout << value << std::endl;
         // Value from the dynamics network.
         float bootstrap_value = value;
         // How far from root we are.
@@ -272,7 +270,7 @@ namespace tree {
     void cbatch_back_propagate(int hidden_state_index_x, float discount, const std::vector<float> &rewards,
                                const std::vector<float> &values, const std::vector<std::vector<float>> &policy,
                                tools::CMinMaxStatsList *min_max_stats_lst, CSearchResults &results,
-                               std::vector<std::vector<char*>> &mappings, const std::vector<int> &action_nums) {
+                               std::vector<std::vector<char*>> &&mappings, const std::vector<int> &action_nums) {
         // For each player
         for(int i = 0; i < results.num; ++i) {
             // Expand the node
@@ -358,6 +356,7 @@ namespace tree {
                 // Error here on seg fault, decode_action on stoi.
                 // Pick the action from the mappings.
                 std::string str_action = node->mappings[action];
+
 
                 // Turn the internal next action into one that the model and environment can understand
                 last_action = decode_action(str_action);
