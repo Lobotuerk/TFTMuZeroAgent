@@ -50,3 +50,4 @@ class ReplayBuffer:
                                [value] * config.UNROLL_STEPS, # TODO Check if this is actually used
                                self.policys[current_start-config.UNROLL_STEPS:current_start]])
         ray.get(self.g_buffer.store_episode.remote(replay_set)) #TODO MAKE THIS SO IT ONLY CALLS GLOBAL ONCE
+        self.reset()

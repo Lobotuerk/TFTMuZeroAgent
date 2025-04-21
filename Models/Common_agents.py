@@ -10,8 +10,8 @@ class RandomAgent:
 
     def select_action(self, observation, mask, reward, terminated):
         return np.random.randint(self.action_limits, size=(observation.shape[0], self.action_size))
-class BuyingAgent:
 
+class BuyingAgent:
     def __init__(self, action_size, action_limits, units_to_buy, global_buffer):
         self.action_size = action_size
         self.units_to_buy = units_to_buy

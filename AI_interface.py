@@ -10,10 +10,7 @@ import numpy as np
 from storage import Storage
 from global_buffer import GlobalBuffer
 from Simulator.tft_simulator import TFT_Simulator, parallel_env, env as tft_env
-from ray.rllib.algorithms.ppo import PPOConfig
 from Models.replay_buffer_wrapper import BufferWrapper
-from ray.tune.registry import register_env
-from ray.rllib.env import PettingZooEnv
 from pettingzoo.test import parallel_api_test, api_test
 from Simulator import utils
 from tqdm import tqdm
@@ -23,7 +20,7 @@ from Models.MuZero_torch_agent import BaseMuZeroAgent, MuZeroAgent
 import Models.MuZero_torch_trainer as MuZero_trainer
 from torch.utils.tensorboard import SummaryWriter
 import torch
-from Models.Common_agents import CultistAgent, DivineAgent, RandomAgent, BuyingAgent
+from Models.Common_agents import CultistAgent, DivineAgent, RandomAgent
 
 class Agregator:
     def __init__(self):
@@ -106,8 +103,8 @@ class DataWorker(object):
         # agent = MCTS(self.agent_network
         self.ckpt_time = time.time()
         # Reset the environment
-        self.env = parallel_env()
-        players_observation = self.env.reset()
+        self.env = parallel_env(rank=self.rank)
+        players_observation = self.env.reset()[0]
         # This is here to make the input (1, observation_size) for initial_inference
         # players_observation = self.observation_to_input(players_observation)
         # Used to know when players die and which agent is currently acting
@@ -237,7 +234,7 @@ class AIInterface:
     def train_torch_model(self, starting_train_step=0, run_name=""):
         assert(config.EVALUATION_GAMES % config.EVALUATION_CONCURRENT_GAMES == 0, "Evaluation concurrency wrong")
         gpus = torch.cuda.device_count()
-        ray.init(num_gpus=gpus, num_cpus=config.NUM_CPUS)
+        ray.init(num_gpus=gpus, dashboard_port=8265)
         # ray.init()
 
         current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -263,8 +260,13 @@ class AIInterface:
         trainer = MuZero_trainer.Trainer()
 
         # Create global buffer
-        global_buffer = GlobalBuffer.remote()
+        global_buffer = GlobalBuffer.remote(config.BATCH_SIZE)
         base_agent = BaseMuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer)
+        if train_step > 0:
+            # Load model weights
+            path = f'./Checkpoints/checkpoint_0'
+            if os.path.isfile(path):
+                base_agent.model.load_state_dict(torch.load(path))
         weights = copy.deepcopy(base_agent.get_weights())
 
         agent_1 = MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer, weights)
@@ -292,39 +294,54 @@ class AIInterface:
             rank, _ = ray.get(done)[0]
             # print(f'Spawning agent {rank}')
             workers.extend([data_workers[rank].collect_gameplay_experience.remote(agents, agents_count)])
-            while ray.get(global_buffer.available_gameplay_batch.remote(config.BATCH_SIZE)):
+            if ray.get(global_buffer.available_gameplay_batch.remote()):
                 # print("Starting training ")
-                training_batch = ray.get(global_buffer.sample_gameplay_batch.remote(config.BATCH_SIZE))
-                combat_batch = []
-                if ray.get(global_buffer.available_combat_batch.remote(config.BATCH_SIZE//2)):
-                    combat_batch = ray.get(global_buffer.sample_combat_batch.remote(config.BATCH_SIZE//2))
-                trainer.train_network(training_batch, combat_batch, base_agent.model, train_step, train_summary_writer)
-                train_step += 1
-                tpbar.update(1)
-                if train_step % config.CHECKPOINT_STEPS == 0:
-                    agents = [base_agent, agent_1, agent_random, agent_buying_1, agent_buying_2]
-                    agents_count = [1, 1, 4, 1, 1]
-                    eval_steps = config.EVALUATION_GAMES // config.EVALUATION_CONCURRENT_GAMES
-                    evalbar = tqdm(total=eval_steps, desc="Evaluation Progress")
-                    base_placements = []
-                    old_placements = []
-                    for _ in range(eval_steps):
-                        evaluator = [worker.collect_gameplay_experience.remote(agents, agents_count, True) for worker in eval_workers]
-                        done, _ = ray.wait(evaluator)
-                        _, placements = ray.get(done)[0]
-                        base_placements.append(list(placements.keys())[list(placements.values()).index(base_agent.__class__)])
-                        old_placements.append(list(placements.keys())[list(placements.values()).index(agent_1.__class__)])
-                        evalbar.update(config.EVALUATION_CONCURRENT_GAMES)
-                    evalbar.close()
-                    if np.array(base_placements).mean() >= np.array(old_placements).mean():
-                        weights = copy.deepcopy(base_agent.get_weights())
-                        base_agent.model.tft_save_model(0)
-                    train_summary_writer.add_scalar('evaluation/old', np.array(old_placements).mean(), train_step)
-                    train_summary_writer.add_scalar('evaluation/new', np.array(base_placements).mean(), train_step)
-                    tpbar.close()
-                    tpbar = tqdm(total=config.CHECKPOINT_STEPS)
+                cur_gameplay_buffer_size = ray.get(global_buffer.get_gameplay_buffer_size.remote())
+                run_gameplay = 1
+                cur_combat_buffer_size = ray.get(global_buffer.get_combat_buffer_size.remote())
+                run_combat = 1
+                while run_gameplay < cur_gameplay_buffer_size:
+                    run_gameplay += 1
+                    training_batch = ray.get(global_buffer.read_gameplay_batch.remote())
+                    combat_batch = []
+                    if ray.get(global_buffer.available_combat_batch.remote()):
+                        if run_combat >= cur_combat_buffer_size:
+                            run_combat = 1
+                            cur_combat_buffer_size = ray.get(global_buffer.get_combat_buffer_size.remote())
+                        combat_batch = ray.get(global_buffer.read_combat_batch.remote())
+                    trainer.train_network(training_batch, combat_batch, base_agent.model, train_step, train_summary_writer)
+                    train_step += 1
+                    tpbar.update(1)
+                    if train_step % config.CHECKPOINT_STEPS == 0:
+                        agents_eval = [base_agent, agent_1, agent_random, agent_buying_1, agent_buying_2]
+                        agents_eval_count = [1, 1, 4, 1, 1]
+                        eval_steps = config.EVALUATION_GAMES // config.EVALUATION_CONCURRENT_GAMES
+                        evalbar = tqdm(total=eval_steps, desc="Evaluation Progress")
+                        base_placements = []
+                        old_placements = []
+                        for _ in range(eval_steps):
+                            evaluator = [worker.collect_gameplay_experience.remote(agents_eval, agents_eval_count, True) for worker in eval_workers]
+                            done, _ = ray.wait(evaluator)
+                            _, placements = ray.get(done)[0]
+                            base_placements.append(list(placements.keys())[list(placements.values()).index(base_agent.__class__)])
+                            old_placements.append(list(placements.keys())[list(placements.values()).index(agent_1.__class__)])
+                            evalbar.update(config.EVALUATION_CONCURRENT_GAMES)
+                        evalbar.close()
+                        if np.array(base_placements).mean() < np.array(old_placements).mean():
+                            weights = copy.deepcopy(base_agent.get_weights())
+                            base_agent.model.tft_save_model(0)
+                            agent_1 = MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer, weights)
+                            agents = [agent_1, agent_random, agent_buying_1, agent_buying_2]
+                            ray.get(global_buffer.clear_gameplay_buffer.remote())
+                            ray.get(global_buffer.clear_combat_buffer.remote())
+                            print("Model got better, updating model and saving")
+                        train_summary_writer.add_scalar('evaluation/old', np.array(old_placements).mean(), train_step)
+                        train_summary_writer.add_scalar('evaluation/new', np.array(base_placements).mean(), train_step)
+                        tpbar.close()
+                        tpbar = tqdm(total=config.CHECKPOINT_STEPS)
                 
                 # print("Finished training")
+            
             
 
     '''

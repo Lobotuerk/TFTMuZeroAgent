@@ -8,7 +8,7 @@ from Simulator.champion_functions import MILLIS
 
 
 class Game_Round:
-    def __init__(self, game_players, pool_obj, step_func_obj):
+    def __init__(self, game_players, pool_obj, step_func_obj, rank):
         # Amount of damage taken as a base per round. First number is max round, second is damage
         self.ROUND_DAMAGE = [
             [3, 0],
@@ -25,8 +25,9 @@ class Game_Round:
         self.NUM_DEAD = 0
         self.current_round = 0
         self.matchups = []
+        self.rank = rank
 
-        log_to_file_start()
+        log_to_file_start(f'log_{self.rank}.txt')
 
         self.game_rounds = [
             self.round_1,
@@ -247,7 +248,7 @@ class Game_Round:
                                                itemlist=[starting_items[random.randint(0, len(starting_items) - 1)]])
                 self.pool_obj.update_pool(ran_cost_1, -1)
                 player.add_to_bench(ran_cost_1)
-                log_to_file(player)
+                log_to_file(player, f'log_{self.rank}.txt')
 
         for player in self.PLAYERS.values():
             minion.minion_round(player, 0, self.PLAYERS.values())
@@ -261,8 +262,8 @@ class Game_Round:
     def minion_round(self):
         for player in self.PLAYERS.values():
             if player:
-                log_to_file(player)
-        log_end_turn(self.current_round)
+                log_to_file(player, f'log_{self.rank}.txt')
+        log_end_turn(self.current_round, f'log_{self.rank}.txt')
 
         for player in self.PLAYERS.values():
             if player:
@@ -281,8 +282,8 @@ class Game_Round:
             if player:
                 player.end_turn_actions()
                 player.combat = False
-                log_to_file(player)
-        log_end_turn(self.current_round)
+                log_to_file(player, f'log_{self.rank}.txt')
+        log_end_turn(self.current_round, f'log_{self.rank}.txt')
 
         self.combat_phase(self.PLAYERS, self.current_round)
         # Will implement check dead later
@@ -372,25 +373,25 @@ class Game_Round:
         self.PLAYERS = players
 
 
-def log_to_file_start():
+def log_to_file_start(path):
     if config.LOGMESSAGES:
-        with open('log.txt', "w") as out:
+        with open(path, "w") as out:
             out.write("Start of a new run")
             out.write('\n')
 
 
-def log_to_file(player):
+def log_to_file(player, path):
     if config.LOGMESSAGES:
-        with open('log.txt', "a") as out:
+        with open(path, "a") as out:
             for line in player.log:
                 out.write(str(line))
                 out.write('\n')
     player.log = []
 
 
-def log_end_turn(game_round):
+def log_end_turn(game_round, path):
     if config.LOGMESSAGES:
-        with open('log.txt', "a") as out:
+        with open(path, "a") as out:
             out.write("END OF ROUND " + str(game_round) + " : " + time.strftime("%H:%M:%S", time.localtime()))
             out.write('\n')
 

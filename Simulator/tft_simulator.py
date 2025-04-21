@@ -14,13 +14,13 @@ from pettingzoo.utils import wrappers, agent_selector
 from pettingzoo.utils.conversions import parallel_wrapper_fn
 
 
-def env():
+def env(rank):
     """
     The env function often wraps the environment in wrappers by default.
     You can find full documentation for these methods
     elsewhere in the developer pettingzoo documentation.
     """
-    local_env = TFT_Simulator(env_config=None)
+    local_env = TFT_Simulator(env_config=None, rank=rank)
 
     # Provides a wide vareity of helpful user errors
     # Strongly recommended
@@ -34,7 +34,7 @@ parallel_env = parallel_wrapper_fn(env)
 class TFT_Simulator(AECEnv):
     metadata = {"is_parallelizable": True, "name": "tft-set4-v0"}
 
-    def __init__(self, env_config):
+    def __init__(self, env_config, rank):
         self.pool_obj = pool.pool()
         self.PLAYERS = {"player_" + str(player_id): player_class(self.pool_obj, player_id)
                         for player_id in range(config.NUM_PLAYERS)}
@@ -44,9 +44,10 @@ class TFT_Simulator(AECEnv):
         self.NUM_DEAD = 0
         self.num_players = config.NUM_PLAYERS
         self.previous_rewards = {"player_" + str(player_id): 0 for player_id in range(config.NUM_PLAYERS)}
+        self.rank = rank
 
         self.step_function = Step_Function(self.pool_obj, self.game_observations)
-        self.game_round = Game_Round(self.PLAYERS, self.pool_obj, self.step_function)
+        self.game_round = Game_Round(self.PLAYERS, self.pool_obj, self.step_function, rank)
         self.actions_taken = 0
         self.actions_taken_this_turn = 0
         self.game_round.play_game_round()
@@ -137,7 +138,7 @@ class TFT_Simulator(AECEnv):
         self.previous_rewards = {"player_" + str(player_id): 0 for player_id in range(config.NUM_PLAYERS)}
 
         self.step_function = Step_Function(self.pool_obj, self.game_observations)
-        self.game_round = Game_Round(self.PLAYERS, self.pool_obj, self.step_function)
+        self.game_round = Game_Round(self.PLAYERS, self.pool_obj, self.step_function, self.rank)
         self.actions_taken = 0
         self.game_round.play_game_round()
         for key, p in self.PLAYERS.items():

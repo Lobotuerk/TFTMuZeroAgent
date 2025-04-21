@@ -43,17 +43,17 @@ N_HEAD_HIDDEN_LAYERS = 4
 
 ### TIME RELATED VALUES ###
 ACTIONS_PER_TURN = 10
-CONCURRENT_GAMES = 2
+CONCURRENT_GAMES = 4
 NUM_PLAYERS = 8
-NUM_SAMPLES = 40  # Normal is 25, can be anywhere from 5 to 50
-NUM_SIMULATIONS = 5
+NUM_SAMPLES = 10  # Normal is 25, can be anywhere from 5 to 50
+NUM_SIMULATIONS = 10
 SAMPLES_PER_PLAYER = 2048  # Normal is 128
 UNROLL_STEPS = 5
-EVALUATION_GAMES = 2
+EVALUATION_GAMES = 10
 EVALUATION_CONCURRENT_GAMES = 2
 
 ### TRAINING ###
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 INIT_LEARNING_RATE = 0.2
 LEARNING_RATE_DECAY = int(350e3)
 LR_DECAY_FUNCTION = 0.1
@@ -64,7 +64,9 @@ POLICY_LOSS_SCALING = 1
 # Because we calculate the loss for each of the 5 dimensions.
 # I'll add a mathematical way of generating these numbers later.
 DEBUG = False
-CHECKPOINT_STEPS = 100
+CHECKPOINT_STEPS = 200
+GAMEPLAY_BUFFER_PATH = './data/gameplay/'
+COMBAT_BUFFER_PATH = './data/combats/'
 
 #### TESTING ####
 RUN_UNIT_TEST = False

@@ -172,15 +172,22 @@ class Trainer(object):
             accs['target_policy'].append(target_policy[:, tstep])
             # accs['target_reward'].append(target_reward[:, tstep])
 
-        obs, results = combats
-        for n in range(len(results)):
-            _, _, board_distribution = agent.initial_inference(obs[n])
-            board_loss += torch.sum(-board_distribution * torch.reshape(results[n], (board_distribution.shape[0],1)), dim=1)
+        if len(combats) > 0:
+            obs, results = combats
+            # for n in range(len(results)):
+            _, _, board_distribution = agent.initial_inference(obs)
+            torch_obs = torch.from_numpy(obs[:,0:58,:,:]).float().cuda()
+            torch_results = torch.from_numpy(results).float().cuda()
+            # from shape [64] to shape [64, 1 ,1 ,1]
+            torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
+            # print(torch_results.shape, MSE_loss(board_distribution, torch_obs).shape)
+            board_loss += torch.sum(MSE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
+            # board_loss += torch.sum(-board_distribution * torch.reshape(results[n], (board_distribution.shape[0],1)), dim=1)
             
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 
-        loss = value_loss + policy_loss + directive_loss + board_loss
+        loss = value_loss + policy_loss + board_loss
         mean_loss = torch.mean(loss)
         loss.register_hook(lambda grad: grad * (1 / config.UNROLL_STEPS))
 
@@ -216,7 +223,8 @@ class Trainer(object):
         summary_writer.add_scalar('target/policy_variance', torch.mean(torch.var(accs['target_policy'], dim=1)), train_step)
 
         summary_writer.add_scalar('losses/value', torch.mean(torch.sum(value_loss, dim=0)), train_step)
-        summary_writer.add_scalar('losses/board', torch.mean(torch.sum(board_loss, dim=0)), train_step)
+        if len(combats) > 0:
+            summary_writer.add_scalar('losses/board', torch.mean(torch.sum(board_loss, dim=0)), train_step)
         # summary_writer.add_scalar('losses/reward', get_mean('reward_loss'), train_step)
         summary_writer.add_scalar('losses/policy', torch.mean(torch.sum(policy_loss, dim=0)), train_step)
         # summary_writer.add_scalar('losses/directive', torch.mean(torch.sum(directive_loss, dim=0)), train_step)
