@@ -1,0 +1,3 @@
+[submodule "MonteCarloTreeSearch"]
+	path = MonteCarloTreeSearch
+	url = https://github.com/Lobotuerk/MonteCarloTreeSearch
