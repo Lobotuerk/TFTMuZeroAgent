@@ -1,21 +1,121 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
 *.pyc
-/.idea/
-suggestions.py
-/__pycache__
-/Simulator/__pycache__
-/Models/__pycache__
-/interface/__pycache__
-/UnitTests/__pycache__
-/logs
-log.txt
-/SavedModels
-libdevice.10.bc
-/Checkpoints
-/core/build
-/core/ctree/cytree.cpython-38-x86_64-linux-gnu.so
-/core/ctree/cytree.cpp
-/core/ctree/build
+
+# C extensions
+*.so
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+python_env/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDEs
+.idea/
 .vscode/
-core/ctree/cytree.cpython-39-x86_64-linux-gnu.so
-core/ctree/cytree.cp39-win_amd64.pyd
-/python_env/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+logs/
+log.txt
+log_*.txt
+SavedModels/
+Checkpoints/
+Models/*.zip
+suggestions.py
+libdevice.10.bc
+
+# C/C++ build artifacts
+core/build/
+core/ctree/build/
+core/ctree/cytree.cpp
+core/ctree/cytree.cpython-*
+core/ctree/*.so
+core/ctree/*.pyd

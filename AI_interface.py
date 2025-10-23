@@ -9,14 +9,8 @@ import gymnasium as gym
 import numpy as np
 from storage import Storage
 from global_buffer import GlobalBuffer
-
-# Import from submodule
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'TFTSet4Gym'))
 from tft_set4_gym.tft_simulator import TFT_Simulator, parallel_env, env as tft_env
 from tft_set4_gym import utils
-sys.path.pop(0)
-
 from Models.replay_buffer_wrapper import BufferWrapper
 from pettingzoo.test import parallel_api_test, api_test
 from tqdm import tqdm

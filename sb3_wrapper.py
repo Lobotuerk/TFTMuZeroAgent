@@ -13,14 +13,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from pettingzoo.utils import parallel_to_aec, aec_to_parallel
 from typing import Dict, Any, Tuple, Optional, Union
-
-# Import parallel_env from the TFTSet4Gym submodule
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'TFTSet4Gym'))
 from tft_set4_gym.tft_simulator import parallel_env
-# Remove the path after import to keep it clean
-sys.path.pop(0)
 
 
 class TFTSingleAgentWrapper(gym.Env):

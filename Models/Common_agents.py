@@ -1,12 +1,6 @@
 import numpy as np
 import config
-
-# Import from submodule
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'TFTSet4Gym'))
 from tft_set4_gym import utils
-sys.path.pop(0)
 
 class RandomAgent:
     def __init__(self, action_size, action_limits, global_buffer):

@@ -2,15 +2,8 @@ import numpy as np
 
 import config
 import collections
-
-# Import from submodule
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'TFTSet4Gym'))
 from tft_set4_gym.tft_simulator import TFT_Simulator
 from tft_set4_gym.champion import champion
-sys.path.pop(0)
-
 from Models.MCTS_torch import MCTS
 
 

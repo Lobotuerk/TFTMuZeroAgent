@@ -1,18 +1,12 @@
 import ray
 import torch
 from Models.MCTS_torch import MCTS
-
-# Import from submodule
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'TFTSet4Gym'))
 from tft_set4_gym.utils import hp_from_obs, round_from_obs, t_f_c_from_obs, units_in_shop_from_obs
-sys.path.pop(0)
-
 import config
 import collections
 import numpy as np
 import time
+import os
 from Models.MuZero_torch_model import MuZeroNetwork
 from Models.replay_muzero_buffer import ReplayBuffer
 
