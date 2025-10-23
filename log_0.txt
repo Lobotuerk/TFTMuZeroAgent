@@ -1,0 +1,1353 @@
+Start of a new run
+0       999600              Adding champion yasuo with items ['needlessly_large_rod'] to bench                          
+1       999600              Adding champion garen with items ['needlessly_large_rod'] to bench                          
+2       999600              Adding champion lissandra with items ['recurve_bow'] to bench                               
+3       999600              Adding champion nami with items ['giants_belt'] to bench                                    
+4       2000500             Adding champion lissandra with items ['negatron_cloak'] to bench                            
+5       2000500             Adding champion nami with items ['tear_of_the_goddess'] to bench                            
+6       2000500             Adding champion fiora with items ['negatron_cloak'] to bench                                
+7       2000500             Adding champion twistedfate with items ['negatron_cloak'] to bench                          
+0       2000500             moved yasuo from bench 0 to board [0, 0]                                                    
+0       2000500             Spaces for units left to fight 0                                                            
+0       0                   leveled to 2                                                                                
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   at (0, 0), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 2 with gold 5, max_units = 2, num_units_in_play = 1, health = 100              
+0       6999700             Refreshing shop                                                                             
+0       29000100            moved yasuo from board [0, 0] to board [3, 2]                                               
+0       48999800            pass action                                                                                 
+0       59000100            Refreshing shop                                                                             
+0       98999700            pass action                                                                                 
+1       8000000             moved garen from bench 0 to board [0, 0]                                                    
+1       8000000             Spaces for units left to fight 0                                                            
+1       13999600            Adding champion thresh with items [] to bench                                               
+1       13999600            Adding champion hecarim with items [] to bench                                              
+1       13999600            Adding champion teemo with items [] to bench                                                
+1       13999600            Adding champion annie with items [] to bench                                                
+1       0                   leveled to 2                                                                                
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   vanguard: 1, tier: 0                                                                        
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   Player level 2 with gold 3, max_units = 2, num_units_in_play = 1, health = 100              
+1       0                   0: thresh                                                                                   
+1       0                   1: hecarim                                                                                  
+1       0                   2: teemo                                                                                    
+1       0                   3: annie                                                                                    
+1       9001600             selling champion teemo with stars = 1 from bench_location 2                                 
+1       18999800            pass action                                                                                 
+1       39999700            Refreshing shop                                                                             
+1       60001100            pass action                                                                                 
+1       99999800            pass action                                                                                 
+2       13999600            moved lissandra from bench 0 to board [0, 0]                                                
+2       13999600            Spaces for units left to fight 0                                                            
+2       18999300            Adding champion veigar with items [] to bench                                               
+2       0                   leveled to 2                                                                                
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   Player level 2 with gold 2, max_units = 2, num_units_in_play = 1, health = 100              
+2       0                   0: veigar                                                                                   
+2       10001600            pass action                                                                                 
+2       31000600            pass action                                                                                 
+2       40999600            pass action                                                                                 
+2       61001900            pass action                                                                                 
+3       18999300            moved nami from bench 0 to board [0, 0]                                                     
+3       18999300            Spaces for units left to fight 0                                                            
+3       0                   leveled to 2                                                                                
+3       0                   enlightened: 1, tier: 0                                                                     
+3       0                   mage: 1, tier: 0                                                                            
+3       0                   at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       0                   Player level 2 with gold 2, max_units = 2, num_units_in_play = 1, health = 100              
+3       0                   0: giants_belt                                                                              
+3       20999800            pass action                                                                                 
+3       31999900            pass action                                                                                 
+3       82000100            pass action                                                                                 
+3       91999700            pass action                                                                                 
+4       22999300            moved lissandra from bench 0 to board [0, 0]                                                
+4       22999300            Spaces for units left to fight 0                                                            
+4       28999400            Adding champion teemo with items [] to bench                                                
+4       28999400            Adding champion pyke with items [] to bench                                                 
+4       28999400            Adding champion lulu with items [] to bench                                                 
+4       0                   leveled to 2                                                                                
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   Player level 2 with gold 2, max_units = 2, num_units_in_play = 1, health = 100              
+4       0                   0: teemo                                                                                    
+4       0                   1: pyke                                                                                     
+4       0                   2: lulu                                                                                     
+4       31999900            Refreshing shop                                                                             
+4       73000500            pass action                                                                                 
+5       28999400            moved nami from bench 0 to board [0, 0]                                                     
+5       28999400            Spaces for units left to fight 0                                                            
+5       0                   leveled to 2                                                                                
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   at (0, 0), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   Player level 2 with gold 5, max_units = 2, num_units_in_play = 1, health = 100              
+5       0                   0: sparring_gloves                                                                          
+5       12000400            exp to 0 on level 2                                                                         
+5       12000400            leveled to 3                                                                                
+5       63999700            pass action                                                                                 
+5       93999900            pass action                                                                                 
+5       104999700           pass action                                                                                 
+6       32999400            moved fiora from bench 0 to board [0, 0]                                                    
+6       32999400            Spaces for units left to fight 0                                                            
+6       37999400            Adding champion lulu with items [] to bench                                                 
+6       0                   leveled to 2                                                                                
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   Player level 2 with gold 6, max_units = 2, num_units_in_play = 1, health = 100              
+6       0                   0: lulu                                                                                     
+6       24004300            pass action                                                                                 
+6       33999800            exp to 0 on level 2                                                                         
+6       33999800            leveled to 3                                                                                
+7       37999400            moved twistedfate from bench 0 to board [0, 0]                                              
+7       37999400            Spaces for units left to fight 0                                                            
+7       41999700            Adding champion jarvaniv with items [] to bench                                             
+7       41999700            Adding champion sylas with items [] to bench                                                
+7       41999700            Adding champion jarvaniv with items [] to bench                                             
+7       0                   leveled to 2                                                                                
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   Player level 2 with gold 2, max_units = 2, num_units_in_play = 1, health = 100              
+7       0                   0: jarvaniv                                                                                 
+7       0                   1: sylas                                                                                    
+7       0                   2: jarvaniv                                                                                 
+7       25001300            pass action                                                                                 
+7       106999800           pass action                                                                                 
+END OF ROUND 1 : 16:23:43
+0       110001800           Spaces for units left to fight 1                                                            
+0       110001800           Spaces for units left to fight 1                                                            
+0       0                   leveled to 3                                                                                
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 3 with gold 6, max_units = 3, num_units_in_play = 1, health = 100              
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 3 with gold 8, max_units = 3, num_units_in_play = 1, health = 100              
+0       0                   0: needlessly_large_rod                                                                     
+0       14999900            Refreshing shop                                                                             
+0       26000100            exp to 2 on level 3                                                                         
+0       26000100            leveled to 4                                                                                
+0       38000100            Refreshing shop                                                                             
+1       110001800           moved thresh from bench 0 to board [0, 1]                                                   
+1       110001800           Spaces for units left to fight 0                                                            
+1       121000300           Spaces for units left to fight 0                                                            
+1       125999800           Adding champion teemo with items [] to bench                                                
+1       0                   leveled to 3                                                                                
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   vanguard: 2, tier: 1                                                                        
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   Player level 3 with gold 6, max_units = 3, num_units_in_play = 2, health = 100              
+1       0                   0: teemo                                                                                    
+1       0                   1: hecarim                                                                                  
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   vanguard: 2, tier: 1                                                                        
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   Player level 3 with gold 8, max_units = 3, num_units_in_play = 2, health = 100              
+1       0                   0: teemo                                                                                    
+1       0                   1: hecarim                                                                                  
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       16000000            Refreshing shop                                                                             
+1       27000300            exp to 2 on level 3                                                                         
+1       27000300            leveled to 4                                                                                
+1       39000200            pass action                                                                                 
+1       70000200            pass action                                                                                 
+1       80000200            pass action                                                                                 
+2       110001800           moved veigar from bench 0 to board [0, 1]                                                   
+2       110001800           Spaces for units left to fight 0                                                            
+2       125999800           Spaces for units left to fight 0                                                            
+2       0                   leveled to 3                                                                                
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 3 with gold 4, max_units = 3, num_units_in_play = 2, health = 100              
+2       0                   0: giants_belt                                                                              
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 3 with gold 6, max_units = 3, num_units_in_play = 2, health = 100              
+2       0                   0: giants_belt                                                                              
+2       28000300            pass action                                                                                 
+2       61000100            pass action                                                                                 
+2       81000200            pass action                                                                                 
+2       100000100           pass action                                                                                 
+3       110001800           Spaces for units left to fight 1                                                            
+3       132999800           Spaces for units left to fight 1                                                            
+3       0                   leveled to 3                                                                                
+3       0                   enlightened: 1, tier: 0                                                                     
+3       0                   mage: 1, tier: 0                                                                            
+3       0                   at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       0                   Player level 3 with gold 8, max_units = 3, num_units_in_play = 1, health = 100              
+3       0                   0: giants_belt                                                                              
+3       0                   1: champion_duplicator                                                                      
+3       0                   enlightened: 1, tier: 0                                                                     
+3       0                   mage: 1, tier: 0                                                                            
+3       0                   at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       0                   Player level 3 with gold 10, max_units = 3, num_units_in_play = 1, health = 100             
+3       0                   0: giants_belt                                                                              
+3       0                   1: champion_duplicator                                                                      
+3       8000000             exp to 2 on level 3                                                                         
+3       8000000             leveled to 4                                                                                
+3       28000300            Refreshing shop                                                                             
+3       62000300            Refreshing shop                                                                             
+4       110001800           moved teemo from bench 0 to board [0, 1]                                                    
+4       110001800           Spaces for units left to fight 0                                                            
+4       140999700           Spaces for units left to fight 0                                                            
+4       147999700           Adding champion kennen with items [] to bench                                               
+4       147999700           Adding champion kalista with items [] to bench                                              
+4       0                   leveled to 3                                                                                
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   Player level 3 with gold 2, max_units = 3, num_units_in_play = 2, health = 100              
+4       0                   0: kennen                                                                                   
+4       0                   1: pyke                                                                                     
+4       0                   2: lulu                                                                                     
+4       0                   3: kalista                                                                                  
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   Player level 3 with gold 4, max_units = 3, num_units_in_play = 2, health = 100              
+4       0                   0: kennen                                                                                   
+4       0                   1: pyke                                                                                     
+4       0                   2: lulu                                                                                     
+4       0                   3: kalista                                                                                  
+4       9000200             Refreshing shop                                                                             
+4       42000000            Refreshing shop                                                                             
+5       110001800           Spaces for units left to fight 2                                                            
+5       147999700           Spaces for units left to fight 2                                                            
+5       155000000           Adding champion yuumi with items [] to bench                                                
+5       155000000           Adding champion kindred with items [] to bench                                              
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   at (0, 0), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   Player level 3 with gold 3, max_units = 3, num_units_in_play = 1, health = 100              
+5       0                   0: yuumi                                                                                    
+5       0                   1: kindred                                                                                  
+5       0                   0: sparring_gloves                                                                          
+5       0                   leveled to 4                                                                                
+5       1000000             enlightened: 1, tier: 0                                                                     
+5       1000000             mage: 1, tier: 0                                                                            
+5       1000000             at (0, 0), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       1000000             Player level 4 with gold 5, max_units = 4, num_units_in_play = 1, health = 100              
+5       1000000             0: yuumi                                                                                    
+5       1000000             1: kindred                                                                                  
+5       1000000             0: sparring_gloves                                                                          
+5       10000000            Refreshing shop                                                                             
+5       30000000            Refreshing shop                                                                             
+6       110001800           moved lulu from bench 0 to board [0, 1]                                                     
+6       110001800           Spaces for units left to fight 1                                                            
+6       155000000           Spaces for units left to fight 1                                                            
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 1, tier: 0                                                                            
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 3 with gold 4, max_units = 3, num_units_in_play = 2, health = 100              
+6       0                   0: sparring_gloves                                                                          
+6       0                   leveled to 4                                                                                
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 1, tier: 0                                                                            
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 4 with gold 6, max_units = 4, num_units_in_play = 2, health = 100              
+6       0                   0: sparring_gloves                                                                          
+6       10000100            Refreshing shop                                                                             
+6       31000100            Refreshing shop                                                                             
+6       93000000            Refreshing shop                                                                             
+7       110001800           moved jarvaniv from bench 0 to board [0, 1]                                                 
+7       110001800           Spaces for units left to fight 0                                                            
+7       160999900           Spaces for units left to fight 0                                                            
+7       164999700           Adding champion katarina with items [] to bench                                             
+7       0                   leveled to 3                                                                                
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   at (0, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   Player level 3 with gold 7, max_units = 3, num_units_in_play = 2, health = 100              
+7       0                   0: katarina                                                                                 
+7       0                   1: sylas                                                                                    
+7       0                   2: jarvaniv                                                                                 
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   at (0, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   Player level 3 with gold 9, max_units = 3, num_units_in_play = 2, health = 100              
+7       0                   0: katarina                                                                                 
+7       0                   1: sylas                                                                                    
+7       0                   2: jarvaniv                                                                                 
+7       21000100            Refreshing shop                                                                             
+7       43000400            exp to 2 on level 3                                                                         
+7       43000400            leveled to 4                                                                                
+7       54000200            Refreshing shop                                                                             
+7       64000100            pass action                                                                                 
+7       103000000           pass action                                                                                 
+END OF ROUND 2 : 16:23:43
+0       107000400           Spaces for units left to fight 3                                                            
+0       107000400           Spaces for units left to fight 3                                                            
+0       122000100           Adding champion hecarim with items [] to bench                                              
+0       183000100           Spill reward of 0.0 received                                                                
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 4 with gold 3, max_units = 4, num_units_in_play = 1, health = 100              
+0       0                   0: hecarim                                                                                  
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   1: champion_duplicator                                                                      
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 4 with gold 6, max_units = 4, num_units_in_play = 1, health = 100              
+0       0                   0: hecarim                                                                                  
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   1: champion_duplicator                                                                      
+0       14003100            exp to 4 on level 4                                                                         
+0       55000400            Refreshing shop                                                                             
+0       101000600           moved hecarim from bench 0 to board [0, 0]                                                  
+0       101000600           Spaces for units left to fight 2                                                            
+1       107000400           moved teemo from bench 0 to board [0, 2]                                                    
+1       107000400           moved hecarim from bench 1 to board [0, 3]                                                  
+1       107000400           Spaces for units left to fight 0                                                            
+1       122000100           Spaces for units left to fight 0                                                            
+1       129000300           Adding champion jinx with items [] to bench                                                 
+1       129000300           Adding champion veigar with items [] to bench                                               
+1       183000100           Spill reward of 0.0 received                                                                
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   elderwood: 1, tier: 0                                                                       
+1       0                   spirit: 1, tier: 0                                                                          
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   sharpshooter: 1, tier: 0                                                                    
+1       0                   vanguard: 3, tier: 1                                                                        
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   at (0, 2), champion teemo, with level = 1, items = [], and chosen = False                   
+1       0                   at (0, 3), champion hecarim, with level = 1, items = [], and chosen = False                 
+1       0                   Player level 4 with gold 4, max_units = 4, num_units_in_play = 4, health = 100              
+1       0                   0: jinx                                                                                     
+1       0                   1: veigar                                                                                   
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   elderwood: 1, tier: 0                                                                       
+1       0                   spirit: 1, tier: 0                                                                          
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   sharpshooter: 1, tier: 0                                                                    
+1       0                   vanguard: 3, tier: 1                                                                        
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   at (0, 2), champion teemo, with level = 1, items = [], and chosen = False                   
+1       0                   at (0, 3), champion hecarim, with level = 1, items = [], and chosen = False                 
+1       0                   Player level 4 with gold 7, max_units = 4, num_units_in_play = 4, health = 100              
+1       0                   0: jinx                                                                                     
+1       0                   1: veigar                                                                                   
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       6000000             pass action                                                                                 
+1       26000200            Refreshing shop                                                                             
+1       36000300            pass action                                                                                 
+1       56000100            pass action                                                                                 
+1       66000100            exp to 4 on level 4                                                                         
+1       101000600           Spaces for units left to fight 0                                                            
+2       107000400           Spaces for units left to fight 1                                                            
+2       129000300           Spaces for units left to fight 1                                                            
+2       183000100           Spill reward of 0.0 received                                                                
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 3 with gold 18, max_units = 3, num_units_in_play = 2, health = 100             
+2       0                   0: giants_belt                                                                              
+2       0                   leveled to 4                                                                                
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 4 with gold 22, max_units = 4, num_units_in_play = 2, health = 100             
+2       0                   0: giants_belt                                                                              
+2       16000300            pass action                                                                                 
+2       76000100            pass action                                                                                 
+2       86000000            Refreshing shop                                                                             
+2       95000000            exp to 0 on level 4                                                                         
+2       101000600           Spaces for units left to fight 2                                                            
+3       107000400           Spaces for units left to fight 3                                                            
+3       140000100           Spaces for units left to fight 3                                                            
+3       183000100           0 reward for losing round against player -1                                                 
+3       999800              enlightened: 1, tier: 0                                                                     
+3       999800              mage: 1, tier: 0                                                                            
+3       999800              at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       999800              Player level 4 with gold 4, max_units = 4, num_units_in_play = 1, health = 96               
+3       999800              0: giants_belt                                                                              
+3       999800              1: champion_duplicator                                                                      
+3       0                   enlightened: 1, tier: 0                                                                     
+3       0                   mage: 1, tier: 0                                                                            
+3       0                   at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       0                   Player level 4 with gold 7, max_units = 4, num_units_in_play = 1, health = 96               
+3       0                   0: giants_belt                                                                              
+3       0                   1: champion_duplicator                                                                      
+3       38001700            exp to 4 on level 4                                                                         
+3       58002000            Refreshing shop                                                                             
+3       102000500           Spaces for units left to fight 3                                                            
+4       107000400           moved kennen from bench 0 to board [0, 2]                                                   
+4       107000400           Spaces for units left to fight 0                                                            
+4       183000100           Spill reward of 0.0 received                                                                
+4       184000100           Spaces for units left to fight 0                                                            
+4       0                   ninja: 1, tier: 1                                                                           
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   keeper: 1, tier: 0                                                                          
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   at (0, 2), champion kennen, with level = 1, items = [], and chosen = False                  
+4       0                   Player level 3 with gold 2, max_units = 3, num_units_in_play = 3, health = 100              
+4       0                   1: pyke                                                                                     
+4       0                   2: lulu                                                                                     
+4       0                   3: kalista                                                                                  
+4       0                   0: tear_of_the_goddess                                                                      
+4       0                   leveled to 4                                                                                
+4       0                   ninja: 1, tier: 1                                                                           
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   keeper: 1, tier: 0                                                                          
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   at (0, 2), champion kennen, with level = 1, items = [], and chosen = False                  
+4       0                   Player level 4 with gold 5, max_units = 4, num_units_in_play = 3, health = 100              
+4       0                   1: pyke                                                                                     
+4       0                   2: lulu                                                                                     
+4       0                   3: kalista                                                                                  
+4       0                   0: tear_of_the_goddess                                                                      
+4       18000100            exp to 0 on level 4                                                                         
+4       102000500           moved pyke from bench 1 to board [0, 3]                                                     
+4       102000500           Spaces for units left to fight 0                                                            
+5       107000400           moved yuumi from bench 0 to board [0, 1]                                                    
+5       107000400           moved kindred from bench 1 to board [0, 2]                                                  
+5       107000400           Spaces for units left to fight 1                                                            
+5       183000100           Spill reward of 0.0 received                                                                
+5       189000300           Spaces for units left to fight 1                                                            
+5       195000000           Adding champion evelynn with items [] to bench                                              
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   spirit: 2, tier: 1                                                                          
+5       0                   hunter: 1, tier: 0                                                                          
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   mystic: 1, tier: 0                                                                          
+5       0                   at (0, 0), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   at (0, 1), champion yuumi, with level = 1, items = [], and chosen = False                   
+5       0                   at (0, 2), champion kindred, with level = 1, items = [], and chosen = False                 
+5       0                   Player level 4 with gold 6, max_units = 4, num_units_in_play = 3, health = 100              
+5       0                   0: evelynn                                                                                  
+5       0                   0: sparring_gloves                                                                          
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   spirit: 2, tier: 1                                                                          
+5       0                   hunter: 1, tier: 0                                                                          
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   mystic: 1, tier: 0                                                                          
+5       0                   at (0, 0), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   at (0, 1), champion yuumi, with level = 1, items = [], and chosen = False                   
+5       0                   at (0, 2), champion kindred, with level = 1, items = [], and chosen = False                 
+5       0                   Player level 4 with gold 9, max_units = 4, num_units_in_play = 3, health = 100              
+5       0                   0: evelynn                                                                                  
+5       0                   0: sparring_gloves                                                                          
+5       9000000             exp to 4 on level 4                                                                         
+5       50000100            exp to 8 on level 4                                                                         
+5       50000100            leveled to 5                                                                                
+5       88000000            pass action                                                                                 
+5       103001700           moved evelynn from bench 0 to board [0, 3]                                                  
+5       103001700           Spaces for units left to fight 1                                                            
+6       106000400           Spaces for units left to fight 2                                                            
+6       182000100           Spill reward of 0.0 received                                                                
+6       194000000           Spaces for units left to fight 2                                                            
+6       211000100           Adding champion annie with items [] to bench                                                
+6       211000100           Adding champion pyke with items [] to bench                                                 
+6       211000100           Adding champion lulu with items [] to bench                                                 
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 1, tier: 0                                                                            
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 4 with gold 2, max_units = 4, num_units_in_play = 2, health = 100              
+6       0                   0: annie                                                                                    
+6       0                   1: pyke                                                                                     
+6       0                   2: lulu                                                                                     
+6       0                   0: sparring_gloves                                                                          
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 1, tier: 0                                                                            
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 4 with gold 5, max_units = 4, num_units_in_play = 2, health = 100              
+6       0                   0: annie                                                                                    
+6       0                   1: pyke                                                                                     
+6       0                   2: lulu                                                                                     
+6       0                   0: sparring_gloves                                                                          
+6       51000000            exp to 4 on level 4                                                                         
+6       61000100            moved lulu from board [0, 1] to board [2, 0]                                                
+6       99000100            moved lulu from board [2, 0] to board [0, 1]                                                
+6       103001700           moved annie from bench 0 to board [0, 2]                                                    
+6       103001700           moved pyke from bench 1 to board [0, 3]                                                     
+6       103001700           Spaces for units left to fight 0                                                            
+7       106000400           moved katarina from bench 0 to board [0, 2]                                                 
+7       106000400           moved sylas from bench 1 to board [0, 3]                                                    
+7       106000400           Spaces for units left to fight 0                                                            
+7       182000100           Spill reward of 0.0 received                                                                
+7       211000100           Spaces for units left to fight 0                                                            
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 2, tier: 0                                                                         
+7       0                   assassin: 1, tier: 0                                                                        
+7       0                   brawler: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   fortune: 1, tier: 0                                                                         
+7       0                   moonlight: 1, tier: 0                                                                       
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   at (0, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 2), champion katarina, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 3), champion sylas, with level = 1, items = [], and chosen = False                   
+7       0                   Player level 4 with gold 3, max_units = 4, num_units_in_play = 4, health = 100              
+7       0                   2: jarvaniv                                                                                 
+7       0                   0: recurve_bow                                                                              
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 2, tier: 0                                                                         
+7       0                   assassin: 1, tier: 0                                                                        
+7       0                   brawler: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   fortune: 1, tier: 0                                                                         
+7       0                   moonlight: 1, tier: 0                                                                       
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   at (0, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 2), champion katarina, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 3), champion sylas, with level = 1, items = [], and chosen = False                   
+7       0                   Player level 4 with gold 6, max_units = 4, num_units_in_play = 4, health = 100              
+7       0                   2: jarvaniv                                                                                 
+7       0                   0: recurve_bow                                                                              
+7       32000600            moved jarvaniv from board [0, 1] to board [1, 1]                                            
+7       42000500            exp to 4 on level 4                                                                         
+7       52000200            pass action                                                                                 
+7       103001700           Spaces for units left to fight 0                                                            
+END OF ROUND 3 : 16:23:43
+0       11998400            0 reward for losing round against player 2                                                  
+0       0                   leveled to 5                                                                                
+0       0                   elderwood: 1, tier: 0                                                                       
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   vanguard: 1, tier: 0                                                                        
+0       0                   at (0, 0), champion hecarim, with level = 1, items = [], and chosen = False                 
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 5 with gold 4, max_units = 5, num_units_in_play = 2, health = 98               
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   1: champion_duplicator                                                                      
+0       4001300             Refreshing shop                                                                             
+0       54000000            pass action                                                                                 
+0       103000300           Spaces for units left to fight 3                                                            
+1       24999800            0 reward for winning round against player 7                                                 
+1       0                   leveled to 5                                                                                
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   elderwood: 1, tier: 0                                                                       
+1       0                   spirit: 1, tier: 0                                                                          
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   sharpshooter: 1, tier: 0                                                                    
+1       0                   vanguard: 3, tier: 1                                                                        
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   at (0, 2), champion teemo, with level = 1, items = [], and chosen = False                   
+1       0                   at (0, 3), champion hecarim, with level = 1, items = [], and chosen = False                 
+1       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 4, health = 100              
+1       0                   0: jinx                                                                                     
+1       0                   1: veigar                                                                                   
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       45000000            exp to 0 on level 5                                                                         
+1       55000100            Refreshing shop                                                                             
+1       103000300           moved jinx from bench 0 to board [1, 0]                                                     
+1       103000300           Spaces for units left to fight 0                                                            
+2       11998400            0 reward for winning round against player 0                                                 
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 4 with gold 22, max_units = 4, num_units_in_play = 2, health = 100             
+2       0                   0: giants_belt                                                                              
+2       6000000             pass action                                                                                 
+2       36000700            Refreshing shop                                                                             
+2       56000000            pass action                                                                                 
+2       66000000            exp to 6 on level 4                                                                         
+2       66000000            leveled to 5                                                                                
+2       87002000            exp to 0 on level 5                                                                         
+2       103000300           Spaces for units left to fight 3                                                            
+3       5000200             0 reward for losing round against player 4                                                  
+3       0                   leveled to 5                                                                                
+3       0                   enlightened: 1, tier: 0                                                                     
+3       0                   mage: 1, tier: 0                                                                            
+3       0                   at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       0                   Player level 5 with gold 5, max_units = 5, num_units_in_play = 1, health = 88               
+3       0                   0: giants_belt                                                                              
+3       0                   1: champion_duplicator                                                                      
+3       17000200            exp to 0 on level 5                                                                         
+3       37000100            pass action                                                                                 
+3       104001300           Spaces for units left to fight 4                                                            
+4       5000200             0 reward for winning round against player 3                                                 
+4       0                   cultist: 1, tier: 0                                                                         
+4       0                   ninja: 1, tier: 1                                                                           
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   assassin: 1, tier: 0                                                                        
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   keeper: 1, tier: 0                                                                          
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   at (0, 2), champion kennen, with level = 1, items = [], and chosen = False                  
+4       0                   at (0, 3), champion pyke, with level = 1, items = [], and chosen = False                    
+4       0                   Player level 4 with gold 6, max_units = 4, num_units_in_play = 4, health = 100              
+4       0                   2: lulu                                                                                     
+4       0                   3: kalista                                                                                  
+4       0                   0: tear_of_the_goddess                                                                      
+4       28000000            Refreshing shop                                                                             
+4       57999900            pass action                                                                                 
+4       67999900            exp to 6 on level 4                                                                         
+4       67999900            leveled to 5                                                                                
+4       98999900            pass action                                                                                 
+4       104001300           moved lulu from bench 2 to board [1, 0]                                                     
+4       104001300           Spaces for units left to fight 0                                                            
+5       19000100            0 reward for winning round against player 6                                                 
+5       0                   cultist: 1, tier: 0                                                                         
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   spirit: 2, tier: 1                                                                          
+5       0                   hunter: 1, tier: 0                                                                          
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   mystic: 1, tier: 0                                                                          
+5       0                   shade: 1, tier: 0                                                                           
+5       0                   at (0, 0), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   at (0, 1), champion yuumi, with level = 1, items = [], and chosen = False                   
+5       0                   at (0, 2), champion kindred, with level = 1, items = [], and chosen = False                 
+5       0                   at (0, 3), champion evelynn, with level = 1, items = [], and chosen = False                 
+5       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 4, health = 100              
+5       0                   0: sparring_gloves                                                                          
+5       8999900             pass action                                                                                 
+5       19000600            pass action                                                                                 
+5       28999900            exp to 4 on level 5                                                                         
+5       58999900            Refreshing shop                                                                             
+5       104001300           Spaces for units left to fight 1                                                            
+6       19000100            0 reward for losing round against player 5                                                  
+6       0                   leveled to 5                                                                                
+6       0                   cultist: 1, tier: 0                                                                         
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   assassin: 1, tier: 0                                                                        
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 2, tier: 0                                                                            
+6       0                   fortune: 1, tier: 0                                                                         
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   at (0, 2), champion annie, with level = 1, items = [], and chosen = False                   
+6       0                   at (0, 3), champion pyke, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 5 with gold 5, max_units = 5, num_units_in_play = 4, health = 92               
+6       0                   2: lulu                                                                                     
+6       0                   0: sparring_gloves                                                                          
+6       10000300            pass action                                                                                 
+6       20000000            selling champion lulu with stars = 1 from position [0, 1]                                   
+6       39999900            Refreshing shop                                                                             
+6       101005100           pass action                                                                                 
+6       104001300           moved lulu from bench 2 to board [0, 1]                                                     
+6       104001300           Spaces for units left to fight 1                                                            
+7       24999800            0 reward for losing round against player 1                                                  
+7       0                   leveled to 5                                                                                
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 2, tier: 0                                                                         
+7       0                   assassin: 1, tier: 0                                                                        
+7       0                   brawler: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   fortune: 1, tier: 0                                                                         
+7       0                   moonlight: 1, tier: 0                                                                       
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   at (0, 2), champion katarina, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 3), champion sylas, with level = 1, items = [], and chosen = False                   
+7       0                   at (1, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 4, health = 96               
+7       0                   2: jarvaniv                                                                                 
+7       0                   0: recurve_bow                                                                              
+7       11000200            pass action                                                                                 
+7       31000000            exp to 0 on level 5                                                                         
+7       60999900            pass action                                                                                 
+7       105001300           moved jarvaniv from bench 2 to board [0, 1]                                                 
+7       105001300           Spaces for units left to fight 0                                                            
+END OF ROUND 4 : 16:23:43
+0       13998700            0 reward for losing round against player 6                                                  
+0       0                   elderwood: 1, tier: 0                                                                       
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   vanguard: 1, tier: 0                                                                        
+0       0                   at (0, 0), champion hecarim, with level = 1, items = [], and chosen = False                 
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 5 with gold 8, max_units = 5, num_units_in_play = 2, health = 88               
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   1: champion_duplicator                                                                      
+0       4000100             Refreshing shop                                                                             
+0       13999900            pass action                                                                                 
+0       26001400            exp to 2 on level 5                                                                         
+0       37000000            pass action                                                                                 
+0       76000800            pass action                                                                                 
+0       103000000           Spaces for units left to fight 3                                                            
+1       5999600             0 reward for winning round against player 3                                                 
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   elderwood: 1, tier: 0                                                                       
+1       0                   spirit: 1, tier: 0                                                                          
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   sharpshooter: 2, tier: 1                                                                    
+1       0                   vanguard: 3, tier: 1                                                                        
+1       0                   fortune: 1, tier: 0                                                                         
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   at (0, 2), champion teemo, with level = 1, items = [], and chosen = False                   
+1       0                   at (0, 3), champion hecarim, with level = 1, items = [], and chosen = False                 
+1       0                   at (1, 0), champion jinx, with level = 1, items = [], and chosen = False                    
+1       0                   Player level 5 with gold 7, max_units = 5, num_units_in_play = 5, health = 100              
+1       0                   1: veigar                                                                                   
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       16000100            Refreshing shop                                                                             
+1       27001000            pass action                                                                                 
+1       57000100            Refreshing shop                                                                             
+1       66999900            pass action                                                                                 
+1       87000000            pass action                                                                                 
+1       97000000            Refreshing shop                                                                             
+1       103000000           Spaces for units left to fight 0                                                            
+2       9999900             0 reward for losing round against player 4                                                  
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 5 with gold 18, max_units = 5, num_units_in_play = 2, health = 88              
+2       0                   0: giants_belt                                                                              
+2       18000000            exp to 6 on level 5                                                                         
+2       58000000            Refreshing shop                                                                             
+2       104000100           Spaces for units left to fight 3                                                            
+3       5999600             0 reward for losing round against player 1                                                  
+3       0                   enlightened: 1, tier: 0                                                                     
+3       0                   mage: 1, tier: 0                                                                            
+3       0                   at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       0                   Player level 5 with gold 7, max_units = 5, num_units_in_play = 1, health = 76               
+3       0                   0: giants_belt                                                                              
+3       0                   1: champion_duplicator                                                                      
+3       6999800             moved nami from board [0, 0] to bench                                                       
+3       18000000            exp to 6 on level 5                                                                         
+3       99000100            pass action                                                                                 
+3       104000100           moved nami from bench 0 to board [0, 0]                                                     
+3       104000100           Spaces for units left to fight 4                                                            
+4       9999900             0 reward for winning round against player 2                                                 
+4       0                   cultist: 1, tier: 0                                                                         
+4       0                   elderwood: 1, tier: 0                                                                       
+4       0                   ninja: 1, tier: 1                                                                           
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   assassin: 1, tier: 0                                                                        
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   keeper: 1, tier: 0                                                                          
+4       0                   mage: 1, tier: 0                                                                            
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   at (0, 2), champion kennen, with level = 1, items = [], and chosen = False                  
+4       0                   at (0, 3), champion pyke, with level = 1, items = [], and chosen = False                    
+4       0                   at (1, 0), champion lulu, with level = 1, items = [], and chosen = False                    
+4       0                   Player level 5 with gold 7, max_units = 5, num_units_in_play = 5, health = 100              
+4       0                   3: kalista                                                                                  
+4       0                   0: tear_of_the_goddess                                                                      
+4       7999800             exp to 2 on level 5                                                                         
+4       30000400            selling champion pyke with stars = 1 from position [0, 3]                                   
+4       39999900            Refreshing shop                                                                             
+4       60000000            Refreshing shop                                                                             
+4       69999900            pass action                                                                                 
+4       90000000            moved lissandra from board [0, 0] to board [1, 1]                                           
+4       104000100           moved kalista from bench 3 to board [0, 0]                                                  
+4       104000100           Spaces for units left to fight 0                                                            
+5       23000500            0 reward for winning round against player 7                                                 
+5       0                   cultist: 1, tier: 0                                                                         
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   spirit: 2, tier: 1                                                                          
+5       0                   hunter: 1, tier: 0                                                                          
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   mystic: 1, tier: 0                                                                          
+5       0                   shade: 1, tier: 0                                                                           
+5       0                   at (0, 0), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   at (0, 1), champion yuumi, with level = 1, items = [], and chosen = False                   
+5       0                   at (0, 2), champion kindred, with level = 1, items = [], and chosen = False                 
+5       0                   at (0, 3), champion evelynn, with level = 1, items = [], and chosen = False                 
+5       0                   Player level 5 with gold 7, max_units = 5, num_units_in_play = 4, health = 100              
+5       0                   0: sparring_gloves                                                                          
+5       8999800             moved yuumi from board [0, 1] to bench                                                      
+5       31000000            exp to 10 on level 5                                                                        
+5       40999900            pass action                                                                                 
+5       61000000            pass action                                                                                 
+5       71001600            pass action                                                                                 
+5       80999900            moved nami from board [0, 0] to bench                                                       
+5       105000800           moved yuumi from bench 0 to board [0, 0]                                                    
+5       105000800           moved nami from bench 1 to board [0, 1]                                                     
+5       105000800           Spaces for units left to fight 1                                                            
+6       13998700            0 reward for winning round against player 0                                                 
+6       0                   cultist: 1, tier: 0                                                                         
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   assassin: 1, tier: 0                                                                        
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 2, tier: 0                                                                            
+6       0                   fortune: 1, tier: 0                                                                         
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   at (0, 2), champion annie, with level = 1, items = [], and chosen = False                   
+6       0                   at (0, 3), champion pyke, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 5 with gold 11, max_units = 5, num_units_in_play = 4, health = 92              
+6       0                   0: sparring_gloves                                                                          
+6       10000000            pass action                                                                                 
+6       31999900            exp to 2 on level 5                                                                         
+6       42000100            moved lulu from board [0, 1] to board [2, 1]                                                
+6       72000700            exp to 6 on level 5                                                                         
+6       92000100            pass action                                                                                 
+6       100999900           pass action                                                                                 
+6       105000800           Spaces for units left to fight 1                                                            
+7       23000500            0 reward for losing round against player 5                                                  
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 2, tier: 0                                                                         
+7       0                   assassin: 1, tier: 0                                                                        
+7       0                   brawler: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   fortune: 1, tier: 0                                                                         
+7       0                   moonlight: 1, tier: 0                                                                       
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   at (0, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 2), champion katarina, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 3), champion sylas, with level = 1, items = [], and chosen = False                   
+7       0                   at (1, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   Player level 5 with gold 8, max_units = 5, num_units_in_play = 5, health = 90               
+7       0                   0: recurve_bow                                                                              
+7       21999900            pass action                                                                                 
+7       32999900            moved jarvaniv from board [0, 1] to board [4, 2]                                            
+7       53000200            exp to 6 on level 5                                                                         
+7       73000300            Refreshing shop                                                                             
+7       83000000            Refreshing shop                                                                             
+7       105000800           Spaces for units left to fight 0                                                            
+END OF ROUND 5 : 16:23:44
+0       16999700            0 reward for losing round against player 7                                                  
+0       0                   elderwood: 1, tier: 0                                                                       
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   vanguard: 1, tier: 0                                                                        
+0       0                   at (0, 0), champion hecarim, with level = 1, items = [], and chosen = False                 
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 5 with gold 8, max_units = 5, num_units_in_play = 2, health = 76               
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   1: champion_duplicator                                                                      
+0       34000000            exp to 8 on level 5                                                                         
+0       86000300            exp to 12 on level 5                                                                        
+0       103000100           Adding champion kennen with items ['tear_of_the_goddess'] to bench                          
+0       0                   elderwood: 1, tier: 0                                                                       
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   vanguard: 1, tier: 0                                                                        
+0       0                   at (0, 0), champion hecarim, with level = 1, items = [], and chosen = False                 
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 2, health = 76               
+0       0                   0: kennen                                                                                   
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   1: champion_duplicator                                                                      
+0       4000500             pass action                                                                                 
+0       24999900            exp to 18 on level 5                                                                        
+0       24999900            leveled to 6                                                                                
+0       35000100            moved kennen from bench 0 to board [1, 0]                                                   
+0       57000100            Refreshing shop                                                                             
+0       107999800           Spaces for units left to fight 3                                                            
+1       19998400            0 reward for winning round against player 6                                                 
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   elderwood: 1, tier: 0                                                                       
+1       0                   spirit: 1, tier: 0                                                                          
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   sharpshooter: 2, tier: 1                                                                    
+1       0                   vanguard: 3, tier: 1                                                                        
+1       0                   fortune: 1, tier: 0                                                                         
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   at (0, 2), champion teemo, with level = 1, items = [], and chosen = False                   
+1       0                   at (0, 3), champion hecarim, with level = 1, items = [], and chosen = False                 
+1       0                   at (1, 0), champion jinx, with level = 1, items = [], and chosen = False                    
+1       0                   Player level 5 with gold 8, max_units = 5, num_units_in_play = 5, health = 100              
+1       0                   1: veigar                                                                                   
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       45000100            Refreshing shop                                                                             
+1       54000000            Refreshing shop                                                                             
+1       66000000            Refreshing shop                                                                             
+1       87000200            Refreshing shop                                                                             
+1       103000100           Adding champion irelia with items ['recurve_bow'] to bench                                  
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   elderwood: 1, tier: 0                                                                       
+1       0                   spirit: 1, tier: 0                                                                          
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   sharpshooter: 2, tier: 1                                                                    
+1       0                   vanguard: 3, tier: 1                                                                        
+1       0                   fortune: 1, tier: 0                                                                         
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   at (0, 2), champion teemo, with level = 1, items = [], and chosen = False                   
+1       0                   at (0, 3), champion hecarim, with level = 1, items = [], and chosen = False                 
+1       0                   at (1, 0), champion jinx, with level = 1, items = [], and chosen = False                    
+1       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 5, health = 100              
+1       0                   0: irelia                                                                                   
+1       0                   1: veigar                                                                                   
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       5000400             pass action                                                                                 
+1       46999800            exp to 10 on level 5                                                                        
+1       57999800            Refreshing shop                                                                             
+1       108999800           Spaces for units left to fight 0                                                            
+2       4999500             0 reward for winning round against player 3                                                 
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 5 with gold 19, max_units = 5, num_units_in_play = 2, health = 88              
+2       0                   0: giants_belt                                                                              
+2       7000300             Refreshing shop                                                                             
+2       17000000            exp to 12 on level 5                                                                        
+2       55000000            exp to 16 on level 5                                                                        
+2       55000000            leveled to 6                                                                                
+2       67000200            pass action                                                                                 
+2       88001500            pass action                                                                                 
+2       103000100           Adding champion akali with items ['negatron_cloak'] to bench                                
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   Player level 6 with gold 14, max_units = 6, num_units_in_play = 2, health = 88              
+2       0                   0: akali                                                                                    
+2       0                   0: giants_belt                                                                              
+2       6000600             Refreshing shop                                                                             
+2       27000100            Refreshing shop                                                                             
+2       36999800            Refreshing shop                                                                             
+2       70002900            moved lissandra from board [0, 0] to board [1, 2]                                           
+2       82999800            exp to 2 on level 6                                                                         
+2       92999700            exp to 6 on level 6                                                                         
+2       108999800           moved akali from bench 0 to board [0, 0]                                                    
+2       108999800           Spaces for units left to fight 3                                                            
+3       4999500             0 reward for losing round against player 2                                                  
+3       999800              enlightened: 1, tier: 0                                                                     
+3       999800              mage: 1, tier: 0                                                                            
+3       999800              at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       999800              Player level 5 with gold 10, max_units = 5, num_units_in_play = 1, health = 70              
+3       999800              0: giants_belt                                                                              
+3       999800              1: champion_duplicator                                                                      
+3       17999900            exp to 12 on level 5                                                                        
+3       46000100            pass action                                                                                 
+3       99000000            moved nami from board [0, 0] to bench                                                       
+3       104000700           Adding champion xinzhao with items ['negatron_cloak'] to bench                              
+3       0                   Player level 5 with gold 13, max_units = 5, num_units_in_play = 0, health = 70              
+3       0                   0: nami                                                                                     
+3       0                   1: xinzhao                                                                                  
+3       0                   0: giants_belt                                                                              
+3       0                   1: champion_duplicator                                                                      
+3       93999800            pass action                                                                                 
+3       108999800           moved nami from bench 0 to board [0, 0]                                                     
+3       108999800           moved xinzhao from bench 1 to board [0, 1]                                                  
+3       108999800           Spaces for units left to fight 3                                                            
+4       23001100            0 reward for losing round against player 5                                                  
+4       0                   cultist: 1, tier: 0                                                                         
+4       0                   elderwood: 1, tier: 0                                                                       
+4       0                   ninja: 1, tier: 1                                                                           
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   duelist: 1, tier: 0                                                                         
+4       0                   keeper: 1, tier: 0                                                                          
+4       0                   mage: 1, tier: 0                                                                            
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion kalista, with level = 1, items = [], and chosen = False                 
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   at (0, 2), champion kennen, with level = 1, items = [], and chosen = False                  
+4       0                   at (1, 0), champion lulu, with level = 1, items = [], and chosen = False                    
+4       0                   at (1, 1), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 5, health = 96               
+4       0                   0: tear_of_the_goddess                                                                      
+4       8000100             Refreshing shop                                                                             
+4       37001100            Refreshing shop                                                                             
+4       67001500            Refreshing shop                                                                             
+4       103000900           Adding champion katarina with items ['negatron_cloak'] to bench                             
+4       0                   cultist: 1, tier: 0                                                                         
+4       0                   elderwood: 1, tier: 0                                                                       
+4       0                   ninja: 1, tier: 1                                                                           
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   duelist: 1, tier: 0                                                                         
+4       0                   keeper: 1, tier: 0                                                                          
+4       0                   mage: 1, tier: 0                                                                            
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion kalista, with level = 1, items = [], and chosen = False                 
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   at (0, 2), champion kennen, with level = 1, items = [], and chosen = False                  
+4       0                   at (1, 0), champion lulu, with level = 1, items = [], and chosen = False                    
+4       0                   at (1, 1), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   Player level 5 with gold 5, max_units = 5, num_units_in_play = 5, health = 96               
+4       0                   0: katarina                                                                                 
+4       0                   0: tear_of_the_goddess                                                                      
+4       7999900             moved kalista from board [0, 0] to bench                                                    
+4       18001600            exp to 10 on level 5                                                                        
+4       110001600           moved katarina from bench 0 to board [0, 0]                                                 
+4       110001600           Spaces for units left to fight 0                                                            
+5       23001100            0 reward for winning round against player 4                                                 
+5       0                   cultist: 1, tier: 0                                                                         
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   spirit: 2, tier: 1                                                                          
+5       0                   hunter: 1, tier: 0                                                                          
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   mystic: 1, tier: 0                                                                          
+5       0                   shade: 1, tier: 0                                                                           
+5       0                   at (0, 0), champion yuumi, with level = 1, items = [], and chosen = False                   
+5       0                   at (0, 1), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   at (0, 2), champion kindred, with level = 1, items = [], and chosen = False                 
+5       0                   at (0, 3), champion evelynn, with level = 1, items = [], and chosen = False                 
+5       0                   Player level 5 with gold 10, max_units = 5, num_units_in_play = 4, health = 100             
+5       0                   0: sparring_gloves                                                                          
+5       28000300            Refreshing shop                                                                             
+5       38000300            moved nami from board [0, 1] to board [2, 3]                                                
+5       58000500            selling champion evelynn with stars = 1 from position [0, 3]                                
+5       68000700            Refreshing shop                                                                             
+5       103000900           Adding champion nunu with items ['bf_sword'] to bench                                       
+5       0                   cultist: 1, tier: 0                                                                         
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   spirit: 2, tier: 1                                                                          
+5       0                   hunter: 1, tier: 0                                                                          
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   mystic: 1, tier: 0                                                                          
+5       0                   shade: 1, tier: 0                                                                           
+5       0                   at (0, 0), champion yuumi, with level = 1, items = [], and chosen = False                   
+5       0                   at (0, 2), champion kindred, with level = 1, items = [], and chosen = False                 
+5       0                   at (2, 3), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   Player level 5 with gold 15, max_units = 5, num_units_in_play = 3, health = 100             
+5       0                   0: nunu                                                                                     
+5       0                   0: sparring_gloves                                                                          
+5       8999900             exp to 18 on level 5                                                                        
+5       8999900             leveled to 6                                                                                
+5       40000100            Refreshing shop                                                                             
+5       62002300            Refreshing shop                                                                             
+5       73001900            exp to 2 on level 6                                                                         
+5       105999900           Refreshing shop                                                                             
+5       110001600           moved nunu from bench 0 to board [0, 1]                                                     
+5       110001600           Spaces for units left to fight 2                                                            
+6       19998400            0 reward for losing round against player 1                                                  
+6       0                   cultist: 1, tier: 0                                                                         
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   assassin: 1, tier: 0                                                                        
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 2, tier: 0                                                                            
+6       0                   fortune: 1, tier: 0                                                                         
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 2), champion annie, with level = 1, items = [], and chosen = False                   
+6       0                   at (0, 3), champion pyke, with level = 1, items = [], and chosen = False                    
+6       0                   at (2, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 5 with gold 8, max_units = 5, num_units_in_play = 4, health = 82               
+6       0                   0: sparring_gloves                                                                          
+6       10000200            Adding champion elise with items [] to bench                                                
+6       10000200            Spending gold on champion elise with cost = 1, remaining gold 7 and chosen = False          
+6       48000200            Refreshing shop                                                                             
+6       59000300            Refreshing shop                                                                             
+6       69000600            pass action                                                                                 
+6       80000300            Refreshing shop                                                                             
+6       101000300           pass action                                                                                 
+6       103000900           Adding champion jinx with items ['negatron_cloak'] to bench                                 
+6       0                   cultist: 1, tier: 0                                                                         
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   assassin: 1, tier: 0                                                                        
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   mage: 2, tier: 0                                                                            
+6       0                   fortune: 1, tier: 0                                                                         
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 2), champion annie, with level = 1, items = [], and chosen = False                   
+6       0                   at (0, 3), champion pyke, with level = 1, items = [], and chosen = False                    
+6       0                   at (2, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 4, health = 82               
+6       0                   0: elise                                                                                    
+6       0                   1: jinx                                                                                     
+6       0                   0: sparring_gloves                                                                          
+6       31000700            pass action                                                                                 
+6       40999800            exp to 14 on level 5                                                                        
+6       63003700            pass action                                                                                 
+6       74001800            pass action                                                                                 
+6       85999700            Refreshing shop                                                                             
+6       106999900           pass action                                                                                 
+6       110001600           moved elise from bench 0 to board [0, 1]                                                    
+6       110001600           Spaces for units left to fight 0                                                            
+7       16999700            0 reward for winning round against player 0                                                 
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 2, tier: 0                                                                         
+7       0                   assassin: 1, tier: 0                                                                        
+7       0                   brawler: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   fortune: 1, tier: 0                                                                         
+7       0                   moonlight: 1, tier: 0                                                                       
+7       0                   at (0, 0), champion twistedfate, with level = 1, items = ['negatron_cloak'], and chosen = False
+7       0                   at (0, 2), champion katarina, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 3), champion sylas, with level = 1, items = [], and chosen = False                   
+7       0                   at (1, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   at (4, 2), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   Player level 5 with gold 6, max_units = 5, num_units_in_play = 5, health = 90               
+7       0                   0: recurve_bow                                                                              
+7       11000200            returning negatron_cloak to the item bench                                                  
+7       11000200            selling champion twistedfate with stars = 1 from position [0, 0]                            
+7       91000400            pass action                                                                                 
+7       103000900           Adding champion xinzhao with items ['tear_of_the_goddess'] to bench                         
+7       0                   cultist: 1, tier: 0                                                                         
+7       0                   warlord: 2, tier: 0                                                                         
+7       0                   assassin: 1, tier: 0                                                                        
+7       0                   brawler: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   mage: 1, tier: 0                                                                            
+7       0                   fortune: 1, tier: 0                                                                         
+7       0                   moonlight: 1, tier: 0                                                                       
+7       0                   at (0, 2), champion katarina, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 3), champion sylas, with level = 1, items = [], and chosen = False                   
+7       0                   at (1, 1), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   at (4, 2), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   Player level 5 with gold 12, max_units = 5, num_units_in_play = 4, health = 90              
+7       0                   0: xinzhao                                                                                  
+7       0                   0: recurve_bow                                                                              
+7       0                   1: negatron_cloak                                                                           
+7       11000600            exp to 14 on level 5                                                                        
+7       31000700            pass action                                                                                 
+7       41999800            exp to 18 on level 5                                                                        
+7       41999800            leveled to 6                                                                                
+7       64002300            moved jarvaniv from board [1, 1] to board [2, 3]                                            
+7       111000700           moved xinzhao from bench 0 to board [0, 0]                                                  
+7       111000700           Spaces for units left to fight 1                                                            
+END OF ROUND 7 : 16:23:44
+0       14000800            0 reward for losing round against player 2                                                  
+0       0                   elderwood: 1, tier: 0                                                                       
+0       0                   exile: 1, tier: 1                                                                           
+0       0                   ninja: 1, tier: 1                                                                           
+0       0                   duelist: 1, tier: 0                                                                         
+0       0                   keeper: 1, tier: 0                                                                          
+0       0                   vanguard: 1, tier: 0                                                                        
+0       0                   at (0, 0), champion hecarim, with level = 1, items = [], and chosen = False                 
+0       0                   at (1, 0), champion kennen, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+0       0                   at (3, 2), champion yasuo, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+0       0                   Player level 6 with gold 7, max_units = 6, num_units_in_play = 3, health = 68               
+0       0                   0: needlessly_large_rod                                                                     
+0       0                   1: champion_duplicator                                                                      
+0       15000000            pass action                                                                                 
+0       25000500            Refreshing shop                                                                             
+0       35001900            Refreshing shop                                                                             
+0       44999900            Refreshing shop                                                                             
+0       55000400            pass action                                                                                 
+0       103999800           Spaces for units left to fight 3                                                            
+1       20000000            0 reward for winning round against player 5                                                 
+1       0                   dusk: 1, tier: 0                                                                            
+1       0                   elderwood: 1, tier: 0                                                                       
+1       0                   spirit: 1, tier: 0                                                                          
+1       0                   warlord: 1, tier: 0                                                                         
+1       0                   sharpshooter: 2, tier: 1                                                                    
+1       0                   vanguard: 3, tier: 1                                                                        
+1       0                   fortune: 1, tier: 0                                                                         
+1       0                   at (0, 0), champion garen, with level = 1, items = ['needlessly_large_rod'], and chosen = False
+1       0                   at (0, 1), champion thresh, with level = 1, items = [], and chosen = False                  
+1       0                   at (0, 2), champion teemo, with level = 1, items = [], and chosen = False                   
+1       0                   at (0, 3), champion hecarim, with level = 1, items = [], and chosen = False                 
+1       0                   at (1, 0), champion jinx, with level = 1, items = [], and chosen = False                    
+1       0                   Player level 5 with gold 8, max_units = 5, num_units_in_play = 5, health = 100              
+1       0                   0: irelia                                                                                   
+1       0                   1: veigar                                                                                   
+1       0                   3: annie                                                                                    
+1       0                   0: champion_duplicator                                                                      
+1       6000900             moved jinx from board [1, 0] to bench                                                       
+1       6000900             moved irelia from bench 0 to board [1, 0]                                                   
+1       36000300            Refreshing shop                                                                             
+1       45999900            Refreshing shop                                                                             
+1       66000000            exp to 16 on level 5                                                                        
+1       66000000            leveled to 6                                                                                
+1       88000700            pass action                                                                                 
+1       105000100           moved jinx from bench 0 to board [1, 1]                                                     
+1       105000100           Spaces for units left to fight 0                                                            
+2       14000800            0 reward for winning round against player 0                                                 
+2       0                   elderwood: 1, tier: 0                                                                       
+2       0                   ninja: 1, tier: 1                                                                           
+2       0                   assassin: 1, tier: 0                                                                        
+2       0                   dazzler: 1, tier: 0                                                                         
+2       0                   mage: 1, tier: 0                                                                            
+2       0                   moonlight: 1, tier: 0                                                                       
+2       0                   at (0, 0), champion akali, with level = 1, items = ['negatron_cloak'], and chosen = False   
+2       0                   at (0, 1), champion veigar, with level = 1, items = [], and chosen = False                  
+2       0                   at (1, 2), champion lissandra, with level = 1, items = ['recurve_bow'], and chosen = False  
+2       0                   Player level 6 with gold 7, max_units = 6, num_units_in_play = 3, health = 88               
+2       0                   0: giants_belt                                                                              
+2       37000000            Refreshing shop                                                                             
+2       47000200            exp to 12 on level 6                                                                        
+2       66999900            moved akali from board [0, 0] to bench                                                      
+2       105000100           moved akali from bench 0 to board [0, 0]                                                    
+2       105000100           Spaces for units left to fight 3                                                            
+3       12999300            0 reward for losing round against player 7                                                  
+3       0                   leveled to 6                                                                                
+3       0                   enlightened: 1, tier: 0                                                                     
+3       0                   warlord: 1, tier: 0                                                                         
+3       0                   duelist: 1, tier: 0                                                                         
+3       0                   mage: 1, tier: 0                                                                            
+3       0                   at (0, 0), champion nami, with level = 1, items = ['giants_belt'], and chosen = False       
+3       0                   at (0, 1), champion xinzhao, with level = 1, items = ['negatron_cloak'], and chosen = False 
+3       0                   Player level 6 with gold 22, max_units = 6, num_units_in_play = 2, health = 58              
+3       0                   0: giants_belt                                                                              
+3       0                   1: champion_duplicator                                                                      
+3       18000000            exp to 0 on level 6                                                                         
+3       48000100            Refreshing shop                                                                             
+3       89000100            exp to 4 on level 6                                                                         
+3       105000100           Spaces for units left to fight 4                                                            
+4       23999000            0 reward for losing round against player 6                                                  
+4       0                   elderwood: 1, tier: 0                                                                       
+4       0                   ninja: 1, tier: 1                                                                           
+4       0                   spirit: 1, tier: 0                                                                          
+4       0                   warlord: 1, tier: 0                                                                         
+4       0                   assassin: 1, tier: 0                                                                        
+4       0                   dazzler: 1, tier: 0                                                                         
+4       0                   keeper: 1, tier: 0                                                                          
+4       0                   mage: 1, tier: 0                                                                            
+4       0                   sharpshooter: 1, tier: 0                                                                    
+4       0                   fortune: 1, tier: 0                                                                         
+4       0                   moonlight: 1, tier: 0                                                                       
+4       0                   at (0, 0), champion katarina, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   at (0, 1), champion teemo, with level = 1, items = [], and chosen = False                   
+4       0                   at (0, 2), champion kennen, with level = 1, items = [], and chosen = False                  
+4       0                   at (1, 0), champion lulu, with level = 1, items = [], and chosen = False                    
+4       0                   at (1, 1), champion lissandra, with level = 1, items = ['negatron_cloak'], and chosen = False
+4       0                   Player level 5 with gold 7, max_units = 5, num_units_in_play = 5, health = 90               
+4       0                   1: kalista                                                                                  
+4       0                   0: tear_of_the_goddess                                                                      
+4       7999900             pass action                                                                                 
+4       19000100            exp to 16 on level 5                                                                        
+4       19000100            leveled to 6                                                                                
+4       29000600            Refreshing shop                                                                             
+4       69000000            pass action                                                                                 
+4       78999900            moved lissandra from board [1, 1] to board [6, 1]                                           
+4       105000100           moved kalista from bench 1 to board [0, 3]                                                  
+4       105000100           Spaces for units left to fight 0                                                            
+5       20000000            0 reward for losing round against player 1                                                  
+5       0                   elderwood: 1, tier: 0                                                                       
+5       0                   enlightened: 1, tier: 0                                                                     
+5       0                   spirit: 2, tier: 1                                                                          
+5       0                   brawler: 1, tier: 0                                                                         
+5       0                   hunter: 1, tier: 0                                                                          
+5       0                   mage: 1, tier: 0                                                                            
+5       0                   mystic: 1, tier: 0                                                                          
+5       0                   at (0, 0), champion yuumi, with level = 1, items = [], and chosen = False                   
+5       0                   at (0, 1), champion nunu, with level = 1, items = ['bf_sword'], and chosen = False          
+5       0                   at (0, 2), champion kindred, with level = 1, items = [], and chosen = False                 
+5       0                   at (2, 3), champion nami, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+5       0                   Player level 6 with gold 6, max_units = 6, num_units_in_play = 4, health = 90               
+5       0                   0: sparring_gloves                                                                          
+5       9000000             Refreshing shop                                                                             
+5       19000100            Refreshing shop                                                                             
+5       30000100            pass action                                                                                 
+5       60000100            pass action                                                                                 
+5       106001900           Spaces for units left to fight 2                                                            
+6       23999000            0 reward for winning round against player 4                                                 
+6       0                   leveled to 6                                                                                
+6       0                   cultist: 2, tier: 0                                                                         
+6       0                   elderwood: 1, tier: 0                                                                       
+6       0                   enlightened: 1, tier: 0                                                                     
+6       0                   assassin: 1, tier: 0                                                                        
+6       0                   duelist: 1, tier: 0                                                                         
+6       0                   keeper: 1, tier: 0                                                                          
+6       0                   mage: 2, tier: 0                                                                            
+6       0                   fortune: 1, tier: 0                                                                         
+6       0                   at (0, 0), champion fiora, with level = 1, items = ['negatron_cloak'], and chosen = False   
+6       0                   at (0, 1), champion elise, with level = 1, items = [], and chosen = False                   
+6       0                   at (0, 2), champion annie, with level = 1, items = [], and chosen = False                   
+6       0                   at (0, 3), champion pyke, with level = 1, items = [], and chosen = False                    
+6       0                   at (2, 1), champion lulu, with level = 1, items = [], and chosen = False                    
+6       0                   Player level 6 with gold 6, max_units = 6, num_units_in_play = 5, health = 82               
+6       0                   1: jinx                                                                                     
+6       0                   0: sparring_gloves                                                                          
+6       31000000            pass action                                                                                 
+6       41000700            moved annie from board [0, 2] to board [6, 0]                                               
+6       60999900            selling champion elise with stars = 1 from position [0, 1]                                  
+6       71000000            Refreshing shop                                                                             
+6       80999900            pass action                                                                                 
+6       106001900           moved jinx from bench 1 to board [0, 1]                                                     
+6       106001900           Spaces for units left to fight 1                                                            
+7       12999300            0 reward for winning round against player 3                                                 
+7       0                   warlord: 3, tier: 1                                                                         
+7       0                   assassin: 1, tier: 0                                                                        
+7       0                   brawler: 1, tier: 0                                                                         
+7       0                   duelist: 1, tier: 0                                                                         
+7       0                   keeper: 1, tier: 0                                                                          
+7       0                   fortune: 1, tier: 0                                                                         
+7       0                   moonlight: 1, tier: 0                                                                       
+7       0                   at (0, 0), champion xinzhao, with level = 1, items = ['tear_of_the_goddess'], and chosen = False
+7       0                   at (0, 2), champion katarina, with level = 1, items = [], and chosen = False                
+7       0                   at (0, 3), champion sylas, with level = 1, items = [], and chosen = False                   
+7       0                   at (2, 3), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   at (4, 2), champion jarvaniv, with level = 1, items = [], and chosen = False                
+7       0                   Player level 6 with gold 11, max_units = 6, num_units_in_play = 5, health = 90              
+7       0                   0: recurve_bow                                                                              
+7       0                   1: negatron_cloak                                                                           
+7       20999900            Refreshing shop                                                                             
+7       32000000            pass action                                                                                 
+7       62000100            Refreshing shop                                                                             
+7       71999900            Adding champion katarina with items [] to bench                                             
+7       71999900            Spending gold on champion katarina with cost = 3, remaining gold 4 and chosen = False       
+7       93000000            Refreshing shop                                                                             
+7       102999900           Refreshing shop                                                                             
+7       106001900           moved katarina from bench 0 to board [0, 1]                                                 
+7       106001900           Spaces for units left to fight 0                                                            
+END OF ROUND 8 : 16:23:44
