@@ -107,7 +107,7 @@ logs/
 log.txt
 log_*.txt
 SavedModels/
-Checkpoints/
+checkpoint/
 Models/*.zip
 suggestions.py
 libdevice.10.bc
