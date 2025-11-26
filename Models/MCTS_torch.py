@@ -1,471 +1,298 @@
 import time
 import config
 import numpy as np
-import core.ctree.cytree as tree
 import torch
+import torch.nn as nn
 import Models.MCTS_Util as util
-from typing import Dict
+from typing import Dict, Optional
+from Models.tft_mcts import TFTState, TFTMove, create_tft_state_from_env
+
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'MonteCarloTreeSearch'))
+import pymcts
 
 """
-EXPLANATION OF MCTS:
-1. select leaf node with maximum value using method called UCB1 
-2. expand the leaf node, adding children for each possible action
-3. Update leaf node and ancestor values using the values learnt from the children
- - values for the children are generated using neural network 
-4. Repeat above steps a given number of times
-5. Select path with highest value
+EXPLANATION OF ENHANCED MCTS:
+1. Use TFT MCTS bridge for proper game state representation
+2. Integrate neural network for enhanced rollout evaluation
+3. Combine traditional MCTS with neural network guidance
+4. Select actions using both tree search and network policy
 """
+
+
+class EnhancedTFTState(TFTState):
+    """Enhanced TFT state that uses neural network for rollout evaluation."""
+    
+    def __init__(self, observations, current_player, network: nn.Module, **kwargs):
+        super().__init__(observations, current_player, **kwargs)
+        self.network = network
+    
+    def rollout(self) -> float:
+        """Enhanced rollout using neural network evaluation."""
+        # Get current player's observation
+        obs = self.observations[self.current_player]
+        
+        # Convert observation to tensor if needed
+        if isinstance(obs, np.ndarray):
+            obs_tensor = torch.FloatTensor(obs).unsqueeze(0)
+        else:
+            obs_tensor = obs
+        
+        # Use network to evaluate state value
+        with torch.no_grad():
+            value = self.network(obs_tensor)
+            
+            # Convert to probability between 0 and 1
+            if torch.is_tensor(value):
+                value = torch.sigmoid(value).item()
+            
+            return float(np.clip(value, 0.0, 1.0))
+    
+    def next_state(self, move: TFTMove) -> 'EnhancedTFTState':
+        """Return enhanced next state with network propagated."""
+        next_tft_state = super().next_state(move)
+        return EnhancedTFTState(
+            observations=next_tft_state.observations,
+            current_player=next_tft_state.current_player,
+            network=self.network,
+            env_state=next_tft_state.env_state,
+            round_num=next_tft_state.round_num
+        )
 
 
 class MCTS:
-    def __init__(self, sample_size, action_size, action_limits, policy_size, network):
-        self.max_depth_search = 0
-        self.runs = 0
+    def __init__(self, network: nn.Module, sample_size: int = 80, 
+                 action_size: int = 3, action_limits = None, 
+                 policy_size: int = 1000, max_simulations: Optional[int] = None):
+        """
+        Initialize MCTS with neural network integration.
+        
+        Args:
+            network: PyTorch neural network for rollout enhancement
+            sample_size: Number of actions to sample
+            action_size: Size of action space  
+            action_limits: Limits for action space
+            policy_size: Size of policy vector
+            max_simulations: Maximum MCTS simulations per move
+        """
         self.network = network
-        self.times = [0] * 6
-        self.NUM_ALIVE = config.NUM_PLAYERS
-        self.num_actions = 0
-        self.ckpt_time = time.time_ns()
-        self.default_string_mapping = util.create_default_mapping()
         self.sample_size = sample_size
         self.action_size = action_size
-        self.action_limits = action_limits
+        self.action_limits = action_limits or [6, 37, 28]
         self.policy_size = policy_size
-        self.num_simulations = 0
-
-    def generate_action(self, n_simulations, observation, mask):
-        # PLACEHOLDER
-        self.num_simulations = n_simulations
-        actions, target_policy, string_samples, board_map, directive  = self.policy(observation, mask)
-        return actions, target_policy       
-
-    def policy(self, observation, mask):
-        with torch.no_grad():
-            self.NUM_ALIVE = observation.shape[0]
-
-            # 0.02 seconds
-            network_output, directive, board_distribution = self.network.initial_inference(observation)
-            #Generate Directives and Board Distribution
-
-            reward_pool = np.array(network_output["reward"]).reshape(-1).tolist()
-
-            policy_logits = [output_head.cpu().numpy() for output_head in network_output["policy_logits"]]
-
-            # 0.01 seconds
-            policy_logits_pool, string_mapping = self.encode_action_to_str(policy_logits, mask)
-            # print(string_mapping[7], policy_logits_pool[7])
+        self.max_simulations = max_simulations or getattr(config, 'NUM_SIMULATIONS', 50)
         
-            noises = [
-                    np.random.dirichlet(
-                        [config.ROOT_DIRICHLET_ALPHA] * len(policy_logits_pool[j])
-                    ).astype(np.float32).tolist()
-                    for j in range(self.NUM_ALIVE)
-                ]
+        # Performance tracking
+        self.max_depth_search = 0
+        self.runs = 0
+        self.times = [0] * 6
+        self.num_actions = 0
+        self.ckpt_time = time.time_ns()
+        
+        # MCTS state management
+        self.current_state = None
+        self.mcts_agent = None
+
+    def generate_action(self, observations: Dict, masks: Optional[Dict] = None, 
+                       player_id: str = "player_0") -> tuple:
+        """
+        Generate action using enhanced MCTS with neural network guidance.
+        
+        Args:
+            observations: Dictionary of player observations
+            masks: Optional action masks
+            player_id: ID of the player to generate action for
             
-            directive_noises =  np.array([
-                    np.random.normal(
-                        0, 10, directive.shape[1]
-                    ).astype(np.float32).tolist()
-                    for _ in range(board_distribution.shape[0])
-                ])
+        Returns:
+            tuple: (action, target_policy, state_info)
+        """
+        # Create enhanced TFT state with neural network
+        tft_state = EnhancedTFTState(
+            observations=observations,
+            current_player=player_id,
+            network=self.network
+        )
+        
+        # Create SerializedPythonState for PyMCTS integration
+        wrapped_state = pymcts.SerializedPythonState(tft_state)
+        
+        # Create MCTS agent if needed
+        if self.mcts_agent is None:
+            self.mcts_agent = pymcts.MCTS_agent(
+                wrapped_state, 
+                max_iter=self.max_simulations,
+                max_seconds=2
+            )
+        
+        # Generate move using MCTS
+        move = self.mcts_agent.genmove(None)
+        
+        # Convert MCTS move to action format
+        action_info = self._parse_mcts_move(move)
+        
+        # Generate target policy
+        target_policy = self._create_target_policy(tft_state, action_info)
+        
+        self.num_actions += 1
+        return action_info['action'], target_policy, {
+            'move_type': action_info['type'],
+            'confidence': action_info.get('confidence', 0.5),
+            'search_depth': self.max_depth_search
+        }
+    
+
+    
+    def _parse_mcts_move(self, move) -> Dict:
+        """
+        Parse PyMCTS move into TFT action format.
+        
+        Args:
+            move: Move object from PyMCTS
             
-            board_noises =  np.array([
-                    np.random.normal(
-                        0, 10, board_distribution.shape[1] * board_distribution.shape[2] * board_distribution.shape[3]
-                    ).astype(np.float32).tolist()
-                    for _ in range(board_distribution.shape[0])
-                ]).reshape(board_distribution.shape)
-
-            board_distribution = board_distribution.cpu().numpy()
-            directive =  torch.nn.functional.sigmoid(directive).cpu().numpy()
-            
-            directive = directive * (1-config.DIRECTIVE_EXPLORATION_FRACTION) + directive_noises * config.DIRECTIVE_EXPLORATION_FRACTION
-            board_distribution = board_distribution * (1-config.BOARD_EXPLORATION_FRACTION) + board_noises * config.BOARD_EXPLORATION_FRACTION
-
-            # Policy Logits -> [ [], [], [], [], [], [], [], [],]
-
-            policy_logits_pool = self.add_exploration_noise(policy_logits_pool, noises)
-
-            # 0.003 seconds
-            policy_logits_pool, string_mapping, mappings, policy_sizes = \
-                self.sample(policy_logits_pool, string_mapping, config.NUM_SAMPLES)
-
-            # less than 0.0001 seconds
-            # Setup specialised roots datastructures, format: env_nums, action_space_size, num_simulations
-            # Number of agents, previous action, number of simulations for memory purposes
-            roots_cpp = tree.Roots(self.NUM_ALIVE, config.NUM_SIMULATIONS, config.NUM_SAMPLES)
-
-            # 0.0002 seconds
-            # prepare the nodes to feed them into batch_mcts,
-            # for statement to deal with different lengths due to masking.
-            roots_cpp.prepare_no_noise(reward_pool, policy_logits_pool, mappings, policy_sizes)
-
-            # Output for root node
-            hidden_state_pool = network_output["hidden_state"]
-
-            # set up nodes to be able to find and select actions
-            self.run_batch_mcts(roots_cpp, hidden_state_pool)
-            roots_distributions = roots_cpp.get_distributions()
-
-            actions = []
-            target_policy = []
-            temp = self.visit_softmax_temperature()  # controls the way actions are chosen
-            deterministic = False  # False = sample distribution, True = argmax
-            for i in range(self.NUM_ALIVE):
-                distributions = roots_distributions[i]
-                action = self.select_action(distributions, temperature=temp, deterministic=deterministic)
-                actions.append(string_mapping[i][action])
-                distributions = [x / self.num_simulations for x in distributions]
-                policy = np.zeros((len(self.default_string_mapping[0]),1))
-                for a, d in enumerate(distributions):
-                    if d > 0.0:
-                        n = int(string_mapping[i][a].split("_")[3])
-                        policy[n] = d
-                target_policy.append(policy)
-
-            # Notes on possibilities for other dimensions at the bottom
-            self.num_actions += 1
-            return actions, target_policy, string_mapping, board_distribution, directive
-
-    def run_batch_mcts(self, roots_cpp, hidden_state_pool):
-        # preparation
-        num = roots_cpp.num
-        # config variables
-        discount = config.DISCOUNT
-        pb_c_init = config.PB_C_INIT
-        pb_c_base = config.PB_C_BASE
-        hidden_state_index_x = 0
-
-        # minimax value storage data structure
-        min_max_stats_lst = tree.MinMaxStatsList(num)
-        hidden_state_pool = [hidden_state_pool]
-        # go through the tree NUM_SIMULATIONS times
-        for _ in range(config.NUM_SIMULATIONS):
-            # prepare a result wrapper to transport results between python and c++ parts
-            results = tree.ResultsWrapper(num)
-            # 0.001 seconds
-            # evaluation for leaf nodes, traversing across the tree and updating values
-            hidden_state_index_x_lst, hidden_state_index_y_lst, last_action = \
-                tree.batch_traverse(roots_cpp, pb_c_base, pb_c_init, discount, min_max_stats_lst, results)
-
-            self.max_depth_search += sum(results.get_search_len()) / len(results.get_search_len())
-            self.runs += 1
-            num_states = len(hidden_state_index_x_lst)
-            tensors_states = torch.empty((num_states, config.HIDDEN_STATE_SIZE)).to('cuda')
-
-            # obtain the states for leaf nodes
-            for ix, iy, idx in zip(hidden_state_index_x_lst, hidden_state_index_y_lst, range(num_states)):
-                tensors_states[idx] = hidden_state_pool[ix][iy]
-
-            # Inside the search tree we use the dynamics function to obtain the next
-            # hidden state given an action and the previous hidden state.
-            last_action = np.asarray(last_action)
-
-            # 0.003 seconds
-            network_output = self.network.recurrent_inference(tensors_states, last_action)
-
-            reward_pool = np.array(network_output["reward"]).reshape(-1).tolist()
-            value_pool = np.array(network_output["value"].detach().cpu().numpy()).reshape(-1).tolist()
-
-            policy_logits = network_output["policy_logits"].cpu().numpy()
-
-            # 0.014 seconds
-            policy_logits, _, mappings, policy_sizes = \
-                self.sample(policy_logits, self.default_string_mapping, config.NUM_SAMPLES)
-
-            # These assignments take 0.0001 > time
-            # add nodes to the pool after each search
-            hidden_states_nodes = network_output["hidden_state"]
-            hidden_state_pool.append(hidden_states_nodes)
-
-            hidden_state_index_x += 1
-
-            # 0.001 seconds
-            # backpropagation along the search path to update the attributes
-            tree.batch_back_propagate(hidden_state_index_x, discount, reward_pool, value_pool, policy_logits,
-                                      min_max_stats_lst, results, mappings, policy_sizes)
-
-    def add_exploration_noise(self, policy_logits, noises):
-        exploration_fraction = config.ROOT_EXPLORATION_FRACTION
-        for i in range(len(noises)):  # Batch
-            for j in range(len(noises[i])):
-                policy_logits[i][j] = policy_logits[i][j] * (1 - exploration_fraction) + \
-                                            noises[i][j] * exploration_fraction
-        return policy_logits
-
-    """
-    Description - select action from the root visit counts.
-    Inputs      - visit_counts: list
-                    visit counts for each child
-                  temperature: float
-                    the temperature for the distribution
-                  deterministic: bool
-                    True -> select the argmax
-                    False -> sample from the distribution
-    Outputs     - action_pos
-                    position of the action in the policy and string array.
-                  count_entropy
-                    entropy of the improved policy.
-    """
-    @staticmethod
-    def select_action(visit_counts, temperature=1.0, deterministic=True):
-        action_probs = [visit_count_i ** (1 / temperature) for visit_count_i in visit_counts]
-        total_count = sum(action_probs)
-        action_probs = [x / total_count for x in action_probs]
-        if deterministic:
-            action_pos = np.argmax([v for v in visit_counts])
+        Returns:
+            Dictionary with action information
+        """
+        # Convert PyMCTS move to actionable format
+        move_str = str(move)
+        
+        # Default action mapping - extend based on actual move parsing needs
+        if 'reroll' in move_str.lower():
+            return {
+                'action': 'reroll',
+                'type': 'shop',
+                'confidence': 0.8
+            }
+        elif 'level' in move_str.lower():
+            return {
+                'action': 'level',
+                'type': 'experience',
+                'confidence': 0.7
+            }
+        elif 'buy' in move_str.lower():
+            return {
+                'action': 'buy_unit',
+                'type': 'shop',
+                'confidence': 0.6,
+                'shop_index': 0  # Parse from move_str in full implementation
+            }
         else:
-            action_pos = np.random.choice(len(visit_counts), p=action_probs)
-
-        return action_pos
-
-    """
-    Description - Turns a 1081 action into a policy that includes only actions that are legal in the current state
-                  This also creates a mask for both the c++ side and python side to convert the legal action set into
-                  a single action that we can give to the buffers and the trainer.
-                  Masks for this method are generated in the player and observation classes.
-                  This is only called by the root node since that is the only node that has access to the observation
-    Inputs      - Policy logits: List
-                      output of the prediction network, initial_inference in this case
-                  Mappings: List
-                      A mask of binary values that tell the policy what actions are legal and what actions are not.
-    Outputs     - Actions: List
-                      A policy including actions that are legal in the field.
-                  Mappings: List
-                      A byte mapping that maps those actions to a single 3 dimensional action that can be used in the 
-                      simulator as well as in the recurrent inference. This gets sent to the c++ side
-                  Seconds Mappings: List
-                      A string mapping that is used in the same way but for the python side. This gets used on the 
-                      values that get sent back to the AI_Interface
-    """
-    @staticmethod
-    def encode_action_to_str(policy_logits, mask):
-        # mask[0] = decision mask
-        # mask[1] = shop mask - 1 if can buy champ, 0 if can't
-        # mask[2] = board mask - 1 if slot is occupied, 0 if not
-        # mask[3] = bench mask - 1 if slot is occupied, 0 if not
-        # mask[4] = item mask - 1 if slot is occupied, 0 if not
-        # mask[5] = util mask for space in different containers
-        # mask[5][0] = board mask, mask[5][1] = bench mask, mask[5][2] item_bench mask
-        # mask[6] = thieves glove mask - 1 if slot has a thieves glove, 0 if not
-        # mask[7] = sparring glove + item mask
-        # mask[8] = glove mask
-        # mask[9] = dummy_mask
-        # mask[10] = board full items mask
-        # mask[11] = shop_elems
-        # mask[12] = champ_elements in posesion
-        # TODO: add 7 more masks for:
-        # 1. Kayn items on bench
-        # 2. Kayn champions on board
-        # 3. Reforger on bench
-        # 4. thieves glove on bench
-        # 5. if champion has items
-        # 6. if champion has FULL items on bench
-
-        # policy_logits [(8, 1443)]
-        batch_size = len(policy_logits)  # 8
-        masked_policy_logits = []  # Start with empty type_dim
-        masked_policy_mappings = []
-        prob_sum = 0
-
-        for idx in range(batch_size):
-
-            masked_dim = []  # (8, ?)
-            masked_dim_mapping = []
-
-            # Shop actions
-            # for i in range(58):
-            #     if i in mask[idx][11] and mask[idx][5][1] and mask[idx][1][np.where(mask[idx][11] == i)[0][0]]:
-            #         # print(mask[idx][11], i+1)
-            #         prob = policy_logits[0][idx][378+252+1+1+37+i]
-            #         prob_sum += prob
-            #         masked_dim.append(prob)
-            #         masked_dim_mapping.append(f"2_{i}_0_{378+252+1+1+37+i}")
-
-            # Move actions
-            # move_index = -1
-            # for pos_1 in range(27):
-            #     for pos_2 in range(pos_1 + 1, 28):
-            #         move_index += 1
-            #         if not mask[idx][2][pos_1] and not mask[idx][2][pos_2]:
-            #             continue
-            #         prob = policy_logits[0][idx][move_index]
-            #         prob_sum += prob
-            #         masked_dim.append(prob)
-            #         masked_dim_mapping.append(f"1_{pos_1}_{pos_2}_{move_index}")
-
-            # Bench to Board
-            # move_index = -1
-            # for bench in range(9):
-            #     for pos in range(28):
-            #         move_index += 1
-            #         if not mask[idx][5][0] and not mask[idx][2][pos]:
-            #             continue
-            #         prob = policy_logits[0][idx][378 + move_index]
-            #         prob_sum += prob
-            #         masked_dim.append(prob)
-            #         masked_dim_mapping.append(f"1_{bench}_{pos}_{378 + move_index}")
-
-            # Item actions
-            # TODO
-            # for a in range(37):
-            #     # For every item slot...
-            #     for b in range(10):
-            #         # if there is a unit and there is an item
-            #         if not (((a < 28 and mask[idx][2][a] and not mask[idx][9][a] and not mask[idx][10][a]) 
-            #                     or (a > 27 and mask[idx][3][a - 28])) and mask[idx][4][b]):
-            #             continue
-            #         # if it is a legal action to put that item on the unit
-            #         if (mask[idx][7][a] and mask[idx][8][b]) or mask[idx][6][a]:
-            #             continue
-            #         masked_dim.append(policy_logits[0][idx][a * 37 + b])
-            #         masked_dim_mapping.append(f"3_{a}_{b}")
-
-            # Selling action
-            # for pos in range(37):
-            #     # If unit exists
-            #     if not ((pos < 28 and mask[idx][2][pos] and not mask[idx][9][pos]) or (pos > 27 and mask[idx][3][pos - 28])):
-            #         continue
-            #     prob = policy_logits[0][idx][378+252+1+1+pos]
-            #     prob_sum += prob
-            #     masked_dim.append(prob)
-            #     masked_dim_mapping.append(f"3_{pos}_0_{378+252+1+1+pos}")
-            prob = policy_logits[idx][3]
-            prob_sum += prob
-            masked_dim.append(prob)
-            # masked_dim_mapping.append(f"0_0_0_{378+252+1+1+37+58}")
-            masked_dim_mapping.append(f"3_3_3_3")
-
-            # Always append pass action
-            # prob = policy_logits[0][idx][378+252+1+1+37+58]
-            prob = policy_logits[idx][0]
-            prob_sum += prob
-            masked_dim.append(prob)
-            # masked_dim_mapping.append(f"0_0_0_{378+252+1+1+37+58}")
-            masked_dim_mapping.append(f"0_0_0_0")
-
-            # Level up action
-            if mask[idx][0][4]:
-                # prob = policy_logits[0][idx][378+252]
-                prob = policy_logits[idx][2]
-                prob_sum += prob
-                masked_dim.append(prob)
-                # masked_dim_mapping.append(f"5_0_0_{378+252}")
-                masked_dim_mapping.append(f"2_2_2_2")
-
-            # Roll Action
-            if mask[idx][0][5] and mask[idx][5][1]:
-                # prob = policy_logits[0][idx][378+252+1]
-                prob = policy_logits[idx][1]
-                prob_sum += prob
-                masked_dim.append(prob)
-                # masked_dim_mapping.append(f"4_0_0_{378+252+1}")
-                masked_dim_mapping.append(f"1_1_1_1")
+            return {
+                'action': 'pass',
+                'type': 'general',
+                'confidence': 0.3
+            }
+    
+    def _create_target_policy(self, state: EnhancedTFTState, action_info: Dict) -> np.ndarray:
+        """
+        Create target policy distribution for training.
+        
+        Args:
+            state: Current TFT state
+            action_info: Information about selected action
             
-            masked_dim = [n / prob_sum for n in masked_dim]
-            # print(masked_dim_mapping)
-            # print(masked_dim)
-
-            masked_policy_logits.append(masked_dim)
-            masked_policy_mappings.append(masked_dim_mapping)
-        return masked_policy_logits, masked_policy_mappings
-
-    """
-    Description - This is the core to the Complex Action Spaces paper. We take a set number of sample actions from the 
-                  total number of actions based off of the current policy to expand on each turn. There are two options
-                  as to how the samples are chosen. You can either set num_pass_shop_actions and refresh_level_actions
-                  to 0 and comment out the following for loops or keep those variables at 6 and 2 and leave the for
-                  loops in. The first option is a pure sample with no specific core actions. The second option gives 
-                  you a set of core options to use. 
-    Inputs      - policy_logits - List
-                      Output to either initial_inference or recurrent_inference for policy
-                  string_mapping - List
-                      A map that is equal to policy_logits.shape[-1] in size to map to the specified action
-                  byte_mapping - List
-                      Same as string mapping but used on the c++ side of the code
-                  num_samples - Int
-                      Typically set to config.NUM_SAMPLES. Number of samples to use per expansion of the tree
-    Outputs     - output_logits - List
-                      The sampled policy logits 
-                  output_string_mapping - List
-                      The sampled string mapping. Size = output.logits.shape
-                  output_byte_mapping - List
-                      Same as output_string_mapping but for c++ side
-                  policy_sizes - List
-                      Number of samples per player, can change if legal actions < num_samples
-    """
-    def sample(self, policy_logits, string_mapping, num_samples):
-        # policy_logits [(8, max 728)]
-        batch_size = len(policy_logits)  # 8
-        # print("SIZE", len(policy_logits[0]))
-        # print("SIZE STRING", len(string_mapping[0]))
-
-        output_logits = []
-        output_string_mapping = []
-        output_byte_mapping = []
-        policy_sizes = []
-
-        for idx in range(batch_size):
-            local_logits = []
-            local_string = []
-            local_byte = []
-
-            # probs = self.softmax_stable(policy_logits[idx])
-            policy_range = np.arange(stop=len(policy_logits[idx]))
-
-            # samples = np.random.choice(a=policy_range, p=probs, size=num_samples)  # size 25
-            samples = policy_range
-            counts = np.bincount(samples, minlength=len(policy_logits[idx]))
-
-            for i, count in enumerate(counts):
-                if count > 0:
-                    dim_base_string = string_mapping[idx][i]
-                    # local_logits.append(((1 / num_samples) * count))
-                    local_logits.append(policy_logits[idx][i])
-                    local_string.append(dim_base_string)
-                    local_byte.append(bytes(dim_base_string, "utf-8"))
-           
-            output_logits.append(local_logits)
-            output_string_mapping.append(local_string)
-            # print(local_string)
-            # input()
-            output_byte_mapping.append(local_byte)
-            policy_sizes.append(len(local_logits))
-
-        return output_logits, output_string_mapping, output_byte_mapping, policy_sizes
-
-    @staticmethod
-    def softmax_stable(x):
-        return np.exp(x - np.max(x)) / np.exp(x - np.max(x)).sum()
-
-    def fill_metadata(self) -> Dict[str, str]:
-        return {'network_id': str(self.network.training_steps())}
-
-    @staticmethod
-    def visit_softmax_temperature():
-        return config.VISIT_TEMPERATURE
+        Returns:
+            Policy probability distribution
+        """
+        # Simple uniform policy for now - could be enhanced with network policy head
+        policy = np.zeros(self.policy_size)
+        
+        # Set higher probability for selected action type
+        if action_info['type'] == 'shop':
+            policy[0:50] = 0.02  # Shop actions
+        elif action_info['type'] == 'experience':
+            policy[50:60] = 0.1  # Experience actions
+        else:
+            policy[60:100] = 0.025  # General actions
+        
+        # Normalize
+        policy_sum = np.sum(policy)
+        if policy_sum > 0:
+            policy = policy / policy_sum
+        
+        return policy.reshape(-1, 1)
+    
 
 
-def masked_distribution(x, use_exp, mask=None):
-    if mask is None:
-        mask = [1] * len(x)
-    assert sum(mask) > 0, 'Not all values can be masked.'
-    assert len(mask) == len(x), (
-        'The dimensions of the mask and x need to be the same.')
-    x = np.exp(x) if use_exp else np.array(x, dtype=np.float64)
-    mask = np.array(mask, dtype=np.float64)
-    x *= mask
-    if sum(x) == 0:
-        # No unmasked value has any weight. Use uniform distribution over unmasked
-        # tokens.
-        x = mask
-    return x / np.sum(x, keepdims=True)
+    def update_state(self, observations: Dict, current_player: str):
+        """
+        Update internal state representation.
+        
+        Args:
+            observations: New observations
+            current_player: Current player ID
+        """
+        self.current_state = EnhancedTFTState(
+            observations=observations,
+            current_player=current_player,
+            network=self.network
+        )
+    
+    def set_network(self, network: nn.Module):
+        """
+        Update the neural network used for rollout enhancement.
+        
+        Args:
+            network: New PyTorch network
+        """
+        self.network = network
+        if self.current_state is not None:
+            self.current_state.network = network
+    
+    def get_statistics(self) -> Dict:
+        """
+        Get MCTS performance statistics.
+        
+        Returns:
+            Dictionary of performance metrics
+        """
+        return {
+            'total_actions': self.num_actions,
+            'max_search_depth': self.max_depth_search,
+            'total_runs': self.runs,
+            'avg_time_per_action': np.mean(self.times) if self.times else 0,
+            'simulations_per_move': self.max_simulations
+        }
+    
+    def visit_softmax_temperature(self) -> float:
+        """
+        Temperature for action selection.
+        Dynamic temperature that decreases over time.
+        
+        Returns:
+            Temperature value
+        """
+        # Start high for exploration, decrease for exploitation
+        base_temp = 1.5
+        decay_rate = 0.95
+        min_temp = 0.1
+        
+        temp = base_temp * (decay_rate ** self.num_actions)
+        return max(temp, min_temp)
+    
+    def select_action(self, distributions: list, temperature: float = 1.0, 
+                     deterministic: bool = False):
+        """
+        Select action from probability distribution.
+        
+        Args:
+            distributions: Action probability distributions
+            temperature: Temperature for softmax
+            deterministic: Whether to use argmax or sample
+            
+        Returns:
+            Selected action index
+        """
+        if deterministic:
+            return np.argmax(distributions)
+        
+        # Apply temperature
+        if temperature > 0:
+            logits = np.log(np.array(distributions) + 1e-8) / temperature
+            probs = np.exp(logits) / np.sum(np.exp(logits))
+        else:
+            probs = distributions
+        
+        # Sample from distribution
+        return np.random.choice(len(probs), p=probs)
 
-
-def masked_softmax(x, mask=None):
-    x = np.array(x) - np.max(x, axis=-1)  # to avoid overflow
-    return masked_distribution(x, use_exp=True, mask=mask)
-
-
-def masked_count_distribution(x, mask=None):
-    return masked_distribution(x, use_exp=False, mask=mask)

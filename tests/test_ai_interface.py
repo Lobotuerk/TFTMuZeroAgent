@@ -1,13 +1,13 @@
 import config
 import datetime
 import numpy as np
-from TestInterface.test_global_buffer import GlobalBuffer
-from Simulator.tft_simulator import parallel_env
+from tests.test_global_buffer import GlobalBuffer
+from tft_set4_gym.tft_simulator import parallel_env
 import time
 
-from TestInterface.test_replay_wrapper import BufferWrapper
+from tests.test_replay_wrapper import BufferWrapper
 
-from Simulator import utils
+from tft_set4_gym import utils
 
 from Models.MCTS_torch import MCTS
 from Models.MuZero_torch_agent import MuZeroNetwork as TFTNetwork

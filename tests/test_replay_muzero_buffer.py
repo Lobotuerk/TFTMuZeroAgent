@@ -1,7 +1,14 @@
 import numpy as np
 import config
 import random
-from global_buffer import GlobalBuffer
+try:
+    from global_buffer import GlobalBuffer
+except ImportError:
+    # Mock GlobalBuffer for testing when Ray is not available
+    class GlobalBuffer:
+        def __init__(self, batch_size=None):
+            self.gameplay_experiences = []
+            self.batch_size = batch_size or config.BATCH_SIZE
 from Models.MCTS_Util import split_sample_set
 
 class ReplayBuffer:
