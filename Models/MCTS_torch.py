@@ -69,8 +69,11 @@ class TFTState(MCTS_StateBase):
     TFT-specific state implementation for PyMCTS integration
     """
     
-    def __init__(self, observation: np.ndarray, mask: Optional[np.ndarray] = None, 
-                network=None, is_raw_observation: bool = True):
+    def __init__(self, observation: np.ndarray = None, mask: Optional[np.ndarray] = None, 
+                network=None, is_raw_observation: bool = True,
+                initial_hidden_state: Optional[np.ndarray] = None,
+                initial_policy: Optional[np.ndarray] = None,
+                initial_value: Optional[np.ndarray] = None):
         super().__init__()
         
         self.mask = mask.copy() if mask is not None else self._create_default_mask()
@@ -78,7 +81,13 @@ class TFTState(MCTS_StateBase):
 
         self._is_terminal_cached = None
 
-        if is_raw_observation:        
+        # If pre-computed initial inference results are provided, use them directly
+        # (avoids a redundant representation network forward pass)
+        if initial_hidden_state is not None:
+            self.hidden_state = np.asarray(initial_hidden_state).flatten()
+            self.policy = np.asarray(initial_policy).flatten() if initial_policy is not None else None
+            self.value = np.asarray(initial_value).flatten() if initial_value is not None else None
+        elif is_raw_observation:        
             if self.network is not None:
                 with torch.no_grad():
                     input_obs = torch.tensor(observation, dtype=torch.float32).unsqueeze(0)
@@ -175,9 +184,10 @@ class TFTState(MCTS_StateBase):
     def clone(self):
         """Create a deep copy of this state - required by MCTS_state base class"""
         return TFTState(
-            observation=self.observation.copy(),
+            observation=self.hidden_state.copy(),
             mask=self.mask.copy() if self.mask is not None else None,
-            network=self.network
+            network=self.network,
+            is_raw_observation=False
         )
     
     def is_self_side_turn(self) -> bool:
@@ -222,6 +232,50 @@ class EnhancedMCTS:
             'average_depth': 0
         }
     
+    def generate_action_from_initial_state(self, n_simulations: int,
+                                           hidden_state: np.ndarray,
+                                           policy: np.ndarray,
+                                           value: np.ndarray,
+                                           mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Generate actions using MCTS starting from a pre-computed initial state.
+        
+        Skips the representation network forward pass by using pre-computed
+        hidden state, policy, and value from a batched initial_inference call.
+        
+        Args:
+            n_simulations: Number of MCTS simulations
+            hidden_state: Pre-computed hidden state from representation network
+            policy: Pre-computed policy logits from prediction network
+            value: Pre-computed value from prediction network
+            mask: Action mask
+            
+        Returns:
+            Tuple of (actions, target_policies)
+        """
+        self.num_simulations = n_simulations
+
+        tft_state = TFTState(
+            observation=None,
+            mask=mask,
+            network=self.network,
+            is_raw_observation=True,
+            initial_hidden_state=hidden_state,
+            initial_policy=policy,
+            initial_value=value
+        )
+
+        self.mcts_agent = pymcts.MCTS_agent(
+            pymcts.SerializedPythonState(tft_state),
+            max_iter=self.mcts_max_iterations,
+            max_seconds=self.mcts_max_seconds
+        )
+
+        best_move = self.mcts_agent.genmove(None)
+        self.stats['total_generations'] += 1
+
+        return best_move.to_env_action(), best_move.to_numpy()
+
     def generate_action(self, n_simulations: int, observation: np.ndarray, 
                        mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
