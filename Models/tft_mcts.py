@@ -11,7 +11,7 @@ Following TDD approach - implementing minimal functionality to pass tests.
 import numpy as np
 import random
 from typing import List, Dict, Any, Optional
-from tft_set4_gym.tft_simulator import parallel_env
+from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
 
 
 class TFTMove:

@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 # Test imports - these will initially fail until we implement them
 try:
     from Models.tft_mcts import TFTMove, TFTState
-    from tft_set4_gym.tft_simulator import parallel_env
+    from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
     MCTS_AVAILABLE = True
 except ImportError:
     MCTS_AVAILABLE = False

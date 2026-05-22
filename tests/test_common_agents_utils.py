@@ -216,11 +216,11 @@ class TestCommonAgents(unittest.TestCase):
         self.fast_level_agent = FastLevelAgent()
         self.random_agent = RandomAgent()
         
-        # Create a simple mock observation
-        self.mock_obs = np.random.random((200, 4, 7))  # Simplified mock
+        # Create a simple mock observation matching schema size (5152 = 184*4*7)
+        self.mock_obs = np.random.random(5152)  # Flat observation
         self.mock_obs_dict = {
             'tensor': self.mock_obs,
-            'action_mask': np.ones((3,))
+            'action_mask': np.ones((54,), dtype=np.int8)
         }
 
     def test_agent_initialization(self):
@@ -319,7 +319,7 @@ class TestUtilsIntegration(unittest.TestCase):
             agent = CultistAgent()
             
             # Create a more realistic mock observation
-            obs = np.zeros((200, 4, 7))
+            obs = np.zeros((5152,))
             
             # Test the workflow - should not crash
             action = agent.select_action(obs, None)
@@ -373,26 +373,17 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             self.skipTest("TFT modules not available")
         
         # Import the gym environment functions
-        from TFTSet4Gym.tft_set4_gym.tft_simulator import env, parallel_env
+        from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
         
-        # Create gym environment (AEC environment with OrderEnforcingWrapper)
-        self.aec_env = env(rank=0)
-        
-        # Create parallel environment 
+        # Create parallel environment (TFT_Simulator is itself a ParallelEnv)
         self.parallel_env = parallel_env(rank=0)
+        self.simulator = self.parallel_env  # TFT_Simulator IS the simulator
+        self.parallel_simulator = self.parallel_env
         
-        # Access the underlying TFT_Simulator through the wrapper
-        # For AEC environment: unwrap the OrderEnforcingWrapper
-        self.simulator = self.aec_env.unwrapped
-        
-        # For parallel environment: access through the aec_env
-        self.parallel_simulator = self.parallel_env.aec_env.unwrapped
-        
-        # Reset the environments
-        self.aec_env.reset()
+        # Reset the environment
         self.parallel_env.reset()
         
-        # Get a player to work with (using AEC simulator)
+        # Get a player to work with
         self.test_player_id = "player_0"
         self.test_player = self.simulator.PLAYERS[self.test_player_id]
         
@@ -410,19 +401,20 @@ class TestGymEnvironmentUtils(unittest.TestCase):
         self.expected_level = 7
         self.expected_health = 85
         
-    def _get_reshaped_observation_from_gym(self, env, player_id):
-        """Get and reshape observation from the gym environment interface."""
-        # Get observation through the gym environment interface
-        gym_obs = env.observe(player_id)
+    def _get_reshaped_observation_from_gym(self, simulator, player_id):
+        """Get and reshape observation from the simulator."""
+        player = simulator.PLAYERS[player_id]
+        raw_observation = simulator.game_observations[player_id].observation(
+            player_id, player)
         
         # Extract and reshape the tensor for utils functions
-        if isinstance(gym_obs, dict) and 'tensor' in gym_obs:
-            tensor_obs = gym_obs['tensor']
+        if isinstance(raw_observation, dict) and 'tensor' in raw_observation:
+            tensor_obs = raw_observation['tensor']
             return tensor_obs.reshape(184, 4, 7)
         else:
-            return gym_obs
+            return raw_observation
     
-    def _get_reshaped_observation_from_parallel(self, env, observations, player_id):
+    def _get_reshaped_observation_from_parallel(self, observations, player_id):
         """Get and reshape observation from parallel environment observations."""
         # Extract observation for specific player from parallel env observations
         if player_id in observations:
@@ -455,8 +447,8 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             self.skipTest("TFT modules not available")
         
         try:
-            # Get observation through the gym environment interface (proper way)
-            observation = self._get_reshaped_observation_from_gym(self.aec_env, self.test_player_id)
+            # Get observation through the simulator
+            observation = self._get_reshaped_observation_from_gym(self.simulator, self.test_player_id)
             
             # Test utils functions work with gym environment observations
             gold = utils.gold_from_obs(observation)
@@ -492,9 +484,9 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             print(f"   Board: {len(board)} champions, Bench: {len(bench)} champions")
             print(f"   Shop: {len(shop_units)} units, chosen: '{chosen}'")
             
-            # Test that we can still use the gym environment interface
-            # Get observation through gym environment (verify structure)
-            gym_obs = self.aec_env.observe(self.test_player_id)
+            # Test that we can still use the simulator interface
+            gym_obs = self.simulator.game_observations[self.test_player_id].observation(
+                self.test_player_id, self.simulator.PLAYERS[self.test_player_id])
             self.assertIsInstance(gym_obs, dict)
             self.assertIn('tensor', gym_obs)
             self.assertIn('action_mask', gym_obs)
@@ -522,18 +514,17 @@ class TestGymEnvironmentUtils(unittest.TestCase):
         
         try:
             # Set some different values in the internal simulator for verification
-            internal_sim = self.parallel_env.aec_env.unwrapped
-            test_player = internal_sim.PLAYERS[self.test_player_id]
+            test_player = self.simulator.PLAYERS[self.test_player_id]
             test_player.gold = 30
             test_player.level = 5
             test_player.health = 60
             
-            # Get observations through the parallel environment interface (proper way)
+            # Get observations through the parallel environment interface
             observations, _ = self.parallel_env.reset()
             
             # Get observation for our test player from parallel environment
             reshaped_obs = self._get_reshaped_observation_from_parallel(
-                self.parallel_env, observations, self.test_player_id
+                observations, self.test_player_id
             )
             
             if reshaped_obs is not None:
@@ -568,7 +559,7 @@ class TestGymEnvironmentUtils(unittest.TestCase):
         
         try:
             # Get initial observation through gym environment
-            initial_obs = self._get_reshaped_observation_from_gym(self.aec_env, self.test_player_id)
+            initial_obs = self._get_reshaped_observation_from_gym(self.simulator, self.test_player_id)
             
             # Get initial state values using utils
             initial_gold = utils.gold_from_obs(initial_obs)
@@ -578,14 +569,12 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             
             print(f"📊 Initial state: gold={initial_gold}, level={initial_level}, hp={initial_hp}, board={len(initial_board)}")
             
-            # Take an action through the gym environment
-            action = [0, 0, 0, 0]  # No-op action
+            # Take an action through the parallel environment (no-op for all agents)
+            actions = {agent_id: [0, 0, 0, 0] for agent_id in self.parallel_env.agents}
+            self.parallel_env.step(actions)
             
-            # Step the environment
-            self.aec_env.step(action)
-            
-            # Get observation after step through gym environment interface
-            post_step_obs = self._get_reshaped_observation_from_gym(self.aec_env, self.test_player_id)
+            # Get observation after step
+            post_step_obs = self._get_reshaped_observation_from_gym(self.simulator, self.test_player_id)
             
             # Verify we can still access state with utils after environment step
             post_gold = utils.gold_from_obs(post_step_obs)
@@ -620,7 +609,7 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             for agent_id in self.parallel_env.agents:
                 if agent_id in observations:
                     obs = self._get_reshaped_observation_from_parallel(
-                        self.parallel_env, observations, agent_id
+                        observations, agent_id
                     )
                     if obs is not None:
                         gold = utils.gold_from_obs(obs)
@@ -641,7 +630,7 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             for agent_id in self.parallel_env.agents:
                 if agent_id in observations:
                     obs = self._get_reshaped_observation_from_parallel(
-                        self.parallel_env, observations, agent_id
+                        observations, agent_id
                     )
                     if obs is not None:
                         gold = utils.gold_from_obs(obs)
@@ -674,7 +663,8 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             from Models.Common_agents import preprocess_observation, CultistAgent
             
             # Get gym environment observation
-            gym_obs = self.aec_env.observe(self.test_player_id)
+            gym_obs = self.simulator.game_observations[self.test_player_id].observation(
+                self.test_player_id, self.simulator.PLAYERS[self.test_player_id])
             
             # Test preprocessing function
             processed_obs = preprocess_observation(gym_obs)

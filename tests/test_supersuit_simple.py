@@ -4,7 +4,7 @@ Simple test to understand SuperSuit interface with TFT environment.
 
 import numpy as np
 import supersuit as ss
-from tft_set4_gym.tft_simulator import parallel_env
+from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
 from pettingzoo.utils.env import ParallelEnv
 from gymnasium import spaces
 from typing import Dict

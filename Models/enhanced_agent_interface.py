@@ -690,7 +690,7 @@ def create_custom_agent_setup(agents_and_counts: List[Tuple[Any, int]], **kwargs
 async def example_usage():
     """Example of how to use the enhanced system"""
     try:
-        from tft_set4_gym.tft_simulator import parallel_env
+        from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
         # Try to import GlobalBuffer (may not exist depending on setup)
         try:
             from Models.global_buffer import GlobalBuffer

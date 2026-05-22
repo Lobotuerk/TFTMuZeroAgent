@@ -3,8 +3,14 @@
 Quick test to verify that the TFTSet4Gym package integration works correctly.
 """
 
+import sys
+import os
+
 try:
-    from tft_set4_gym.tft_simulator import parallel_env
+    # Match import style used in other tests
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'TFTSet4Gym'))
+    from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
+    sys.path.pop(0)
     print("✅ Successfully imported parallel_env from installed package")
     
     # Test creating an environment
