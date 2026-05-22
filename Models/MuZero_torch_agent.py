@@ -102,36 +102,47 @@ class MuZeroAgent(BaseAgent):
 
         return env_move
     
-    def batch_select_action(self, observations: List[np.ndarray], masks: List[np.ndarray]) -> List[Any]:
+    def batch_select_action(self, observations: List[np.ndarray], masks: List[np.ndarray],
+                            precomputed_results: Optional[List[Dict[str, Any]]] = None) -> List[Any]:
         """Select actions for a batch of observations using MCTS.
         
-        Batches the per-item MCTS loop so TorchBasedBatchProcessor can
-        call a single method instead of N individual select_action calls.
+        Uses pre-computed neural network results when available to avoid
+        redundant initial_inference calls on each item.
         
         Args:
             observations: List of observation arrays, one per environment
             masks: List of action mask arrays, one per environment
+            precomputed_results: Optional list of pre-computed NN results per item
             
         Returns:
             List of selected environment actions
         """
         actions = []
-        for obs, mask in zip(observations, masks):
-            env_move, _ = self._generate_action_with_mcts(obs, mask)
+        for i, (obs, mask) in enumerate(zip(observations, masks)):
+            pc = precomputed_results[i] if precomputed_results else None
+            env_move, _ = self._generate_action_with_mcts(obs, mask, precomputed=pc)
             actions.append(env_move)
         return actions
 
     def _generate_action_with_mcts(self, 
                                    observation: np.ndarray, 
-                                   mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+                                   mask: np.ndarray,
+                                   precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
         Generate actions using Enhanced MCTS
+        
+        Args:
+            observation: Current observation
+            mask: Action mask
+            precomputed: Pre-computed NN results (hidden_state, policy, value)
+                         to avoid redundant initial_inference
         """        
         # Use Enhanced MCTS for action generation
         actions, action_vector = self.mcts.generate_action(
             self.simulations, 
             observation=observation, 
-            mask=mask
+            mask=mask,
+            precomputed=precomputed
         )
         
         return actions, action_vector

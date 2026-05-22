@@ -4,8 +4,11 @@ sys.path.append('.')
 
 import numpy as np
 import asyncio
+import pytest
 from TFTSet4Gym.tft_set4_gym import parallel_env
 from Models.enhanced_agent_interface import create_enhanced_setup, TorchBasedBatchProcessor
+
+pytestmark = pytest.mark.asyncio
 from Models.Common_agents import RandomAgent
 
 async def test_enhanced_evaluation():

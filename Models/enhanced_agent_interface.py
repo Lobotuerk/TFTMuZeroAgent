@@ -417,14 +417,56 @@ class TorchBasedBatchProcessor(EnhancedBatchProcessor):
     def _run_agent_inference_sync(self, agent: Any, batch: BatchedInferenceRequest) -> List[Any]:
         """Run the actual agent inference synchronously in thread pool.
         
-        Uses batch_select_action when available for true batched inference,
-        otherwise falls back to per-observation select_action calls.
+        When the agent exposes both batch_select_action and a model with
+        initial_inference, performs a single GPU forward pass on the whole
+        batch tensor and passes pre-computed results to the agent, avoiding
+        N separate forward passes.
         """
-        # Extract observations and masks from batch
+        batch_size = len(batch.request_ids)
+        if batch.observations.size == 0:
+            batch_size = 0
+
+        # Attempt true batched GPU inference: run model.initial_inference
+        # once on the full tensor and thread per-item results through.
+        model = getattr(agent, 'model', None)
+        has_batch_api = hasattr(agent, 'batch_select_action')
+        can_batch_gpu = has_batch_api and model is not None and hasattr(model, 'initial_inference')
+
+        if can_batch_gpu and batch_size > 0:
+            try:
+                with torch.no_grad():
+                    network_output = model.initial_inference(batch.observations)
+
+                precomputed_results = []
+                for i in range(batch_size):
+                    precomputed_results.append({
+                        'hidden_state': network_output['hidden_state'][i].cpu().numpy(),
+                        'policy': network_output['policy_logits'][i].cpu().numpy(),
+                        'value': network_output['value'][i].cpu().numpy(),
+                    })
+
+                # Build numpy observation list and mask list for the agent
+                obs_list = []
+                mask_list = []
+                for i in range(batch_size):
+                    obs_np = batch.observations[i].cpu().numpy()
+                    if obs_np.ndim > 1:
+                        obs_np = obs_np.flatten()
+                    obs_list.append(obs_np)
+                    mask_list.append(
+                        batch.masks[i] if i < len(batch.masks) else np.ones(54, dtype=bool)
+                    )
+
+                return agent.batch_select_action(obs_list, mask_list,
+                                                  precomputed_results=precomputed_results)
+            except Exception as e:
+                print(f"Batched GPU inference failed, falling back: {e}")
+
+        # Fallback path: convert batch tensor to numpy list, then use
+        # batch_select_action without precomputed results or per-item calls.
         observations = []
         masks = []
-        
-        for i in range(len(batch.request_ids)):
+        for i in range(batch_size):
             try:
                 if batch.observations.size == 0:
                     obs = np.zeros((2504,))
@@ -433,22 +475,20 @@ class TorchBasedBatchProcessor(EnhancedBatchProcessor):
                     if obs.ndim > 1:
                         obs = obs.flatten()
                 observations.append(obs)
-                
                 mask = batch.masks[i] if i < len(batch.masks) else np.ones(54, dtype=bool)
                 masks.append(mask)
             except Exception as e:
                 print(f"Error extracting observation {i}: {e}")
                 observations.append(np.zeros((2504,)))
                 masks.append(np.ones(54, dtype=bool))
-        
-        # Use batch_select_action if available (e.g. MuZeroAgent)
-        if hasattr(agent, 'batch_select_action'):
+
+        if has_batch_api:
             try:
                 return agent.batch_select_action(observations, masks)
             except Exception as e:
                 print(f"batch_select_action failed, falling back: {e}")
-        
-        # Fallback: per-item select_action calls
+
+        # Final fallback: per-item select_action calls
         actions = []
         for i, obs in enumerate(observations):
             try:
@@ -460,7 +500,6 @@ class TorchBasedBatchProcessor(EnhancedBatchProcessor):
             except Exception as e:
                 print(f"Error in agent inference for request {i}: {e}")
                 actions.append([0, 0, 0])
-        
         return actions
     
     def _fallback_inference(self, agent: Any, batch: BatchedInferenceRequest) -> List[Any]:

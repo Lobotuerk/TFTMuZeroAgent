@@ -70,7 +70,8 @@ class TFTState(MCTS_StateBase):
     """
     
     def __init__(self, observation: np.ndarray, mask: Optional[np.ndarray] = None, 
-                network=None, is_raw_observation: bool = True):
+                network=None, is_raw_observation: bool = True,
+                precomputed: Optional[Dict[str, Any]] = None):
         super().__init__()
         
         self.mask = mask.copy() if mask is not None else self._create_default_mask()
@@ -78,7 +79,12 @@ class TFTState(MCTS_StateBase):
 
         self._is_terminal_cached = None
 
-        if is_raw_observation:        
+        if precomputed is not None:
+            self.hidden_state = np.asarray(precomputed['hidden_state'], dtype=np.float32)
+            self.hidden_state = self.hidden_state.flatten()
+            self.policy = np.asarray(precomputed['policy'], dtype=np.float32)
+            self.value = np.asarray(precomputed['value'], dtype=np.float32)
+        elif is_raw_observation:
             if self.network is not None:
                 with torch.no_grad():
                     input_obs = torch.tensor(observation, dtype=torch.float32).unsqueeze(0)
@@ -242,7 +248,8 @@ class EnhancedMCTS:
         }
     
     def generate_action(self, n_simulations: int, observation: np.ndarray, 
-                       mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+                       mask: np.ndarray,
+                       precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
         Generate actions using enhanced MCTS with new observation schema
         
@@ -250,16 +257,18 @@ class EnhancedMCTS:
             n_simulations: Number of MCTS simulations
             observation: Current observations for all players
             mask: Action masks for all players
+            precomputed: Pre-computed neural network results to skip initial_inference
             
         Returns:
             Tuple of (actions, target_policies)
         """
         self.obs_queue.append(observation)
         self.num_simulations = n_simulations
-        return self._generate_action_pymcts(observation, mask)
+        return self._generate_action_pymcts(observation, mask, precomputed=precomputed)
     
     def _generate_action_pymcts(self, observation: np.ndarray, 
-                               mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+                               mask: np.ndarray,
+                               precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
         """Generate actions using PyMCTS integration"""
         self.stats['pymcts_generations'] += 1
 
@@ -267,7 +276,7 @@ class EnhancedMCTS:
         target_policies = []
         
         # Create TFT state
-        tft_state = TFTState(np.array(list(self.obs_queue)), mask, self.network)
+        tft_state = TFTState(np.array(list(self.obs_queue)), mask, self.network, precomputed=precomputed)
 
         self.mcts_agent = pymcts.MCTS_agent(
             pymcts.SerializedPythonState(tft_state), 

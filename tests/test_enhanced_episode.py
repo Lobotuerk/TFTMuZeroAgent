@@ -9,6 +9,7 @@ import sys
 import os
 import time
 import asyncio
+import pytest
 
 # Add the project root to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -17,6 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'TFTSet4Gym'))
 from tft_set4_gym.tft_simulator import parallel_env
 sys.path.pop(0)
+
+pytestmark = pytest.mark.asyncio
 
 # Import Enhanced Agent Interface components
 from Models.enhanced_agent_interface import create_enhanced_setup, AsyncGameEnvironment

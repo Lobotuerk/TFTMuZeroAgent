@@ -6,10 +6,13 @@ Test script for the Enhanced AI Interface
 import sys
 import os
 import asyncio
+import pytest
 
 # Add parent directory to path for imports
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, parent_dir)
+
+pytestmark = pytest.mark.asyncio
 
 async def test_enhanced_ai_interface():
     """Test the enhanced AI interface"""
