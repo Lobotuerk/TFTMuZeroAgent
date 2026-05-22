@@ -415,38 +415,51 @@ class TorchBasedBatchProcessor(EnhancedBatchProcessor):
         return result
 
     def _run_agent_inference_sync(self, agent: Any, batch: BatchedInferenceRequest) -> List[Any]:
-        """Run the actual agent inference synchronously in thread pool"""
+        """Run the actual agent inference synchronously in thread pool.
         
-        # For batched inference, we need to handle each observation individually
-        # since Common_agents expect individual observations, not batched ones
-        actions = []
+        Uses batch_select_action when available for true batched inference,
+        otherwise falls back to per-observation select_action calls.
+        """
+        # Extract observations and masks from batch
+        observations = []
+        masks = []
         
         for i in range(len(batch.request_ids)):
             try:
-                # Extract individual observation
                 if batch.observations.size == 0:
-                    # If observations are empty, create a default observation
-                    obs = np.zeros((2504,))  # Default observation shape for TFT
+                    obs = np.zeros((2504,))
                 else:
-                    # Get single observation from batch
                     obs = batch.observations[i].cpu().numpy()
-                    # Ensure obs has proper shape - flatten if needed
                     if obs.ndim > 1:
                         obs = obs.flatten()
+                observations.append(obs)
                 
-                # Get mask for this observation
                 mask = batch.masks[i] if i < len(batch.masks) else np.ones(54, dtype=bool)
-                
-                # Call the agent's select_action method with individual observation
+                masks.append(mask)
+            except Exception as e:
+                print(f"Error extracting observation {i}: {e}")
+                observations.append(np.zeros((2504,)))
+                masks.append(np.ones(54, dtype=bool))
+        
+        # Use batch_select_action if available (e.g. MuZeroAgent)
+        if hasattr(agent, 'batch_select_action'):
+            try:
+                return agent.batch_select_action(observations, masks)
+            except Exception as e:
+                print(f"batch_select_action failed, falling back: {e}")
+        
+        # Fallback: per-item select_action calls
+        actions = []
+        for i, obs in enumerate(observations):
+            try:
                 if hasattr(agent, 'select_action'):
-                    action = agent.select_action(obs, mask)
+                    action = agent.select_action(obs, masks[i])
                     actions.append(action)
                 else:
-                    actions.append([0, 0, 0])  # Default action
-                    
+                    actions.append([0, 0, 0])
             except Exception as e:
                 print(f"Error in agent inference for request {i}: {e}")
-                actions.append([0, 0, 0])  # Safe fallback action
+                actions.append([0, 0, 0])
         
         return actions
     
@@ -606,7 +619,7 @@ def _create_default_agent_configs(global_buffer=None) -> List[Tuple[Any, int]]:
         List of (agent_instance, count) tuples
     """
     # Create agent instances with default parameters
-    muzero_agent = MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer)
+    muzero_agent = MuZeroAgent(agent_name="MuZeroAgent", global_buffer=global_buffer)
     random_agent = RandomAgent("RandomAgent")
     cultist_agent = CultistAgent()
     divine_agent = DivineAgent()
@@ -664,7 +677,7 @@ async def example_usage():
     #     global_buffer = GlobalBuffer(config.BATCH_SIZE)  # Adjust constructor as needed
     
     # Create custom agents
-    my_muzero = MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer)
+    my_muzero = MuZeroAgent(agent_name="MyMuZero", global_buffer=global_buffer)
     my_random_1 = RandomAgent("FastRandom")
     my_random_2 = RandomAgent("SlowRandom") 
     my_cultist = CultistAgent()
@@ -726,8 +739,8 @@ async def example_usage():
 def create_muzero_vs_random_setup(num_muzero: int = 1, num_random: int = 7, global_buffer=None):
     """Create a setup with MuZero agents vs random agents"""
     muzero_agents = [
-        (MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer), 1)
-        for _ in range(num_muzero)
+        (MuZeroAgent(agent_name=f"MuZero_{i}", global_buffer=global_buffer), 1)
+        for i in range(num_muzero)
     ]
     random_agents = [(RandomAgent(f"Random_{i}"), 1) for i in range(num_random)]
     

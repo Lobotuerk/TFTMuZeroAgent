@@ -99,12 +99,43 @@ class TFTState(MCTS_StateBase):
         mask = np.zeros((54,), dtype=bool)  # Default allowing most actions for TFTSet4Gym
         return mask
     
+    def get_action_probabilities(self, moves: List[TFTMove]) -> List[float]:
+        """Return softmax-normalized policy probabilities for each move.
+        
+        These probabilities are consumed by the PyMCTS PUCT engine for
+        PUCT-based exploration (Q + c*P*sqrt(N)/(1+N)).
+        
+        Args:
+            moves: List of TFTMove to evaluate
+            
+        Returns:
+            List of probability values summing to 1.0
+        """
+        if not hasattr(self, 'policy') or self.policy is None:
+            return [1.0 / len(moves)] * len(moves)
+
+        scores = []
+        for move in moves:
+            idx = move.index
+            if 0 <= idx < len(self.policy):
+                scores.append(float(self.policy[idx]))
+            else:
+                scores.append(0.0)
+
+        scores = np.array(scores, dtype=np.float64)
+        scores = np.exp(scores - np.max(scores))
+        total = scores.sum()
+        if total > 0:
+            return (scores / total).tolist()
+        return [1.0 / len(moves)] * len(moves)
+
     def actions_to_try(self) -> List[TFTMove]:
-        """Get all legal actions from current state, ordered by policy probability"""        
+        """Get all legal actions from current state.
+        
+        Sorting is delegated to the C++ PUCT engine.
+        """
         actions = []
 
-        #TODO use the action mask
-        
         # Always allow pass action
         actions.append(TFTMove(0, 0, 0))  # Pass
         
@@ -127,18 +158,6 @@ class TFTState(MCTS_StateBase):
             for j in range(37):
                 actions.append(TFTMove(1, i, j))  # Move board to bench
 
-        # Order actions by policy probability if network is available
-        if hasattr(self, 'policy') and self.policy is not None:
-            # Create action-score pairs
-            action_scores = []
-            for i, action in enumerate(actions):
-                score = float(self.policy[i])
-                action_scores.append((action, score, i))
-            
-            # Sort by policy score (highest first)
-            action_scores.sort(key=lambda x: x[1], reverse=True)
-            actions = [action for action, score, i in action_scores]
-        
         return actions
     
     def next_state(self, move) -> 'TFTState':

@@ -102,6 +102,25 @@ class MuZeroAgent(BaseAgent):
 
         return env_move
     
+    def batch_select_action(self, observations: List[np.ndarray], masks: List[np.ndarray]) -> List[Any]:
+        """Select actions for a batch of observations using MCTS.
+        
+        Batches the per-item MCTS loop so TorchBasedBatchProcessor can
+        call a single method instead of N individual select_action calls.
+        
+        Args:
+            observations: List of observation arrays, one per environment
+            masks: List of action mask arrays, one per environment
+            
+        Returns:
+            List of selected environment actions
+        """
+        actions = []
+        for obs, mask in zip(observations, masks):
+            env_move, _ = self._generate_action_with_mcts(obs, mask)
+            actions.append(env_move)
+        return actions
+
     def _generate_action_with_mcts(self, 
                                    observation: np.ndarray, 
                                    mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
