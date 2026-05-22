@@ -75,6 +75,67 @@ class MuZeroAgent(BaseAgent):
             'combat_encounters': 0
         }
 
+    def batched_select_action(self,
+                              batch_observations: torch.Tensor,
+                              batch_masks: List[np.ndarray],
+                              batch_rewards: Optional[List[float]] = None,
+                              batch_terminated: Optional[List[bool]] = None) -> List[List[int]]:
+        """
+        Select actions for multiple observations in a single batched forward pass.
+        
+        Runs initial_inference ONCE on the stacked observation tensor, then
+        runs individual MCTS searches using the pre-computed hidden states.
+        This minimizes GPU overhead by avoiding N redundant representation
+        network forward passes.
+        
+        Args:
+            batch_observations: Stacked observation tensor of shape (B, ...) already on GPU
+            batch_masks: List of action masks, one per observation
+            batch_rewards: Optional list of rewards, one per observation
+            batch_terminated: Optional list of terminated flags, one per observation
+            
+        Returns:
+            List of actions, one per observation
+        """
+        batch_size = len(batch_masks)
+        if batch_size == 0:
+            return []
+
+        with torch.no_grad():
+            network_outputs = self.model.initial_inference(batch_observations)
+
+        hidden_states = network_outputs["hidden_state"]
+        policies = network_outputs["policy_logits"]
+        values = network_outputs["value"]
+
+        actions = []
+        for i in range(batch_size):
+            hs = hidden_states[i].cpu().numpy()
+            pl = policies[i].cpu().numpy()
+            vl = values[i].cpu().numpy()
+            mask = batch_masks[i] if i < len(batch_masks) else np.ones(54, dtype=bool)
+
+            env_move, action_vector = self.mcts.generate_action_from_initial_state(
+                n_simulations=self.simulations,
+                hidden_state=hs,
+                policy=pl,
+                value=vl,
+                mask=mask
+            )
+
+            reward = batch_rewards[i] if batch_rewards and i < len(batch_rewards) else 0.0
+            terminated = batch_terminated[i] if batch_terminated and i < len(batch_terminated) else False
+            self._store_experience(
+                observation=batch_observations[i].cpu().numpy(),
+                policy=action_vector,
+                reward=reward,
+                terminated=terminated
+            )
+
+            actions.append(env_move)
+
+        return actions
+
     def load_weights(self, weights_path: str):
         """Load model weights from a specified path"""
         weights = torch.load(weights_path, map_location=self.model.device)
