@@ -4,7 +4,7 @@ Quick test to verify that the TFTSet4Gym package integration works correctly.
 """
 
 try:
-    from tft_set4_gym.tft_simulator import parallel_env
+    from TFTSet4Gym import parallel_env
     print("✅ Successfully imported parallel_env from installed package")
     
     # Test creating an environment

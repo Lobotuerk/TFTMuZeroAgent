@@ -36,7 +36,7 @@ from tqdm import tqdm
 
 # Core imports
 from global_buffer import GlobalBuffer
-from tft_set4_gym.tft_simulator import parallel_env
+from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
 from Models.replay_buffer_wrapper import BufferWrapper
 
 # Enhanced agent system imports
@@ -877,7 +877,7 @@ class AIInterface:
     def testEnv(self):
         """PettingZoo API tests for the simulator"""
         from pettingzoo.test import parallel_api_test, api_test
-        from tft_set4_gym.tft_simulator import env as tft_env
+        from TFTSet4Gym.tft_set4_gym.tft_simulator import env as tft_env
         
         print("Running PettingZoo API tests...")
         

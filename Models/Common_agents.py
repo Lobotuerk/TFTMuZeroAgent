@@ -9,9 +9,9 @@ if parent_dir not in sys.path:
 
 import config
 
-from tft_set4_gym.stats import COST
-from tft_set4_gym.observation_builder import get_field_value_from_obs
-from tft_set4_gym.observation_schema import get_observation_schema
+from TFTSet4Gym.tft_set4_gym.stats import COST
+from TFTSet4Gym.tft_set4_gym.observation_builder import get_field_value_from_obs
+from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
 from Models.replay_buffer import ReplayBuffer
 
 
@@ -32,6 +32,9 @@ def extract_field_from_observation(observation, field_name):
 
 def get_board_units_from_observation(observation):
     """Extract board units using new schema system."""
+    # Handle dictionary observations from parallel_env
+    if isinstance(observation, dict):
+        observation = observation.get('tensor', observation)
     
     # Use new schema-based extraction
     board_champions = extract_field_from_observation(observation, 'board_champions')
@@ -178,8 +181,15 @@ class BaseAgent:
         else:
             obs = observation
             mask = action_mask
+        
+        # Flatten to 1D array if needed (schema expects flat observation)
+        if isinstance(obs, np.ndarray) and obs.ndim > 1:
+            obs = obs.flatten()
             
-        action = self._select_action_impl(obs, mask, reward, terminated)
+        try:
+            action = self._select_action_impl(obs, mask, reward, terminated)
+        except Exception:
+            action = [0, 0, 0]
 
         return action
     
@@ -216,7 +226,7 @@ class RandomAgent(BaseAgent):
     def __init__(self, agent_name="RandomAgent", global_buffer=None):
         super().__init__(agent_name, global_buffer)
 
-    def _select_action_impl(self, obs, action_mask):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """Select a random valid action."""
         return [np.random.randint(0, 6), np.random.randint(0, 37), np.random.randint(0, 28)]
 
@@ -225,7 +235,7 @@ class BuyingAgent(BaseAgent):
         super().__init__(agent_name, global_buffer)
         self.units_to_buy = units_to_buy
 
-    def _select_action_impl(self, obs, action_mask):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """Select action based on buying strategy."""
         gold = extract_field_from_observation(obs, 'gold')
         units_in_shop = get_shop_units_from_observation(obs)
@@ -403,7 +413,7 @@ class RerollAgent(BuyingAgent):
         reroll_units = ["yasuo", "fiora", "vayne", "nidalee", "garen"]  # Low cost reroll units
         super().__init__(reroll_units, "RerollAgent", global_buffer)
         
-    def _select_action_impl(self, obs, action_mask):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """Reroll strategy focuses on low-cost units and frequent refreshing."""
         gold = extract_field_from_observation(obs, 'gold')
         units_in_shop = get_shop_units_from_observation(obs)
@@ -430,7 +440,7 @@ class FastLevelAgent(BaseAgent):
     def __init__(self, global_buffer=None):
         super().__init__("FastLevelAgent", global_buffer)
         
-    def _select_action_impl(self, obs, action_mask):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """Strategy focused on fast leveling and strongest board."""
         # Observation is already in the correct schema format
             

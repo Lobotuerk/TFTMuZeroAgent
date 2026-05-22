@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 # Import from submodule
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'TFTSet4Gym'))
-from tft_set4_gym.tft_simulator import parallel_env
+from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
 sys.path.pop(0)
 
 pytestmark = pytest.mark.asyncio
