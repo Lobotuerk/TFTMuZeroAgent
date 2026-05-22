@@ -606,7 +606,7 @@ def _create_default_agent_configs(global_buffer=None) -> List[Tuple[Any, int]]:
         List of (agent_instance, count) tuples
     """
     # Create agent instances with default parameters
-    muzero_agent = MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer)
+    muzero_agent = MuZeroAgent(global_buffer=global_buffer)
     random_agent = RandomAgent("RandomAgent")
     cultist_agent = CultistAgent()
     divine_agent = DivineAgent()
@@ -664,7 +664,7 @@ async def example_usage():
     #     global_buffer = GlobalBuffer(config.BATCH_SIZE)  # Adjust constructor as needed
     
     # Create custom agents
-    my_muzero = MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer)
+    my_muzero = MuZeroAgent(global_buffer=global_buffer)
     my_random_1 = RandomAgent("FastRandom")
     my_random_2 = RandomAgent("SlowRandom") 
     my_cultist = CultistAgent()
@@ -726,7 +726,7 @@ async def example_usage():
 def create_muzero_vs_random_setup(num_muzero: int = 1, num_random: int = 7, global_buffer=None):
     """Create a setup with MuZero agents vs random agents"""
     muzero_agents = [
-        (MuZeroAgent(3, [6, 37, 28], config.OBSERVATION_SIZE, config.NUM_SIMULATIONS, global_buffer), 1)
+        (MuZeroAgent(global_buffer=global_buffer), 1)
         for _ in range(num_muzero)
     ]
     random_agents = [(RandomAgent(f"Random_{i}"), 1) for i in range(num_random)]

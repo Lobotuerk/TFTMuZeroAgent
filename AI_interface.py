@@ -35,9 +35,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 # Core imports
-from global_buffer import GlobalBuffer
+from Models.global_buffer import GlobalBuffer
 from tft_set4_gym.tft_simulator import parallel_env
-from Models.replay_buffer_wrapper import BufferWrapper
 
 # Enhanced agent system imports
 from Models.enhanced_agent_interface import (
@@ -469,10 +468,6 @@ class EnhancedAIInterface:
         
         # Create base MuZero agent
         base_agent = MuZeroAgent(
-            action_size=3,
-            action_limits=[7, 37, 10],
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS,
             global_buffer=self.global_buffer
         )
         
@@ -489,13 +484,9 @@ class EnhancedAIInterface:
         
         # Create training agents
         training_muzero = MuZeroAgent(
-            action_size=3,
-            action_limits=[7, 37, 10], 
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS,
             global_buffer=self.global_buffer,
-            weights=copy.deepcopy(self.current_weights)
         )
+        training_muzero.update_weights(copy.deepcopy(self.current_weights))
         
         # Create other agent types
         random_agent = RandomAgent("RandomTraining")
@@ -559,22 +550,14 @@ class EnhancedAIInterface:
         
         # Create evaluation agents
         eval_base = MuZeroAgent(
-            action_size=3,
-            action_limits=[7, 37, 10],
-            obs_size=config.OBSERVATION_SIZE, 
-            simulations=config.NUM_SIMULATIONS,
             global_buffer=self.global_buffer,
-            weights=copy.deepcopy(self.base_agent.get_weights())
         )
+        eval_base.update_weights(copy.deepcopy(self.base_agent.get_weights()))
         
         eval_old = MuZeroAgent(
-            action_size=3,
-            action_limits=[7, 37, 10],
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS, 
             global_buffer=self.global_buffer,
-            weights=copy.deepcopy(self.current_weights)
         )
+        eval_old.update_weights(copy.deepcopy(self.current_weights))
         
         random_agent = RandomAgent("EvalRandom")
         cultist_agent = CultistAgent()
