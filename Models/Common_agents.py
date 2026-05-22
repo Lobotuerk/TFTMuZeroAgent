@@ -193,6 +193,28 @@ class BaseAgent:
 
         return action
     
+    def batch_select_action(self, observations, masks, precomputed_results=None):
+        """
+        Select actions for a batch of observations.
+        
+        Default implementation iteratively calls self.select_action for each item.
+        Subclasses with native batched inference (e.g. MuZeroAgent) may override.
+        
+        Args:
+            observations: List of observations
+            masks: List of action masks
+            precomputed_results: Optional list of precomputed results per item
+            
+        Returns:
+            List of actions
+        """
+        actions = []
+        for i, obs in enumerate(observations):
+            mask = masks[i] if i < len(masks) else None
+            action = self.select_action(obs, mask)
+            actions.append(action)
+        return actions
+    
     def _store_experience(self, observation = [], policy = [], value = 0, reward = 0, terminated = False):
         if self.replay_buffer is not None:
             self.replay_buffer.store_step(observation=observation, policy=policy, value=value)
