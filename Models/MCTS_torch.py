@@ -200,9 +200,10 @@ class TFTState(MCTS_StateBase):
     def clone(self):
         """Create a deep copy of this state - required by MCTS_state base class"""
         return TFTState(
-            observation=self.observation.copy(),
+            observation=self.hidden_state.copy(),
             mask=self.mask.copy() if self.mask is not None else None,
-            network=self.network
+            network=self.network,
+            is_raw_observation=False
         )
     
     def is_self_side_turn(self) -> bool:
