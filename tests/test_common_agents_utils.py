@@ -62,8 +62,7 @@ class TestCommonAgentsUtils(unittest.TestCase):
         
         # Get the observation after setting up test values
         raw_observation = self.simulator.game_observations[self.test_player_id].observation(
-            self.test_player_id, self.test_player, self.test_player.action_vector
-        )
+            self.test_player_id, self.test_player)
         
         # Extract and reshape the tensor for utils functions
         if isinstance(raw_observation, dict) and 'tensor' in raw_observation:
@@ -441,8 +440,7 @@ class TestGymEnvironmentUtils(unittest.TestCase):
         """Get and reshape observation from the simulator."""
         player = self.simulator.PLAYERS[player_id]
         raw_observation = self.simulator.game_observations[player_id].observation(
-            player_id, player, player.action_vector
-        )
+            player_id, player)
         
         # Extract and reshape the tensor for utils functions
         if isinstance(raw_observation, dict) and 'tensor' in raw_observation:

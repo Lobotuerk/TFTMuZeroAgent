@@ -1,71 +1,150 @@
-import ray
 import torch
-from Models.MCTS_torch import MCTS
-from tft_set4_gym.utils import hp_from_obs, round_from_obs, t_f_c_from_obs, units_in_shop_from_obs
-import config
-import collections
 import numpy as np
-import time
-import os
+import asyncio
+from typing import List, Optional, Any, Union, Dict, Tuple
+import config
+
+# MCTS and Model imports
+from Models.MCTS_torch import EnhancedMCTS, create_enhanced_mcts
 from Models.MuZero_torch_model import MuZeroNetwork
-from Models.replay_muzero_buffer import ReplayBuffer
 
-class MuZeroAgent:
-    def __init__(self, action_size, action_limits, obs_size, simulations, global_buffer, weights=None):
-        self.action_size = action_size
-        self.obs_size = obs_size
-        self.simulations = simulations
-        self.action_limits = action_limits
-        self.global_buffer = global_buffer
-        self.shared_weights = weights
+# Enhanced buffer system
+from Models.replay_buffer import ReplayBuffer
+from Models.global_buffer import GlobalBuffer
+
+# New observation schema system
+from Models.Common_agents import extract_field_from_observation, BaseAgent
+
+# Import TFTSet4Gym config for action dimensions
+from TFTSet4Gym.tft_set4_gym.config import ACTION_DIM
+from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
+
+
+class MuZeroAgent(BaseAgent):
+    """
+    MuZero Agent using new observation schema and Ray-free buffers
+
+    Key improvements:
+    - Uses new observation schema for field extraction
+    - Ray-free buffer system with async capabilities
+    - Better memory management and error handling
+    - Cleaner separation of concerns
+    - Support for both sync and async operations
+    """
+    
+    def __init__(self,
+                 agent_name: str = "MuZeroAgent",
+                 global_buffer: Optional[Any] = None):
+        super().__init__(agent_name, global_buffer)
+
+        # Read action dimensions from observation schema/config
+        self.action_limits = ACTION_DIM.copy()  # [7, 37, 10] from TFTSet4Gym config
+        self.action_size = len(self.action_limits)  # 3 action dimensions
+        
+        # Read observation size from schema if available
+        schema = get_observation_schema("current_player")
+        self.obs_size = schema.total_size
+        
+        # Set simulations from config if not provided
+        self.simulations = getattr(config, 'NUM_SIMULATIONS', 10)
+        
+        # Model and MCTS initialization
         self.model = MuZeroNetwork()
-        self.mcts = MCTS(sample_size=80, action_size=self.action_size, action_limits=self.action_limits, policy_size=1000, network=self.model)
-        if weights is not None:
-            self.model.load_state_dict(weights)
-        self.model.to('cuda')
-        self.hp = []
-        self.replay_buffers = []
+        
+        # Initialize Enhanced MCTS with action dimensions from schema/config
+        # For TFTSet4Gym: ACTION_DIM = [7, 37, 10], so policy_size should accommodate the action space
+        policy_size = self.action_limits[1] * self.action_size if len(self.action_limits) > 1 else sum(self.action_limits)
+        
+        self.mcts = EnhancedMCTS(
+            sample_size=80,
+            action_size=self.action_size,  # Read from ACTION_DIM
+            action_limits=self.action_limits,  # Read from ACTION_DIM
+            policy_size=policy_size,  # Calculate policy size based on action dimensions
+            network=self.model
+        )
+        
+        # Move model to GPU if available
+        if torch.cuda.is_available():
+            self.model.to('cuda')
+        
+        # Performance monitoring
+        self.stats = {
+            'total_actions': 0,
+            'episodes_completed': 0,
+            'buffer_stores': 0,
+            'combat_encounters': 0
+        }
 
-    def select_action(self, observation, mask, reward, terminated):
-        while len(self.replay_buffers) < observation.shape[0]:
-            self.replay_buffers.append(ReplayBuffer(self.global_buffer))
-            self.hp.append(100)
-        action, policy = self.mcts.generate_action(self.simulations, observation=observation, mask=mask)
-        if np.any(terminated):
-            for n in range(len(terminated)):
-                if terminated[n]:
-                    self.replay_buffers[n].store_step(observation[n], action[n], reward[n], policy[n])
-                    self.replay_buffers[n].move_buffer_to_global()
-                    # print(f'Muzero {n} ended with reward {reward[n]}')
-        for n in range(len(observation)):
-            if not terminated[n]:
-                self.replay_buffers[n].store_step(observation[n], action[n], reward[n], policy[n])
-            turns_left = t_f_c_from_obs(observation[n])
-            round = round_from_obs(observation[n])
-            if turns_left == config.ACTIONS_PER_TURN and round > 1:
-                hp = hp_from_obs(observation[n])
-                self.global_buffer.store_combat.remote([observation[n], 1 if hp >= self.hp[n] else -1])
-                self.hp[n] = hp
-        actions = [[int(x) for x in a.split("_")] for a in action]
-        for i, model_action in enumerate(actions):
-            action[i] = self.translate_action(model_action, units_in_shop_from_obs(observation[i]))
-        # action = np.random.randint(self.action_limits, size=(observation.shape[0], self.action_size))
-        # print(action)
-        return action
+    def load_weights(self, weights_path: str):
+        """Load model weights from a specified path"""
+        weights = torch.load(weights_path, map_location=self.model.device)
+        self.model.load_state_dict(weights)
+        print(f"Weights loaded successfully from {weights_path}")
     
-    def get_weights(self):
-        return self.model.get_weights()
+    def _select_action_impl(self, 
+                     observation, action_mask, reward=None, terminated=None) -> List[int]:
+        """
+        Select actions using MCTS with enhanced observation processing
+        
+        Args:
+            observation: Raw observation from environment
+            mask: Action mask (optional)
+            reward: Reward signal (optional)
+            terminated: Termination flags (optional)
+        
+        Returns:
+            Selected actions for each player
+        """
+        
+        # Generate actions using MCTS
+        env_move, action_vector = self._generate_action_with_mcts(observation, observation)
+        self._store_experience(observation=observation, policy=action_vector, reward=reward, terminated=terminated)
+
+        return env_move
     
-    def translate_action(self, action, units_in_shop):
-        ret_action = action
-        if action[0] == 1:
-            if units_in_shop[0] is not ' ':
-                ret_action = [2, 0, 0, 0]
-            else:
-                ret_action = [4, 0, 0, 0]
-        elif action[0] == 2:
-            ret_action = [5, 0, 0, 0]
-        return ret_action
+    def _generate_action_with_mcts(self, 
+                                   observation: np.ndarray, 
+                                   mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Generate actions using Enhanced MCTS
+        """        
+        # Use Enhanced MCTS for action generation
+        actions, action_vector = self.mcts.generate_action(
+            self.simulations, 
+            observation=observation, 
+            mask=mask
+        )
+        
+        return actions, action_vector
     
-class BaseMuZeroAgent(MuZeroAgent):
-    pass
+    def get_weights(self) -> Dict[str, Any]:
+        """Get model weights for sharing/saving"""
+        return self.model.state_dict()
+    
+    def update_weights(self, weights):
+        """Update model weights"""
+        self.model.load_state_dict(weights)
+
+    def get_stats(self):
+        """Get performance statistics"""
+        stats = self.stats.copy()
+        stats['active_players'] = 1  # For now
+        stats['async_buffers_enabled'] = True
+        return stats
+
+    def reset(self):
+        """Reset agent state"""
+        self.stats = {
+            'total_actions': 0,
+            'episodes_completed': 0,
+            'buffer_stores': 0,
+            'combat_encounters': 0
+        }
+
+
+# Aliases and factory functions for testing
+EnhancedMuZeroAgent = MuZeroAgent
+
+def create_enhanced_muzero_agent(global_buffer=None):
+    return MuZeroAgent(global_buffer=global_buffer)
+

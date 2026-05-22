@@ -2,7 +2,6 @@ import config
 import collections
 import torch
 import numpy as np
-from Models.MCTS_Util import split_batch, map_output_to_distribution, action_to_idx
 
 Prediction = collections.namedtuple(
     'Prediction',
@@ -99,11 +98,20 @@ class Trainer(object):
         #                                          (agent.value_encoder, target_value)))
 
         accs = collections.defaultdict(list)
-        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, config.ACTION_ENCODING_SIZE)).to('cuda')
-        value_loss = 0
-        policy_loss = 0
-        directive_loss = 0
-        board_loss = 0
+        # Updated for TFTSet4Gym: policy shape is (batch, time_steps, 3, 37) 
+        # Flatten last two dims: 3 * 37 = 111
+        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, 111)).to('cuda')
+        
+        # Initialize losses as tensors with proper shape
+        batch_size = target_value.shape[0]
+        value_loss = torch.zeros(batch_size, device='cuda')
+        policy_loss = torch.zeros(batch_size, device='cuda')
+        directive_loss = torch.zeros(batch_size, device='cuda')
+        board_loss = torch.zeros(batch_size, device='cuda')
+        
+        # Define loss functions
+        MSE_loss = torch.nn.L1Loss(reduction='none')
+        cross_loss = torch.nn.CrossEntropyLoss(reduction='none')
         for tstep, prediction in enumerate(predictions):
             # prediction.value_logits is [batch_size, 601]
 
@@ -117,10 +125,8 @@ class Trainer(object):
             # reward_logits = reward_logits.requires_grad_(True)
             policy_logits = prediction.policy_logits
 
-            MSE_loss = torch.nn.L1Loss(reduction = 'none')
-            cross_loss = torch.nn.CrossEntropyLoss(reduction = 'none')
-
-            value_loss += MSE_loss(value, target_value[:, tstep].unsqueeze(1))
+            value_loss_step = MSE_loss(value.squeeze(), target_value[:, tstep])
+            value_loss += value_loss_step
             # value_loss = (-target_value_encoded[:, tstep] *
             #               torch.nn.LogSoftmax(dim=-1)(value_logits)).sum(-1)
             # value_loss.register_hook(lambda grad: grad / config.UNROLL_STEPS)
@@ -142,12 +148,21 @@ class Trainer(object):
             #     logits = logits, dtype=float), reinterpreted_batch_ndims=1).entropy()
             #     * config.policy_loss_entropy_regularizer
 
-            # predictions.policy_logits is (actiondims, batch)
-            # target_policy is (batch, unrollsteps+1, action_dims)
-
-            # target_policy -> [ [(256, 7), (256, n), ...] * tstep ]
-            # output_policy ->   [(256, 7), (256, n), ...]
-            policy_loss += cross_loss(policy_logits, target_policy[:, tstep])
+            # predictions.policy_logits is (batch_size, 3, 37) from TFTSet4Gym model
+            # target_policy is (batch_size, unroll_steps, 111) - flattened policy
+            
+            # Flatten policy_logits to match target_policy shape: (batch_size, 3*37=111)
+            policy_logits_flat = policy_logits.view(policy_logits.shape[0], -1)
+            
+            # Use KL divergence loss for policy since target_policy is a probability distribution
+            # Apply softmax to policy_logits to get probabilities
+            policy_probs = torch.nn.functional.softmax(policy_logits_flat, dim=-1)
+            target_policy_normalized = torch.nn.functional.softmax(target_policy[:, tstep], dim=-1)
+            
+            # KL divergence: KL(target || prediction) = sum(target * log(target / prediction))
+            # Use log_softmax for numerical stability
+            policy_log_probs = torch.nn.functional.log_softmax(policy_logits_flat, dim=-1)
+            policy_loss += torch.sum(target_policy_normalized * (torch.log(target_policy_normalized + 1e-8) - policy_log_probs), dim=-1)
             # policy_loss = []
             # for batch_idx in range(len(target_policy[tstep])):
             #     local_policy_loss = (-torch.tensor(target_policy[tstep][batch_idx]).cuda() *
@@ -165,7 +180,7 @@ class Trainer(object):
             # accs['reward_diff'].append(torch.abs(torch.squeeze(reward) - target_reward[:, tstep]))
 
             accs['value'].append(torch.squeeze(value))
-            accs['policy'].append(torch.squeeze(policy_logits))
+            accs['policy'].append(torch.squeeze(policy_logits_flat))  # Use flattened policy for consistency
             # accs['reward'].append(torch.squeeze(reward))
 
             accs['target_value'].append(target_value[:, tstep])
@@ -174,15 +189,41 @@ class Trainer(object):
 
         if len(combats) > 0:
             obs, results = combats
-            # for n in range(len(results)):
-            _, _, board_distribution = agent.initial_inference(obs)
+            # Make sure combat observations have the right shape for the model
+            # obs shape should be (batch_size, observation_size) = (batch_size, 5152)
+            if obs.ndim == 4:  # If obs is (batch, 58, 4, 7), reshape to flat
+                obs_flat = obs.reshape(obs.shape[0], -1)  # (batch, 58*4*7) = (batch, 1624)
+                # Pad to match model's expected observation size (5152)
+                if obs_flat.shape[1] < 5152:
+                    padding = np.zeros((obs_flat.shape[0], 5152 - obs_flat.shape[1]))
+                    obs_flat = np.concatenate([obs_flat, padding], axis=1)
+                elif obs_flat.shape[1] > 5152:
+                    obs_flat = obs_flat[:, :5152]  # Truncate if too large
+            else:
+                obs_flat = obs
+            
+            _, _, board_distribution = agent.initial_inference(obs_flat)
             torch_obs = torch.from_numpy(obs[:,0:58,:,:]).float().cuda()
             torch_results = torch.from_numpy(results).float().cuda()
-            # from shape [64] to shape [64, 1 ,1 ,1]
+            # from shape [batch] to shape [batch, 1 ,1 ,1]
             torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
-            # print(torch_results.shape, MSE_loss(board_distribution, torch_obs).shape)
-            board_loss += torch.sum(MSE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
-            # board_loss += torch.sum(-board_distribution * torch.reshape(results[n], (board_distribution.shape[0],1)), dim=1)
+            
+            # Compute board loss for combat data
+            combat_board_loss = torch.sum(MSE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
+            
+            # Handle different batch sizes between main training and combat data
+            combat_batch_size = combat_board_loss.shape[0]
+            if combat_batch_size == batch_size:
+                # Same batch size, can directly add
+                board_loss += combat_board_loss
+            elif combat_batch_size < batch_size:
+                # Combat batch is smaller, pad with zeros
+                padded_combat_loss = torch.zeros(batch_size, device='cuda')
+                padded_combat_loss[:combat_batch_size] = combat_board_loss
+                board_loss += padded_combat_loss
+            else:
+                # Combat batch is larger, truncate
+                board_loss += combat_board_loss[:batch_size]
             
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
@@ -222,13 +263,13 @@ class Trainer(object):
         summary_writer.add_scalar('target/value_variance', torch.mean(torch.var(accs['target_value'], dim=0)), train_step)
         summary_writer.add_scalar('target/policy_variance', torch.mean(torch.var(accs['target_policy'], dim=1)), train_step)
 
-        summary_writer.add_scalar('losses/value', torch.mean(torch.sum(value_loss, dim=0)), train_step)
+        summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
         if len(combats) > 0:
-            summary_writer.add_scalar('losses/board', torch.mean(torch.sum(board_loss, dim=0)), train_step)
+            summary_writer.add_scalar('losses/board', torch.mean(board_loss), train_step)
         # summary_writer.add_scalar('losses/reward', get_mean('reward_loss'), train_step)
-        summary_writer.add_scalar('losses/policy', torch.mean(torch.sum(policy_loss, dim=0)), train_step)
+        summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
         # summary_writer.add_scalar('losses/directive', torch.mean(torch.sum(directive_loss, dim=0)), train_step)
-        summary_writer.add_scalar('losses/total', torch.mean(torch.sum(mean_loss, dim=0)), train_step)
+        summary_writer.add_scalar('losses/total', torch.mean(mean_loss), train_step)
         # summary_writer.add_scalar('losses/l2', l2_loss, train_step)
 
         summary_writer.add_scalar('accuracy/value', -get_mean('value_diff'), train_step)

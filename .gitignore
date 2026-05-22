@@ -103,6 +103,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
+data/
 logs/
 log.txt
 log_*.txt
@@ -118,4 +119,4 @@ core/ctree/build/
 core/ctree/cytree.cpp
 core/ctree/cytree.cpython-*
 core/ctree/*.so
-core/ctree/*.pyd
+core/ctree/*.pyddata/

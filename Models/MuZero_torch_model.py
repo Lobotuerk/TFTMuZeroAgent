@@ -15,10 +15,15 @@ def dcord_to_2dcord(dcord):
         return x, y
 
 def action_to_3d(action):
-    cube_action = np.zeros((action.shape[0], 1, 4))
-    for i in range(action.shape[0]):
-        cube_action[i] = action[i]
-    return cube_action
+    """Convert action to 3D format for TFTSet4Gym compatibility"""
+    # TFTSet4Gym uses 3D actions: [action_type, target_1, target_2]
+    # Create (batch_size, 1, 3) format for dynamics network
+    # action_2d = np.atleast_2d(action)
+    # cube_action = np.zeros((action_2d.shape[0], 1, 3))
+    # for i in range(action_2d.shape[0]):
+    #     # Take only first 3 elements to match TFTSet4Gym format
+    #     cube_action[i] = action_2d[i]
+    return np.atleast_2d(action)
 
 def dict_to_cpu(dictionary):
     cpu_dict = {}
@@ -92,7 +97,6 @@ class MuZeroNetwork(AbstractNetwork):
         self.directive_generator = DirectiveGenerator(128, 58).cuda()
 
     def prediction(self, encoded_state):
-        # print("encoded", encoded_state.shape)
         policy_logits, value = self.prediction_network(encoded_state)
         return policy_logits, value
 
@@ -109,22 +113,20 @@ class MuZeroNetwork(AbstractNetwork):
         return encoded_state_normalized
 
     def dynamics(self, hidden_state, action):
-        cube_action = torch.from_numpy(action_to_3d(action)).to('cuda')
+        # Convert action to numpy if it's a tensor
+        if isinstance(action, torch.Tensor):
+            action_np = action.detach().cpu().numpy()
+        else:
+            action_np = action
+            
+        cube_action = torch.from_numpy(action_to_3d(action_np)).to(hidden_state.device)
 
         # for cell, states in zip(self.dynamics_hidden_state_network, lstm_state):
         #     inputs, new_states = cell(inputs, states)
         #     new_nested_states.append([inputs, new_states])
-        
-        # print("RESULT", c0[0].size())
-        # print("RESULT", c0[1].size())
-        # print("RESULT", c0[2].size())
-        # print("RESULT", c0[3].size())
-        # print("PASS", inputs.size())
 
-        # print("SIZE", new_nested_states.size())
         # next_hidden_state = self.rnn_to_flat(new_nested_states)  # (8, 1024) ##DOUBLE CHECK THIS
 
-        # print("NEXT HIDDEN", next_hidden_state.size())
         # reward = self.dynamics_reward_network(next_hidden_state)
 
         next_hidden_state, reward = self.dynamics_network(hidden_state, cube_action)
@@ -141,11 +143,11 @@ class MuZeroNetwork(AbstractNetwork):
         return next_hidden_state_normalized, reward
 
     def initial_inference(self, observation):
-        observation_tensor = torch.from_numpy(observation).float().cuda()
+        observation_tensor = observation.cuda()
         hidden_state = self.representation(observation_tensor)
         policy_logits, value_logits = self.prediction(hidden_state)
-        directive = self.directive_generator(observation_tensor)
-        board_distribution = self.board_generator(observation_tensor)
+        # directive = self.directive_generator(observation_tensor)
+        # board_distribution = self.board_generator(observation_tensor)
 
         reward = np.zeros(observation.shape[0])
 
@@ -157,9 +159,11 @@ class MuZeroNetwork(AbstractNetwork):
             "value": value,
             "reward": reward,
             "policy_logits": policy_logits,
-            "hidden_state": hidden_state
+            "hidden_state": hidden_state,
+            # "directive": directive,
+            # "board_distribution": board_distribution
         }
-        return outputs, directive, board_distribution
+        return outputs
 
     @staticmethod
     def rnn_to_flat(state):
@@ -334,7 +338,7 @@ class PredNetwork(torch.nn.Module):
         self.policy_dense1 = torch.nn.Linear(layer_size, layer_size)
         self.policy_dense2 = torch.nn.Linear(layer_size, layer_size)
         self.policy_dense3 = torch.nn.Linear(layer_size, layer_size)
-        self.policy_dense4 = torch.nn.Linear(layer_size, config.ACTION_ENCODING_SIZE)
+        self.policy_dense4 = torch.nn.Linear(layer_size, config.ACTION_CONCAT_SIZE)  # 3 action dims * 37 max actions per dim
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -369,7 +373,6 @@ class PredNetwork(torch.nn.Module):
         policy = self.relu(self.policy_dense3(x)) + policy
         # policy = self.softmax(self.sigmoid(self.policy_dense4(x)))
         policy = self.policy_dense4(x)
-        # print(policy)
 
         value = self.relu(self.value_dense1(x)) + x
         value = self.relu(self.value_dense2(x)) + value
@@ -390,7 +393,8 @@ class RepNetwork(torch.nn.Module):
         # self.bn = torch.nn.BatchNorm1d(256)
         self.relu = torch.nn.LeakyReLU(inplace=True)
         # self.resnet = resnet(input_size, layer_sizes, output_size)
-        self.dense1 = torch.nn.Linear(config.OBSERVATION_SIZE, hidden)
+        # TODO Grab all observation related parameters from the simulator
+        self.dense1 = torch.nn.Linear(config.OBSERVATION_SIZE * 10, hidden)
         # self.dropout1 = torch.nn.Dropout(0.5)
         self.dense2 = torch.nn.Linear(hidden, hidden)
         self.dense3 = torch.nn.Linear(hidden, hidden)
@@ -399,7 +403,6 @@ class RepNetwork(torch.nn.Module):
         self.dense6 = torch.nn.Linear(hidden, hidden)
 
     def forward(self, x):
-        # print(x.shape)
         # x = torch.squeeze(x, dim=2)
         # x = self.conv1(x)
         # x = self.bn(x)
@@ -432,7 +435,7 @@ class DynNetwork(torch.nn.Module):
         # self.bn_reward = torch.nn.BatchNorm1d(1)
         # self.fc_reward = mlp(3, [config.LAYER_HIDDEN_SIZE] * config.N_HEAD_HIDDEN_LAYERS, 1, output_activation=torch.nn.LeakyReLU)
         # self.resnet = resnet(input_size, layer_sizes, output_size)
-        self.dense1 = torch.nn.Linear(hidden + config.ACTION_ENCODING_SIZE, hidden)
+        self.dense1 = torch.nn.Linear(hidden + config.ACTION_CONCAT_SIZE, hidden)
         # self.dropout1 = torch.nn.Dropout(0.5)
         self.dense2 = torch.nn.Linear(hidden, hidden)
         self.dense3 = torch.nn.Linear(hidden, hidden)
@@ -457,7 +460,7 @@ class DynNetwork(torch.nn.Module):
 
         # x = torch.squeeze(x)
         action = torch.squeeze(action, dim=1)
-        x = torch.concatenate((x, action), dim=1).type(torch.cuda.FloatTensor)
+        x = torch.concatenate((x, action), dim=1).type(torch.float32).cuda()
         x = self.relu(self.dense1(x))
         x = self.relu(self.dense2(x)) + x
         x = self.relu(self.dense3(x)) + x

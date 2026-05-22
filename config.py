@@ -1,9 +1,4 @@
 import numpy as np
-
-# IMPORTANT: Change this value to the number of cpu cores you want to use (recommended 80% of cpu)
-NUM_CPUS = 32
-GPU_SIZE_PER_WORKER = 0.001
-
 # AI RELATED VALUES START HERE
 
 #### MODEL SET UP ####
@@ -23,11 +18,11 @@ PB_C_BASE = 19652
 PB_C_INIT = 1.25
 DISCOUNT = 0.97
 TRAINING_STEPS = 1e10
-OBSERVATION_SIZE = 5152 # [184, 4, 7]
+OBSERVATION_SIZE = 2504 # [184, 4, 7]
 OBSERVATION_TIME_STEPS = 1
 OBSERVATION_TIME_STEP_INTERVAL = 1
-ACTION_ENCODING_SIZE = 4
-ACTION_CONCAT_SIZE = 81
+ACTION_ENCODING_SIZE = 3  # Updated for TFTSet4Gym 3D actions
+ACTION_CONCAT_SIZE = 1134
 ACTION_DIM = [7, 37, 10]
 
 POLICY_HEAD_SIZES = [1624+1+1+58+58+1]  # [All probabble actions without items]
@@ -76,3 +71,4 @@ RUN_DROP_TESTS = False
 RUN_MCTS_TESTS = False
 RUN_MAPPING_TESTS = False
 LOG_COMBAT = False
+LOGMESSAGES = True

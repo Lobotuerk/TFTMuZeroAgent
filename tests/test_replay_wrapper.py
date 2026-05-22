@@ -1,6 +1,6 @@
 import numpy as np
 import config
-from tests.test_replay_muzero_buffer import ReplayBuffer
+from TestInterface.test_replay_muzero_buffer import ReplayBuffer
 from sklearn import preprocessing
 
 

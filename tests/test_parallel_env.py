@@ -302,6 +302,111 @@ class TestParallelEnvAPI:
             assert isinstance(env.metadata['is_parallelizable'], bool)
         
         env.close()
+    
+    def test_eight_random_agents_single_episode(self):
+        """Test running a complete episode with 8 random agents."""
+        print("\n=== Running Single Episode with 8 Random Agents ===")
+        
+        env = self.get_env()
+        
+        # Verify we have 8 agents
+        observations, infos = env.reset()
+        assert len(env.agents) == 8, f"Expected 8 agents, got {len(env.agents)}"
+        
+        print(f"Starting episode with {len(env.agents)} agents: {env.agents}")
+        
+        step_count = 0
+        max_steps = 2000  # Allow for longer TFT games
+        agents_remaining = len(env.agents)
+        
+        # Track game progress
+        round_info = {}
+        elimination_steps = []
+        
+        while env.agents and step_count < max_steps:
+            # Generate random actions for all active agents
+            actions = {}
+            for agent in env.agents:
+                action_space = env.action_space(agent)
+                actions[agent] = action_space.sample()
+            
+            # Take step
+            observations, rewards, terminations, truncations, infos = env.step(actions)
+            
+            # Track eliminations
+            eliminated_this_step = []
+            for agent in list(env.agents):  # Copy list to avoid modification during iteration
+                if terminations.get(agent, False) or truncations.get(agent, False):
+                    eliminated_this_step.append(agent)
+            
+            if eliminated_this_step:
+                elimination_steps.append({
+                    'step': step_count,
+                    'eliminated': eliminated_this_step,
+                    'remaining': len(env.agents) - len(eliminated_this_step)
+                })
+                print(f"Step {step_count}: Eliminated {eliminated_this_step}, {len(env.agents) - len(eliminated_this_step)} agents remaining")
+            
+            # Extract round information if available
+            try:
+                if env.agents and 'round' in infos.get(env.agents[0], {}):
+                    current_round = infos[env.agents[0]]['round']
+                    if current_round != round_info.get('last_round'):
+                        round_info['last_round'] = current_round
+                        if step_count % 100 == 0 or current_round != round_info.get('previous_round'):
+                            print(f"Step {step_count}: Round {current_round}, {len(env.agents)} agents active")
+                        round_info['previous_round'] = current_round
+            except (KeyError, IndexError, AttributeError):
+                pass  # Round info might not be available in all implementations
+            
+            step_count += 1
+            
+            # Progress reporting every 200 steps
+            if step_count % 200 == 0:
+                print(f"Step {step_count}: {len(env.agents)} agents still active")
+        
+        final_agents = len(env.agents)
+        total_eliminated = agents_remaining - final_agents
+        
+        print(f"\n=== Episode Complete ===")
+        print(f"Total steps: {step_count}")
+        print(f"Initial agents: {agents_remaining}")
+        print(f"Final agents: {final_agents}")
+        print(f"Total eliminated: {total_eliminated}")
+        
+        if elimination_steps:
+            print(f"Elimination timeline:")
+            for elim in elimination_steps:
+                print(f"  Step {elim['step']}: {len(elim['eliminated'])} eliminated, {elim['remaining']} remaining")
+        
+        # Verify the episode ran meaningfully
+        # Either the game should have ended (agents eliminated) or progressed significantly
+        meaningful_progress = (
+            total_eliminated > 0 or  # Some agents were eliminated
+            step_count >= 500 or     # Game ran for a reasonable time
+            final_agents <= 1        # Game nearly/completely finished
+        )
+        
+        assert meaningful_progress, f"Episode did not show meaningful progress: {total_eliminated} eliminated in {step_count} steps"
+        
+        # Verify environment integrity
+        assert isinstance(observations, dict), "Final observations should be a dict"
+        assert isinstance(rewards, dict), "Final rewards should be a dict"
+        assert isinstance(terminations, dict), "Final terminations should be a dict"
+        assert isinstance(truncations, dict), "Final truncations should be a dict"
+        assert isinstance(infos, dict), "Final infos should be a dict"
+        
+        # Check that all remaining agents have valid data
+        for agent in env.agents:
+            assert agent in observations, f"Agent {agent} missing from observations"
+            assert agent in rewards, f"Agent {agent} missing from rewards"
+            assert agent in terminations, f"Agent {agent} missing from terminations"
+            assert agent in truncations, f"Agent {agent} missing from truncations"
+            assert agent in infos, f"Agent {agent} missing from infos"
+        
+        print("✓ Single episode test completed successfully!")
+        
+        env.close()
 
 
 class TestPettingZooCompliance:
@@ -460,6 +565,7 @@ def run_all_tests():
         ("Space Consistency", api_tests.test_space_consistency),
         ("Metadata Attribute", api_tests.test_metadata_attribute),
         ("Full Game Cycle", api_tests.test_full_game_cycle),
+        ("Eight Random Agents Episode", api_tests.test_eight_random_agents_single_episode),
     ]
     
     for test_name, test_func in tests_to_run:
