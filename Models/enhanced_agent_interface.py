@@ -375,6 +375,19 @@ class EnhancedAgentManager:
                 }
         return stats
 
+    async def flush_all_buffers(self):
+        """Flush all agents' replay buffers to global storage concurrently"""
+        tasks = []
+        for agent in self.agents.values():
+            if hasattr(agent, 'replay_buffer') and agent.replay_buffer is not None:
+                if hasattr(agent.replay_buffer, 'move_buffer_to_global_async'):
+                    tasks.append(agent.replay_buffer.move_buffer_to_global_async())
+                elif hasattr(agent.replay_buffer, 'move_buffer_to_global'):
+                    agent.replay_buffer.move_buffer_to_global(0) # Default final value
+        
+        if tasks:
+            await asyncio.gather(*tasks)
+
 
 class TorchBasedBatchProcessor(EnhancedBatchProcessor):
     """
@@ -581,6 +594,251 @@ class AsyncGameEnvironment:
         for i, (player_id, score) in enumerate(sorted_scores):
             placements[player_id] = i + 1
         return placements
+
+
+class EnvironmentPool:
+    """
+    Manages N AsyncGameEnvironment instances running concurrently via asyncio.
+
+    Features:
+    - Concurrent game execution with configurable parallelism
+    - Automatic lifecycle management (start, stop, restart)
+    - Experience collection forwarded to GlobalBuffer
+    - Performance monitoring and statistics
+    - Graceful shutdown
+    """
+
+    def __init__(self,
+                 env_factory,
+                 agent_manager: EnhancedAgentManager,
+                 global_buffer: Optional[Any] = None,
+                 num_environments: Optional[int] = None,
+                 max_concurrent_games: Optional[int] = None):
+        """
+        Args:
+            env_factory: Callable that returns a new environment instance
+            agent_manager: Shared EnhancedAgentManager for batched inference
+            global_buffer: Optional GlobalBuffer for centralized experience storage
+            num_environments: Number of AsyncGameEnvironment instances. Defaults to CONCURRENT_GAMES config.
+            max_concurrent_games: Max games running simultaneously. Defaults to num_environments.
+        """
+        self.env_factory = env_factory
+        self.agent_manager = agent_manager
+        self.global_buffer = global_buffer
+        self.num_environments = num_environments or config.CONCURRENT_GAMES
+        self.max_concurrent_games = max_concurrent_games or self.num_environments
+
+        self._environments: List[AsyncGameEnvironment] = []
+        self._semaphore = asyncio.Semaphore(self.max_concurrent_games)
+        self._running_tasks: Dict[str, asyncio.Task] = {}
+        self._active_games: int = 0
+        self._total_games_completed: int = 0
+        self._shutdown_event = asyncio.Event()
+        self._shutdown_event.set()
+        self._lock = asyncio.Lock()
+
+        self.game_results: List[Dict[str, Any]] = []
+        self.game_durations: List[float] = []
+
+    async def start(self, precreate: bool = True):
+        """Initialize the pool and optionally pre-create environments."""
+        self._shutdown_event.clear()
+        self._environments = []
+        for i in range(self.num_environments):
+            env = AsyncGameEnvironment(self.env_factory, self.agent_manager)
+            self._environments.append(env)
+        self._active_games = 0
+        self._total_games_completed = 0
+        self.game_results.clear()
+        self.game_durations.clear()
+
+    async def stop(self, cancel_running: bool = False):
+        """Gracefully stop the pool and all running games."""
+        self._shutdown_event.set()
+        if cancel_running:
+            for game_id, task in list(self._running_tasks.items()):
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._running_tasks.clear()
+        self._active_games = 0
+        self._environments.clear()
+
+    async def run_game(self, game_id: str, env_index: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """
+        Run a single game using a round-robin selected environment.
+
+        Args:
+            game_id: Unique identifier for this game
+            env_index: Optional specific environment index (round-robin if None)
+
+        Returns:
+            Game result dict, or None if pool is shut down
+        """
+        if self._shutdown_event.is_set():
+            return None
+
+        async with self._semaphore:
+            async with self._lock:
+                if self._shutdown_event.is_set():
+                    return None
+
+                if not self._environments:
+                    return None
+
+                if env_index is None:
+                    env_index = self._total_games_completed % len(self._environments)
+
+                env = self._environments[env_index]
+                self._active_games += 1
+
+            try:
+                result = await env.run_game(game_id)
+                result['env_index'] = env_index
+                return result
+            finally:
+                async with self._lock:
+                    self._active_games -= 1
+                    self._total_games_completed += 1
+
+    async def run_games(self,
+                        num_games: int,
+                        game_id_prefix: str = "game") -> List[Dict[str, Any]]:
+        """
+        Run multiple games concurrently, collecting results.
+
+        Args:
+            num_games: Total number of games to run
+            game_id_prefix: Prefix for auto-generated game IDs
+
+        Returns:
+            List of completed game result dicts
+        """
+        game_tasks = []
+        for i in range(num_games):
+            game_id = f"{game_id_prefix}_{i}"
+            task = asyncio.create_task(self.run_game(game_id))
+            self._running_tasks[game_id] = task
+            game_tasks.append(task)
+
+        results = await asyncio.gather(*game_tasks, return_exceptions=True)
+        for task in game_tasks:
+            game_id = None
+            for gid, t in list(self._running_tasks.items()):
+                if t is task:
+                    game_id = gid
+                    break
+            if game_id:
+                self._running_tasks.pop(game_id, None)
+
+        completed = []
+        for result in results:
+            if isinstance(result, Exception):
+                continue
+            if result is not None:
+                completed.append(result)
+                self.game_results.append(result)
+                self.game_durations.append(result.get('duration', 0.0))
+
+        return completed
+
+    async def run_continuous(self,
+                              num_games: Optional[int] = None,
+                              game_id_prefix: str = "game") -> List[Dict[str, Any]]:
+        """
+        Run games continuously, always keeping max_concurrent_games active.
+
+        Spawns a new game as soon as one finishes, until num_games is reached.
+        If num_games is None, runs indefinitely until stop() is called.
+
+        Args:
+            num_games: Total games to run (None = unlimited)
+            game_id_prefix: Prefix for auto-generated game IDs
+
+        Returns:
+            List of completed game result dicts
+        """
+        completed = []
+        counter = 0
+        pending = set()
+
+        async def _launch_one():
+            nonlocal counter
+            async with self._lock:
+                game_id = f"{game_id_prefix}_{counter}"
+                counter += 1
+            task = asyncio.create_task(self.run_game(game_id))
+            pending.add(task)
+            return task
+
+        for _ in range(self.max_concurrent_games):
+            if num_games is not None and counter >= num_games:
+                break
+            await _launch_one()
+
+        while pending:
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                try:
+                    result = task.result()
+                    if result is not None:
+                        completed.append(result)
+                        self.game_results.append(result)
+                        self.game_durations.append(result.get('duration', 0.0))
+                except asyncio.CancelledError:
+                    pass
+
+            if num_games is None or counter < num_games:
+                if not self._shutdown_event.is_set():
+                    await _launch_one()
+
+            if self._shutdown_event.is_set():
+                for t in pending:
+                    t.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+                pending.clear()
+
+        return completed
+
+    async def collect_experiences(self) -> List[Any]:
+        """
+        Collect accumulated game results and flush agent experiences to GlobalBuffer.
+
+        Returns:
+            List of game result dicts since last collection.
+        """
+        # Flush all agent replay buffers to global buffer
+        await self.agent_manager.flush_all_buffers()
+
+        async with self._lock:
+            collected = list(self.game_results)
+            self.game_results.clear()
+            self.game_durations.clear()
+        return collected
+
+    @property
+    def active_games(self) -> int:
+        return self._active_games
+
+    @property
+    def total_games_completed(self) -> int:
+        return self._total_games_completed
+
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get performance statistics for the pool."""
+        durations = self.game_durations
+        avg_duration = float(np.mean(durations)) if durations else 0.0
+        return {
+            'num_environments': self.num_environments,
+            'max_concurrent_games': self.max_concurrent_games,
+            'active_games': self._active_games,
+            'total_games_completed': self._total_games_completed,
+            'avg_game_duration': avg_duration,
+            'total_game_durations_logged': len(durations),
+            'environments_initialized': len(self._environments),
+        }
 
 
 # Factory function for creating enhanced agent setups
