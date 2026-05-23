@@ -4,7 +4,7 @@ Benchmark test: verify that batched GPU inference is faster than sequential.
 
 Directly measures the model-level speedup: one batched initial_inference
 call vs N individual calls with the same total observations. The
-TorchBasedBatchProcessor integration checks are in test_parallel_training.py.
+BatchInferenceServer integration checks are in test_parallel_training.py.
 """
 
 import time
@@ -95,9 +95,9 @@ class TestBatchedInferenceSpeedup:
             )
 
     def test_batched_runs_single_initial_inference(self):
-        """Verify TorchBasedBatchProcessor runs model.initial_inference once per batch."""
+        """Verify BatchInferenceServer runs model.initial_inference once per batch."""
         from Models.enhanced_agent_interface import (
-            TorchBasedBatchProcessor, BatchedInferenceRequest,
+            BatchInferenceServer, InferenceRequest,
         )
         from Models.Common_agents import BaseAgent
 
@@ -127,23 +127,22 @@ class TestBatchedInferenceSpeedup:
                 return [[0, 0, 0] for _ in observations]
 
         agent = TrackingAgent()
-        bp = TorchBasedBatchProcessor(max_batch_size=16, batch_timeout_ms=100.0)
+        bp = BatchInferenceServer(max_batch_size=16, batch_timeout_ms=100.0)
         bp.register_agent_instance(type(agent), agent)
 
         batch_size = 4
-        obs_tensor = torch.from_numpy(
-            np.random.randn(batch_size, config.OBSERVATION_SIZE).astype(np.float32)
-        )
-        batch_req = BatchedInferenceRequest(
-            observations=obs_tensor,
-            masks=[np.ones(54, dtype=bool)] * batch_size,
-            rewards=[0.0] * batch_size,
-            terminated=[False] * batch_size,
-            request_ids=[f"p{i}" for i in range(batch_size)],
-            agent_type=type(agent),
-        )
+        requests = [
+            InferenceRequest(
+                player_id=f"p{i}",
+                observation=np.random.randn(config.OBSERVATION_SIZE).astype(np.float32),
+                mask=np.ones(54, dtype=bool),
+                reward=0.0,
+                terminated=False,
+            )
+            for i in range(batch_size)
+        ]
 
-        bp._run_agent_inference_sync(agent, batch_req)
+        bp._infer_sync(agent, requests)
         assert call_count[0] == 1, (
             f"Expected 1 initial_inference call for batch of {batch_size}, "
             f"got {call_count[0]}"
@@ -153,7 +152,7 @@ class TestBatchedInferenceSpeedup:
     def test_precomputed_results_passed_to_agent(self):
         """Pre-computed results are passed through to batch_select_action."""
         from Models.enhanced_agent_interface import (
-            TorchBasedBatchProcessor, BatchedInferenceRequest,
+            BatchInferenceServer, InferenceRequest,
         )
         from Models.Common_agents import BaseAgent
 
@@ -172,23 +171,22 @@ class TestBatchedInferenceSpeedup:
                 return [[0, 0, 0] for _ in observations]
 
         agent = CaptureAgent()
-        bp = TorchBasedBatchProcessor(max_batch_size=16, batch_timeout_ms=100.0)
+        bp = BatchInferenceServer(max_batch_size=16, batch_timeout_ms=100.0)
         bp.register_agent_instance(type(agent), agent)
 
         batch_size = 4
-        obs_tensor = torch.from_numpy(
-            np.random.randn(batch_size, config.OBSERVATION_SIZE).astype(np.float32)
-        )
-        batch_req = BatchedInferenceRequest(
-            observations=obs_tensor,
-            masks=[np.ones(54, dtype=bool)] * batch_size,
-            rewards=[0.0] * batch_size,
-            terminated=[False] * batch_size,
-            request_ids=[f"p{i}" for i in range(batch_size)],
-            agent_type=type(agent),
-        )
+        requests = [
+            InferenceRequest(
+                player_id=f"p{i}",
+                observation=np.random.randn(config.OBSERVATION_SIZE).astype(np.float32),
+                mask=np.ones(54, dtype=bool),
+                reward=0.0,
+                terminated=False,
+            )
+            for i in range(batch_size)
+        ]
 
-        bp._run_agent_inference_sync(agent, batch_req)
+        bp._infer_sync(agent, requests)
         assert agent.precomputed_received == batch_size, (
             f"Expected {batch_size} precomputed items, got {agent.precomputed_received}"
         )

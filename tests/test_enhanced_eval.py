@@ -6,7 +6,7 @@ import numpy as np
 import asyncio
 import pytest
 from TFTSet4Gym.tft_set4_gym import parallel_env
-from Models.enhanced_agent_interface import create_enhanced_setup, TorchBasedBatchProcessor
+from Models.enhanced_agent_interface import create_enhanced_setup, BatchInferenceServer
 
 pytestmark = pytest.mark.asyncio
 from Models.Common_agents import RandomAgent

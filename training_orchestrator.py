@@ -35,7 +35,7 @@ from Models.enhanced_agent_interface import (
     create_enhanced_setup,
     create_custom_agent_setup,
     AsyncGameEnvironment,
-    TorchBasedBatchProcessor,
+    BatchInferenceServer,
     EnhancedAgentManager,
 )
 from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env

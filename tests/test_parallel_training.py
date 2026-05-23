@@ -20,7 +20,7 @@ from Models.MuZero_torch_agent import MuZeroAgent, create_enhanced_muzero_agent
 from Models.MCTS_torch import TFTState, TFTMove, EnhancedMCTS, create_enhanced_mcts
 from Models.Common_agents import RandomAgent
 from Models.enhanced_agent_interface import (
-    TorchBasedBatchProcessor, EnhancedBatchProcessor,
+    BatchInferenceServer,
     EnhancedAgentManager, BatchedInferenceRequest,
     InferenceRequest, create_enhanced_setup
 )
@@ -65,7 +65,7 @@ class TestBatchedInference:
 
     def test_batch_collection_timeout(self):
         """Batch processor respects timeout when queue is slow."""
-        bp = EnhancedBatchProcessor(max_batch_size=32, batch_timeout_ms=5.0)
+        bp = BatchInferenceServer(max_batch_size=32, batch_timeout_ms=5.0)
         assert bp.max_batch_size == 32
         assert bp.batch_timeout_ms == 5.0
 
@@ -80,7 +80,7 @@ class TestBatchedInference:
 
     def test_batch_fallback_to_select_action(self):
         """When batch_select_action is absent, fallback to per-item select_action."""
-        bp = TorchBasedBatchProcessor(max_batch_size=8)
+        bp = BatchInferenceServer(max_batch_size=8)
         agent = RandomAgent("fallback_test")
         bp.register_agent_instance(RandomAgent, agent)
         assert hasattr(agent, "select_action")
@@ -92,8 +92,8 @@ class TestBatchedInference:
         assert callable(agent.batch_select_action)
 
     def test_processor_detects_batch_select_action(self):
-        """TorchBasedBatchProcessor detects batch_select_action on agent."""
-        bp = TorchBasedBatchProcessor(max_batch_size=8)
+        """BatchInferenceServer detects batch_select_action on agent."""
+        bp = BatchInferenceServer(max_batch_size=8)
         agent = create_enhanced_muzero_agent()
         bp.register_agent_instance(type(agent), agent)
         assert hasattr(agent, "batch_select_action")
@@ -153,10 +153,10 @@ class TestAgentLifecycle:
         assert setup is not None
         mgr, bp = setup
         assert isinstance(mgr, EnhancedAgentManager)
-        assert isinstance(bp, TorchBasedBatchProcessor)
+        assert isinstance(bp, BatchInferenceServer)
 
     def test_register_agent_instance_on_processor(self):
-        bp = TorchBasedBatchProcessor(max_batch_size=8)
+        bp = BatchInferenceServer(max_batch_size=8)
         agent = RandomAgent("proc_test")
         bp.register_agent_instance(RandomAgent, agent)
         assert RandomAgent in bp.agent_instances

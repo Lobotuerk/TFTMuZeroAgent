@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import numpy as np
-from Models.enhanced_agent_interface import EnvironmentPool, EnhancedAgentManager, TorchBasedBatchProcessor, AsyncGameEnvironment
+from Models.enhanced_agent_interface import EnvironmentPool, EnhancedAgentManager, BatchInferenceServer, AsyncGameEnvironment
 from Models.Common_agents import RandomAgent
 import config
 
@@ -29,7 +29,7 @@ def env_factory():
 @pytest.mark.asyncio
 async def test_environment_pool_basic():
     # Setup
-    batch_processor = TorchBasedBatchProcessor(max_batch_size=16)
+    batch_processor = BatchInferenceServer(max_batch_size=16)
     agent_manager = EnhancedAgentManager(batch_processor)
     
     # Register random agents for all players
@@ -63,7 +63,7 @@ async def test_environment_pool_basic():
 @pytest.mark.asyncio
 async def test_environment_pool_continuous():
     # Setup
-    batch_processor = TorchBasedBatchProcessor(max_batch_size=16)
+    batch_processor = BatchInferenceServer(max_batch_size=16)
     agent_manager = EnhancedAgentManager(batch_processor)
     random_agent = RandomAgent("TestRandom")
     agent_manager.setup_agents([(random_agent, 8)])
@@ -89,7 +89,7 @@ async def test_environment_pool_continuous():
 @pytest.mark.asyncio
 async def test_environment_pool_experience_collection():
     # Setup
-    batch_processor = TorchBasedBatchProcessor(max_batch_size=16)
+    batch_processor = BatchInferenceServer(max_batch_size=16)
     agent_manager = EnhancedAgentManager(batch_processor)
     
     # Mock agent with replay buffer

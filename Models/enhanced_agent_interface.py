@@ -351,32 +351,6 @@ class BatchInferenceServer:
         obs = np.asarray(obs, dtype=np.float32)
         return obs.flatten() if obs.ndim > 1 else obs
 
-    # ── backward-compat aliases (used by tests) ─────────────
-    def _run_agent_inference_sync(self, agent, batch_or_requests):
-        """Backward compat: accept BatchedInferenceRequest or List[InferenceRequest]."""
-        if isinstance(batch_or_requests, BatchedInferenceRequest):
-            b = batch_or_requests
-            requests = [
-                InferenceRequest(
-                    player_id=rid,
-                    observation=b.observations[i].cpu().numpy()
-                    if b.observations.numel() > 0
-                    else np.zeros(config.OBSERVATION_SIZE, dtype=np.float32),
-                    mask=b.masks[i] if i < len(b.masks) else np.ones(54, dtype=bool),
-                    reward=b.rewards[i] if i < len(b.rewards) else 0.0,
-                    terminated=b.terminated[i] if i < len(b.terminated) else False,
-                )
-                for i, rid in enumerate(b.request_ids)
-            ]
-        else:
-            requests = batch_or_requests
-        return self._infer_sync(agent, requests)
-
-
-# ── backward-compatible aliases ──────────────────────────────
-EnhancedBatchProcessor = BatchInferenceServer
-TorchBasedBatchProcessor = BatchInferenceServer
-
 
 class EnhancedAgentManager:
     """
