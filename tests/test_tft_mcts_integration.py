@@ -13,8 +13,9 @@ import sys
 import os
 
 # Add paths for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), 'MonteCarloTreeSearch'))
-sys.path.append(os.path.dirname(__file__))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(project_root, 'MonteCarloTreeSearch'))
+sys.path.append(project_root)
 
 try:
     import pymcts

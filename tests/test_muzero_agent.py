@@ -5,8 +5,8 @@ import numpy as np
 import sys
 import os
 
-# Add the current directory to the path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add the parent directory to the path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from Models.MuZero_torch_agent import MuZeroAgent, create_enhanced_muzero_agent
 
