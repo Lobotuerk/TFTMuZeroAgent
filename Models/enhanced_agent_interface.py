@@ -482,25 +482,7 @@ class TorchBasedBatchProcessor(EnhancedBatchProcessor):
                 observations.append(np.zeros((2504,)))
                 masks.append(np.ones(54, dtype=bool))
 
-        if has_batch_api:
-            try:
-                return agent.batch_select_action(observations, masks)
-            except Exception as e:
-                print(f"batch_select_action failed, falling back: {e}")
-
-        # Final fallback: per-item select_action calls
-        actions = []
-        for i, obs in enumerate(observations):
-            try:
-                if hasattr(agent, 'select_action'):
-                    action = agent.select_action(obs, masks[i])
-                    actions.append(action)
-                else:
-                    actions.append([0, 0, 0])
-            except Exception as e:
-                print(f"Error in agent inference for request {i}: {e}")
-                actions.append([0, 0, 0])
-        return actions
+        return agent.batch_select_action(observations, masks)
     
     def _fallback_inference(self, agent: Any, batch: BatchedInferenceRequest) -> List[Any]:
         """Fallback for agents that don't support batching"""
