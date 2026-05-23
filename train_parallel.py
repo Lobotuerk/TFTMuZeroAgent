@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import config
 from Models.MuZero_torch_agent import MuZeroAgent
 from Models.enhanced_agent_interface import (
-    TorchBasedBatchProcessor,
+    BatchInferenceServer,
     EnhancedAgentManager,
     AsyncGameEnvironment,
     create_enhanced_setup,
@@ -37,8 +37,8 @@ async def train_loop(
 ):
     """Main training loop with parallel environments and batched GPU inference."""
 
-    # Create the batch processor with PyTorch-optimized batching
-    batch_processor = TorchBasedBatchProcessor(
+    # Create the batch inference server with PyTorch-optimized batching
+    batch_processor = BatchInferenceServer(
         max_batch_size=config.NUM_PLAYERS,
         batch_timeout_ms=batch_timeout_ms,
         gpu_memory_fraction=0.7,
@@ -47,12 +47,11 @@ async def train_loop(
     # Create agent manager
     agent_manager = EnhancedAgentManager(batch_processor)
 
-    # Register agents
+    # Register agents (register_agent auto-registers with the server)
     muzero_agent = MuZeroAgent(
         agent_name="MuZeroAgent",
         global_buffer=None,
     )
-    batch_processor.register_agent_instance(type(muzero_agent), muzero_agent)
     agent_manager.register_agent(muzero_agent, [f"player_{i}" for i in range(1)])
 
     random_agent = RandomAgent("RandomAgent")
