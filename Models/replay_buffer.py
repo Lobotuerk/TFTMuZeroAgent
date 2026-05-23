@@ -1,6 +1,5 @@
 import numpy as np
 import config
-import asyncio
 from typing import List, Any, Optional, Union, Dict
 
 
@@ -74,7 +73,7 @@ class ReplayBuffer:
             
         self.reset()
     
-    async def move_buffer_to_global_async(self):
+    async def move_buffer_to_global_async(self, final_value):
         """Async version of move_buffer_to_global for better performance"""
         replay_set = []
 
