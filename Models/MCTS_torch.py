@@ -105,26 +105,33 @@ class TFTState(MCTS_StateBase):
         mask = np.zeros((54,), dtype=bool)  # Default allowing most actions for TFTSet4Gym
         return mask
     
-    def get_action_probabilities(self, moves: List[TFTMove]) -> List[float]:
+    def get_action_probabilities(self, moves: Optional[List[TFTMove]] = None) -> List[float]:
         """Return softmax-normalized policy probabilities for each move.
         
         These probabilities are consumed by the PyMCTS PUCT engine for
         PUCT-based exploration (Q + c*P*sqrt(N)/(1+N)).
         
         Args:
-            moves: List of TFTMove to evaluate
+            moves: List of TFTMove to evaluate. If None, uses actions_to_try().
             
         Returns:
             List of probability values summing to 1.0
         """
+        if moves is None:
+            moves = self.actions_to_try()
+
         if not hasattr(self, 'policy') or self.policy is None:
             return [1.0 / len(moves)] * len(moves)
+
+        policy = self.policy
+        if policy.ndim > 1:
+            policy = policy[-1]
 
         scores = []
         for move in moves:
             idx = move.index
-            if 0 <= idx < len(self.policy):
-                scores.append(float(self.policy[idx]))
+            if 0 <= idx < len(policy):
+                scores.append(float(policy[idx]))
             else:
                 scores.append(0.0)
 
