@@ -87,7 +87,8 @@ class TFTState(MCTS_StateBase):
         elif is_raw_observation:
             if self.network is not None:
                 with torch.no_grad():
-                    input_obs = torch.tensor(observation, dtype=torch.float32).unsqueeze(0)
+                    device = next(self.network.parameters()).device if self.network is not None else torch.device('cpu')
+                    input_obs = torch.tensor(observation, dtype=torch.float32).unsqueeze(0).to(device)
                     network_output = self.network.initial_inference(input_obs)
                     self.hidden_state = network_output["hidden_state"].squeeze(0).cpu().numpy()
                     self.policy = network_output["policy_logits"].squeeze(0).cpu().numpy()
