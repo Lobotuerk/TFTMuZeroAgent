@@ -2,7 +2,7 @@
 Enhanced Agent Interface for TFT MuZero Agent
 
 This module provides improved batching, GPU utilization, and agent management
-compared to the original AI_interface.py Agregator class.
+compared to the original training_orchestrator.TrainingOrchestrator.
 
 """
 

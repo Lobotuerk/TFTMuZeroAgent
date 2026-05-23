@@ -23,13 +23,13 @@ async def test_enhanced_ai_interface():
         
         # Test imports
         print("1. Testing imports...")
-        from AI_interface import (
-            EnhancedAIInterface, 
+        from training_orchestrator import (
+            TrainingOrchestrator,
             TrainingConfig,
-            run_quick_evaluation,
-            create_training_interface
+            quick_evaluation,
+            create_orchestrator
         )
-        print("   ✓ Enhanced AI Interface imports successful")
+        print("   ✓ TrainingOrchestrator imports successful")
         
         # Test configuration
         print("2. Testing configuration...")
@@ -41,15 +41,15 @@ async def test_enhanced_ai_interface():
         )
         print(f"   ✓ Training config created: {config.concurrent_games} concurrent games")
         
-        # Test interface creation
-        print("3. Testing interface creation...")
-        interface = create_training_interface(config)
-        print("   ✓ Enhanced AI Interface created")
+        # Test orchestrator creation
+        print("3. Testing orchestrator creation...")
+        orchestrator = create_orchestrator(config)
+        print("   ✓ TrainingOrchestrator created")
         
         # Test quick evaluation
         print("4. Testing quick evaluation...")
         try:
-            results = await run_quick_evaluation(num_games=2, concurrent_games=1)
+            results = await quick_evaluation(num_games=2, concurrent=1)
             print(f"   ✓ Quick evaluation completed with {len(results)} games")
             
             # Print some results
@@ -63,11 +63,7 @@ async def test_enhanced_ai_interface():
             print(f"   ⚠️ Quick evaluation had issues: {e}")
             print("   This might be expected if global buffer is not properly initialized")
         
-        # Test legacy interface
-        print("5. Testing legacy interface...")
-        from AI_interface import AIInterface, create_legacy_interface
-        legacy_interface = create_legacy_interface()
-        print("   ✓ Legacy interface created for backward compatibility")
+        # Test legacy interface (removed - use TrainingOrchestrator directly)
         
         # Test simulator test method
         print("6. Testing simulator methods...")
@@ -83,12 +79,12 @@ async def test_enhanced_ai_interface():
         print("🎉 Enhanced AI Interface test completed!")
         print()
         print("Summary:")
-        print("✅ Enhanced AI Interface imports working")
+        print("✅ TrainingOrchestrator imports working")
         print("✅ Configuration system working")
-        print("✅ Interface creation working")
+        print("✅ Orchestrator creation working")
         print("✅ Async evaluation framework ready")
-        print("✅ Legacy compatibility maintained")
         print("✅ No Ray dependency (replaced with native async/await)")
+        print("✅ AI_interface.py removed (fully transitioned to TrainingOrchestrator)")
         
         return True
         
@@ -101,10 +97,10 @@ async def test_enhanced_ai_interface():
 if __name__ == "__main__":
     success = asyncio.run(test_enhanced_ai_interface())
     if success:
-        print("\n✅ Enhanced AI Interface is ready for use!")
+        print("\n✅ TrainingOrchestrator is ready for use!")
         print("\nNext steps:")
-        print("1. Run: python AI_interface.py  # for quick test")
-        print("2. Use: interface.train_torch_model()  # for training")
-        print("3. Use: await run_quick_evaluation()  # for evaluation")
+        print("1. Use: orchestrator = create_orchestrator()  # create orchestrator")
+        print("2. Use: await orchestrator.run()  # for training")
+        print("3. Use: await quick_evaluation()  # for evaluation")
     else:
-        print("\n❌ Enhanced AI Interface needs further fixes.")
+        print("\n❌ TrainingOrchestrator needs further fixes.")
