@@ -1,66 +1,129 @@
-import config
-import time
+"""Tests for GlobalBuffer with focus on the synchronous (use_async=False) path."""
+
+import sys
+import os
+import asyncio
+import pytest
 import numpy as np
-from collections import deque
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from Models.global_buffer import GlobalBuffer, create_global_buffer
 
 
-class GlobalBuffer:
-    def __init__(self):
-        self.gameplay_experiences = deque(maxlen=25000)
-        self.batch_size = config.BATCH_SIZE
+@pytest.fixture
+def buffer():
+    return GlobalBuffer(batch_size=4)
 
-    def sample_batch(self):
-        # Returns: a batch of gameplay experiences without regard to which agent.
-        obs_tensor_batch, action_history_batch, target_value_batch, policy_mask_batch = [], [], [], []
-        target_reward_batch, target_policy_batch, value_mask_batch, reward_mask_batch = [], [], [], []
-        sample_set_batch = []
-        for gameplay_experience in range(self.batch_size):
-            observation, action_history, value_mask, reward_mask, policy_mask,\
-                value, reward, policy, sample_set = self.gameplay_experiences.popleft()
-            obs_tensor_batch.append(observation)
-            action_history_batch.append(action_history[1:])
-            value_mask_batch.append(value_mask)
-            reward_mask_batch.append(reward_mask)
-            policy_mask_batch.append(policy_mask)
-            target_value_batch.append(value)
-            target_reward_batch.append(reward)
-            target_policy_batch.append(policy)
-            sample_set_batch.append(sample_set)
 
-        observation_batch = np.squeeze(np.asarray(obs_tensor_batch))
-        action_history_batch = np.asarray(action_history_batch)
-        target_value_batch = np.asarray(target_value_batch).astype('float32')
-        target_reward_batch = np.asarray(target_reward_batch).astype('float32')
-        value_mask_batch = np.asarray(value_mask_batch).astype('float32')
-        reward_mask_batch = np.asarray(reward_mask_batch).astype('float32')
-        policy_mask_batch = np.asarray(policy_mask_batch).astype('float32')
+def test_create_global_buffer_defaults():
+    buf = create_global_buffer()
+    assert buf is not None
+    assert buf.batch_size > 0
 
-        return [observation_batch, action_history_batch, value_mask_batch, reward_mask_batch, policy_mask_batch,
-                target_value_batch, target_reward_batch, target_policy_batch, sample_set_batch]
 
-    def store_replay_sequence(self, sample):
-        # Records a single step of gameplay experience
-        # First few are self-explanatory
-        # done is boolean if game is done after taking said action
-        self.gameplay_experiences.append(sample)
+def test_create_global_buffer_custom_batch_size():
+    buf = create_global_buffer(batch_size=16)
+    assert buf.batch_size == 16
 
-    def available_batch(self):
-        queue_length = len(self.gameplay_experiences)
-        if queue_length >= self.batch_size:
-            return True
-        return False
 
-    # Leaving this transpose method here in case some model other than
-    # MuZero requires this in the future.
-    def transpose(self, matrix):
-        rows = len(matrix)
-        columns = len(matrix[0])
+def test_initial_buffer_empty(buffer):
+    assert buffer.get_gameplay_buffer_size() == 0
+    assert buffer.get_combat_buffer_size() == 0
+    assert buffer.available_gameplay_batch() is False
 
-        matrix_T = []
-        for j in range(columns):
-            row = []
-            for i in range(rows):
-                row.append(matrix[i][j])
-            matrix_T.append(row)
 
-        return matrix_T
+def test_store_and_check_gameplay(buffer):
+    sample = [(np.array([1.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+    buffer.store_episode(sample)
+    assert buffer.get_gameplay_buffer_size() == 1
+
+
+def test_store_episode_sync(buffer):
+    sample = [(np.array([1.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+    buffer.store_episode_sync(sample)
+    assert buffer.get_gameplay_buffer_size() == 1
+
+
+def test_store_episode_async(buffer):
+    sample = [(np.array([1.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+    asyncio.run(buffer.store_episode_async(sample))
+    assert buffer.get_gameplay_buffer_size() == 1
+
+
+def test_available_gameplay_batch_true(buffer):
+    sample = [(np.array([1.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+    buffer.store_episode(sample * 4)
+    assert buffer.available_gameplay_batch() is True
+
+
+def test_read_gameplay_batch(buffer):
+    for _ in range(4):
+        sample = [(np.array([1.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+        buffer.store_episode(sample)
+    batch = buffer.read_gameplay_batch()
+    assert batch is not None
+    assert len(batch) == 5
+
+
+def test_clear_gameplay_buffer(buffer):
+    sample = [(np.array([1.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+    buffer.store_episode(sample * 4)
+    buffer.clear_gameplay_buffer()
+    assert buffer.get_gameplay_buffer_size() == 0
+
+
+def test_store_and_check_combat(buffer):
+    combat_sample = (np.array([1.0]), np.array([0]))
+    buffer.store_combat(combat_sample)
+    assert buffer.get_combat_buffer_size() == 1
+
+
+def test_available_combat_batch(buffer):
+    combat_sample = (np.array([1.0]), np.array([0]))
+    buffer.store_combat(combat_sample)
+    assert buffer.available_combat_batch() is True
+
+
+def test_read_combat_batch(buffer):
+    for _ in range(4):
+        buffer.store_combat((np.array([1.0]), np.array([0])))
+    batch = buffer.read_combat_batch()
+    assert batch is not None
+    assert len(batch) == 2
+
+
+def test_clear_combat_buffer(buffer):
+    buffer.store_combat((np.array([1.0]), np.array([0])))
+    buffer.clear_combat_buffer()
+    assert buffer.get_combat_buffer_size() == 0
+
+
+def test_sample_gameplay_batch_insufficient(buffer):
+    batch = buffer.sample_gameplay_batch(10)
+    assert batch is None
+
+
+def test_sample_combat_batch_insufficient(buffer):
+    batch = buffer.sample_combat_batch(10)
+    assert batch is None
+
+
+def test_sample_gameplay_batch_shape(buffer):
+    for _ in range(8):
+        sample = [(np.array([1.0, 2.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+        buffer.store_episode(sample)
+    batch = buffer.sample_gameplay_batch(4)
+    assert batch is not None
+    obs, actions, values, rewards, policies = batch
+    assert len(obs) == 4
+    assert len(actions) == 4
+
+
+def test_store_episode_large(buffer):
+    many_samples = [
+        (np.array([float(i)]), np.array([i]), np.array([0.5]), np.array([0.1]), np.array([0.2]))
+        for i in range(100)
+    ]
+    buffer.store_episode(many_samples)
+    assert buffer.get_gameplay_buffer_size() == 100

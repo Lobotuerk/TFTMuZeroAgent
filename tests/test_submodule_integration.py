@@ -1,32 +1,33 @@
-#!/usr/bin/env python3
-"""
-Quick test to verify that the TFTSet4Gym package integration works correctly.
-"""
+"""Tests for TFTSet4Gym submodule integration."""
 
 import sys
 import os
+import pytest
 
-try:
-    # Match import style used in other tests
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'TFTSet4Gym'))
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(parent_dir, "TFTSet4Gym"))
+
+
+def test_import_parallel_env():
     from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
-    sys.path.pop(0)
-    print("✅ Successfully imported parallel_env from installed package")
-    
-    # Test creating an environment
+    assert parallel_env is not None
+
+
+def test_create_environment():
+    from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
     env = parallel_env()
-    print("✅ Successfully created TFT environment")
-    
-    # Test reset
+    assert env is not None
+    assert hasattr(env, "reset")
+    assert hasattr(env, "step")
+    assert hasattr(env, "possible_agents")
+
+
+def test_environment_reset():
+    from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
+    env = parallel_env()
     observations, infos = env.reset()
-    print(f"✅ Environment reset successful. Agents: {list(observations.keys())}")
-    
-    print("\n🎉 Package integration test PASSED!")
-    
-except ImportError as e:
-    print(f"❌ Import error: {e}")
-    print("Make sure the TFTSet4Gym package is installed: pip install -e TFTSet4Gym/")
-    exit(1)
-except Exception as e:
-    print(f"❌ Runtime error: {e}")
-    exit(1)
+    assert isinstance(observations, dict)
+    assert len(observations) > 0
+    for pid in observations:
+        assert "tensor" in observations[pid]
+        assert "action_mask" in observations[pid]
