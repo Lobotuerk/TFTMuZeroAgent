@@ -102,10 +102,18 @@ async def test_enhanced_episode_with_mixed_agents():
             for agent in env.agents:
                 if agent in observations_dict:
                     obs_data = observations_dict[agent]
+                    # Correctly handle dictionary observations from TFT simulator
+                    if isinstance(obs_data, dict) and 'tensor' in obs_data:
+                        tensor_data = obs_data['tensor']
+                        mask_data = obs_data.get('action_mask', getattr(env, 'action_mask', lambda x: None)(agent))
+                    else:
+                        tensor_data = obs_data
+                        mask_data = getattr(env, 'action_mask', lambda x: None)(agent)
+
                     # Convert observation to expected format
                     enhanced_observations[agent] = {
-                        'tensor': obs_data,  # Raw observation tensor
-                        'action_mask': getattr(env, 'action_mask', lambda x: None)(agent)  # Get action mask if available
+                        'tensor': tensor_data,
+                        'action_mask': mask_data
                     }
             
             # Get actions using enhanced agent manager (async call)

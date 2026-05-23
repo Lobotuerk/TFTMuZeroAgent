@@ -341,24 +341,10 @@ class BatchInferenceServer:
         return batch, masks
 
     @staticmethod
-    def _as_safe_float32(arr: np.ndarray) -> np.ndarray:
-        if not isinstance(arr, np.ndarray):
-            arr = np.array(arr, dtype=np.float32)
-        if arr.dtype == np.object_:
-            try:
-                arr = arr.astype(np.float32)
-            except (ValueError, TypeError):
-                flat = arr.flatten()
-                numeric = []
-                for item in flat:
-                    try:
-                        numeric.append(float(item))
-                    except (ValueError, TypeError):
-                        numeric.append(0.0)
-                arr = np.array(numeric, dtype=np.float32).reshape(arr.shape)
-        elif arr.dtype not in (np.float32, np.float64, np.int32, np.int64, np.bool_):
-            arr = arr.astype(np.float32)
-        return arr
+    def _as_safe_float32(arr: Any) -> np.ndarray:
+        if isinstance(arr, torch.Tensor):
+            arr = arr.detach().cpu().numpy()
+        return np.asarray(arr, dtype=np.float32)
 
     @staticmethod
     def _obs_to_flat(obs: np.ndarray) -> np.ndarray:
@@ -437,6 +423,7 @@ class EnhancedAgentManager:
                           rewards: Dict[str, float],
                           terminated: Dict[str, bool]) -> Dict[str, Any]:
         tasks = []
+        player_ids = []
         for player_id, obs in observations.items():
             agent_type = self.player_to_agent.get(player_id)
             if agent_type is None:
@@ -449,12 +436,13 @@ class EnhancedAgentManager:
                 rewards.get(player_id, 0.0),
                 terminated.get(player_id, False),
             )
-            tasks.append((player_id, task))
+            tasks.append(task)
+            player_ids.append(player_id)
 
-        actions = {}
-        for pid, task in tasks:
-            actions[pid] = await task
-        return actions
+        # Use asyncio.gather to submit all requests concurrently, enabling batching
+        results = await asyncio.gather(*tasks)
+        
+        return {pid: result for pid, result in zip(player_ids, results)}
 
     def get_performance_stats(self) -> Dict[str, Any]:
         return self.batch_processor.get_performance_stats()
