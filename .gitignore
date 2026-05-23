@@ -105,6 +105,7 @@ Thumbs.db
 # Project specific
 data/
 logs/
+test_logs/
 log.txt
 log_*.txt
 SavedModels/
