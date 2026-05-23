@@ -12,14 +12,16 @@ import os
 # Add project root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from Models.MCTS_torch import MCTS, EnhancedTFTState
+import config
+
+from Models.MCTS_torch import EnhancedMCTS, TFTState
 from Models.tft_mcts import create_tft_state_from_env
 
 
 class DemoNetwork(nn.Module):
     """Demo neural network with multiple inference methods."""
     
-    def __init__(self, obs_size=128, hidden_size=64):
+    def __init__(self, obs_size=config.OBSERVATION_SIZE, hidden_size=64):
         super().__init__()
         self.obs_size = obs_size
         self.hidden_size = hidden_size
@@ -35,7 +37,7 @@ class DemoNetwork(nn.Module):
         self.policy_net = nn.Sequential(
             nn.Linear(obs_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 10)  # 10 action types
+            nn.Linear(hidden_size, 1134)  # Matches ACTION_CONCAT_SIZE
         )
         
         self._training_steps = 100
@@ -50,15 +52,32 @@ class DemoNetwork(nn.Module):
     
     def initial_inference(self, x):
         """MuZero-style initial inference."""
+        # Handle sequence of observations if necessary
+        if len(x.shape) == 3: # (batch, seq, obs)
+            x = x[:, -1, :] # Take last observation
+            
         value = self.value_function(x)
         policy_logits = self.policy_net(x)
         
         return {
             'value': value,
-            'policy_logits': [policy_logits],
+            'policy_logits': policy_logits,
             'reward': torch.zeros_like(value),
             'hidden_state': x
         }
+    
+    def recurrent_inference(self, hidden_state, action):
+        """MuZero-style recurrent inference."""
+        return {
+            'value': self.value_function(hidden_state),
+            'policy_logits': self.policy_net(hidden_state),
+            'reward': torch.zeros((hidden_state.shape[0], 1)),
+            'hidden_state': hidden_state
+        }
+    
+    def prediction(self, x):
+        """Prediction for hidden states."""
+        return self.policy_net(x), self.value_function(x)
     
     def training_steps(self):
         """Get training steps."""
@@ -70,30 +89,28 @@ def demo_basic_functionality():
     print("=== DEMO: Basic MCTS Functionality ===\n")
     
     # Create network and MCTS
-    network = DemoNetwork(obs_size=128)
-    mcts = MCTS(
-        network=network,
+    network = DemoNetwork()
+    mcts = EnhancedMCTS(
         sample_size=30,
-        action_size=5,
-        policy_size=200,
-        max_simulations=10
+        action_size=3,
+        action_limits=[7, 37, 10],
+        policy_size=1134,
+        network=network
     )
     
     print(f"🔧 Initialized MCTS with:")
     print(f"   - Network: {type(network).__name__}")
     print(f"   - Sample size: {mcts.sample_size}")
-    print(f"   - Max simulations: {mcts.max_simulations}")
+    print(f"   - Action size: {mcts.action_size}")
     print(f"   - Policy size: {mcts.policy_size}")
     
     # Test enhanced state rollout
-    observations = {
-        "player_0": np.random.random(128),
-        "player_1": np.random.random(128)
-    }
+    observation = np.random.random(config.OBSERVATION_SIZE)
+    mask = np.zeros(54, dtype=bool)
     
-    enhanced_state = EnhancedTFTState(
-        observations=observations,
-        current_player="player_0",
+    enhanced_state = TFTState(
+        observation=observation,
+        mask=mask,
         network=network
     )
     
@@ -101,7 +118,7 @@ def demo_basic_functionality():
     print(f"\n🎲 Enhanced rollout value: {rollout_value:.4f}")
     
     # Test statistics
-    stats = mcts.get_statistics()
+    stats = mcts.get_stats()
     print(f"📊 Initial statistics: {stats}")
     
     print("✅ Basic functionality demo completed\n")
@@ -112,35 +129,29 @@ def demo_action_generation():
     print("=== DEMO: Action Generation ===\n")
     
     network = DemoNetwork()
-    mcts = MCTS(network=network, max_simulations=5)
+    mcts = EnhancedMCTS(
+        sample_size=30,
+        action_size=3,
+        action_limits=[7, 37, 10],
+        policy_size=1134,
+        network=network
+    )
     
-    # Mock TFT observations
-    observations = {
-        "player_0": np.random.random(128),
-        "player_1": np.random.random(128),
-        "player_2": np.random.random(128)
-    }
+    # Mock TFT observation and mask
+    observation = np.random.random(config.OBSERVATION_SIZE)
+    mask = np.zeros(54, dtype=bool)
     
-    print("🎮 Generating actions for multiple scenarios...")
+    print("🎮 Generating actions...")
     
-    # Scenario 1: Single player action
-    action, policy, info = mcts.generate_action(observations, player_id="player_0")
-    print(f"\n   Player 0 Action: {action}")
+    # Scenario: Generate action
+    action, policy = mcts.generate_action(n_simulations=5, observation=observation, mask=mask)
+    policy = np.array(policy)
+    print(f"\n   Generated Action: {action}")
     print(f"   Policy shape: {policy.shape}")
-    print(f"   Info: {info}")
     
-    # Scenario 2: Different player
-    action, policy, info = mcts.generate_action(observations, player_id="player_1")
-    print(f"\n   Player 1 Action: {action}")
-    print(f"   Move type: {info['move_type']}")
-    print(f"   Confidence: {info['confidence']}")
-    
-    # Test move parsing
-    print("\n🔍 Testing move parsing:")
-    test_moves = ['reroll_shop', 'level_experience', 'buy_unit_3', 'sell_unit_1', 'unknown']
-    for move in test_moves:
-        parsed = mcts._parse_mcts_move(move)
-        print(f"   '{move}' -> {parsed['action']} (type: {parsed['type']}, conf: {parsed['confidence']})")
+    # Get stats
+    stats = mcts.get_stats()
+    print(f"\n📊 Generation statistics: {stats}")
     
     print("\n✅ Action generation demo completed\n")
 
@@ -149,56 +160,75 @@ def demo_network_integration():
     """Demo different network integration patterns."""
     print("=== DEMO: Network Integration Patterns ===\n")
     
-    # Pattern 1: Value function network
-    class ValueNetwork(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.value_head = nn.Linear(128, 1)
-        
-        def value_function(self, x):
-            return torch.sigmoid(self.value_head(x))
-    
-    # Pattern 2: MuZero-style network
+    # Pattern 1: MuZero-style network (compatible with TFTState)
     class MuZeroNetwork(nn.Module):
         def __init__(self):
             super().__init__()
-            self.value_head = nn.Linear(128, 1)
-            self.policy_head = nn.Linear(128, 10)
+            self.value_head = nn.Linear(config.OBSERVATION_SIZE, 1)
+            self.policy_head = nn.Linear(config.OBSERVATION_SIZE, 1134)
+            self.hidden_head = nn.Linear(config.OBSERVATION_SIZE, config.OBSERVATION_SIZE)
         
         def initial_inference(self, x):
+            if len(x.shape) == 3: x = x[:, -1, :]
             return {
                 'value': torch.sigmoid(self.value_head(x)),
-                'policy_logits': [self.policy_head(x)],
-                'reward': torch.zeros(x.shape[0], 1)
+                'policy_logits': self.policy_head(x),
+                'reward': torch.zeros(x.shape[0], 1),
+                'hidden_state': self.hidden_head(x)
             }
-    
-    # Pattern 3: Simple network
-    class SimpleNetwork(nn.Module):
+        
+        def recurrent_inference(self, hidden_state, action):
+            return {
+                'value': torch.sigmoid(self.value_head(hidden_state)),
+                'policy_logits': self.policy_head(hidden_state),
+                'reward': torch.zeros(hidden_state.shape[0], 1),
+                'hidden_state': self.hidden_head(hidden_state)
+            }
+
+    # Pattern 2: Prediction-style network
+    class PredictionNetwork(nn.Module):
         def __init__(self):
             super().__init__()
-            self.net = nn.Linear(128, 1)
+            self.value_head = nn.Linear(config.OBSERVATION_SIZE, 1)
+            self.policy_head = nn.Linear(config.OBSERVATION_SIZE, 1134)
         
-        def forward(self, x):
-            return torch.sigmoid(self.net(x))
-    
+        def prediction(self, x):
+            return self.policy_head(x), torch.sigmoid(self.value_head(x))
+            
+        def initial_inference(self, x):
+            if len(x.shape) == 3: x = x[:, -1, :]
+            return {
+                'value': torch.sigmoid(self.value_head(x)),
+                'policy_logits': self.policy_head(x),
+                'reward': torch.zeros(x.shape[0], 1),
+                'hidden_state': x
+            }
+            
+        def recurrent_inference(self, hidden_state, action):
+            return {'hidden_state': hidden_state}
+
     networks = [
-        ("Value Function", ValueNetwork()),
         ("MuZero Style", MuZeroNetwork()),
-        ("Simple Forward", SimpleNetwork())
+        ("Prediction Style", PredictionNetwork())
     ]
     
-    observations = {
-        "player_0": np.random.random(128)
-    }
+    observation = np.random.random(config.OBSERVATION_SIZE)
+    mask = np.zeros(54, dtype=bool)
     
     for name, network in networks:
         print(f"🧠 Testing {name} network:")
-        mcts = MCTS(network=network, max_simulations=3)
+        mcts = EnhancedMCTS(
+            sample_size=10, 
+            action_size=3, 
+            action_limits=[7, 37, 10], 
+            policy_size=1134, 
+            network=network
+        )
         
-        # Create enhanced state and test rollout
-        state = EnhancedTFTState(
-            observations=observations,
-            current_player="player_0",
+        # Create state and test rollout
+        state = TFTState(
+            observation=observation,
+            mask=mask,
             network=network
         )
         
@@ -207,11 +237,10 @@ def demo_network_integration():
         
         # Test action generation
         try:
-            action, policy, info = mcts.generate_action(observations)
+            action, policy = mcts.generate_action(n_simulations=3, observation=observation, mask=mask)
             print(f"   Generated action: {action}")
-            print(f"   Confidence: {info.get('confidence', 'N/A')}")
         except Exception as e:
-            print(f"   Action generation: {str(e)[:50]}...")
+            print(f"   Action generation failed: {str(e)[:100]}")
         
         print()
     
@@ -223,20 +252,25 @@ def demo_performance_tracking():
     print("=== DEMO: Performance Tracking ===\n")
     
     network = DemoNetwork()
-    mcts = MCTS(network=network)
+    mcts = EnhancedMCTS(
+        sample_size=30,
+        action_size=3,
+        action_limits=[7, 37, 10],
+        policy_size=1134,
+        network=network
+    )
     
-    observations = {"player_0": np.random.random(128)}
+    observation = np.random.random(config.OBSERVATION_SIZE)
+    mask = np.zeros(54, dtype=bool)
     
     print("📈 Running multiple actions to track performance:")
     
     for i in range(5):
-        action, policy, info = mcts.generate_action(observations)
-        temp = mcts.visit_softmax_temperature()
-        
-        print(f"   Action {i+1}: {action} (temp: {temp:.3f}, confidence: {info.get('confidence', 'N/A')})")
+        action, policy = mcts.generate_action(n_simulations=2, observation=observation, mask=mask)
+        print(f"   Action {i+1}: {action}")
     
     # Get final statistics
-    stats = mcts.get_statistics()
+    stats = mcts.get_stats()
     print(f"\n📊 Final statistics:")
     for key, value in stats.items():
         print(f"   {key}: {value}")

@@ -94,7 +94,8 @@ class TFTState(MCTS_StateBase):
                     self.value = network_output["value"].squeeze(0).cpu().numpy()
         else:
             with torch.no_grad():
-                input_obs = torch.tensor(observation, dtype=torch.float32).unsqueeze(0).cuda()
+                device = next(self.network.parameters()).device if self.network is not None else torch.device('cpu')
+                input_obs = torch.tensor(observation, dtype=torch.float32).unsqueeze(0).to(device)
                 self.hidden_state = observation
                 self.policy, self.value = self.network.prediction(input_obs)
                 self.policy = self.policy.squeeze(0).cpu().numpy()
@@ -105,18 +106,21 @@ class TFTState(MCTS_StateBase):
         mask = np.zeros((54,), dtype=bool)  # Default allowing most actions for TFTSet4Gym
         return mask
     
-    def get_action_probabilities(self, moves: List[TFTMove]) -> List[float]:
+    def get_action_probabilities(self, moves: Optional[List[TFTMove]] = None) -> List[float]:
         """Return softmax-normalized policy probabilities for each move.
         
         These probabilities are consumed by the PyMCTS PUCT engine for
         PUCT-based exploration (Q + c*P*sqrt(N)/(1+N)).
         
         Args:
-            moves: List of TFTMove to evaluate
+            moves: List of TFTMove to evaluate. If None, uses actions_to_try().
             
         Returns:
             List of probability values summing to 1.0
         """
+        if moves is None:
+            moves = self.actions_to_try()
+
         if not hasattr(self, 'policy') or self.policy is None:
             return [1.0 / len(moves)] * len(moves)
 
@@ -170,20 +174,31 @@ class TFTState(MCTS_StateBase):
         """Get the state resulting from applying the given move"""
 
         new_mask = self.mask.copy()
+        precomputed = None
+        new_observation = self.hidden_state.copy()
         
         # Use muzero model to predict next state
         if self.network is not None:
             with torch.no_grad():
-                input_obs = torch.tensor(self.hidden_state, dtype=torch.float32).unsqueeze(0)
+                device = next(self.network.parameters()).device
+                input_obs = torch.tensor(self.hidden_state, dtype=torch.float32).unsqueeze(0).to(device)
                 
                 network_output = self.network.recurrent_inference(input_obs, move.to_numpy())
                 new_observation = network_output["hidden_state"].squeeze(0).cpu().numpy()
+
+                # If recurrent_inference provides policy and value, use them!
+                if "policy_logits" in network_output and "value" in network_output:
+                    precomputed = {
+                        "hidden_state": new_observation,
+                        "policy": network_output["policy_logits"].squeeze(0).cpu().numpy(),
+                        "value": network_output["value"].squeeze(0).cpu().numpy()
+                    }
         
-        return TFTState(new_observation, new_mask, self.network, is_raw_observation=False)
+        return TFTState(new_observation, new_mask, self.network, is_raw_observation=False, precomputed=precomputed)
     
     def rollout(self) -> float:
         """Perform rollout based on policy distribution"""
-        return self.value
+        return float(self.value.item())
         
     
     def is_terminal(self) -> bool:
