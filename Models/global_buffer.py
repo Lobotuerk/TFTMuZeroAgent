@@ -15,19 +15,25 @@ class GlobalBuffer:
     def sample_gameplay_batch(self, batch_size):
         with self._lock:
             observation_batch = []
+            action_batch = []
             value_batch = []
+            reward_batch = []
             policy_batch = []
             for _ in range(min(batch_size, len(self.gameplay_experiences))):
                 if not self.gameplay_experiences:
                     break
-                observation, value, policy = self.gameplay_experiences.pop()
+                observation, action, value, reward, policy = self.gameplay_experiences.popleft()
                 observation_batch.append(observation)
+                action_batch.append(action)
                 value_batch.append(value)
+                reward_batch.append(reward)
                 policy_batch.append(policy)
 
             return [
                 np.array(observation_batch),
+                np.array(action_batch),
                 np.array(value_batch),
+                np.array(reward_batch),
                 np.array(policy_batch)
             ]
     
@@ -62,7 +68,7 @@ class GlobalBuffer:
             self.combat_experiences.append(sample)
 
     def available_gameplay_batch(self):
-        return len(self.gameplay_experiences) > 0
+        return len(self.gameplay_experiences) >= self.batch_size
     
     def available_combat_batch(self):
         return len(self.combat_experiences) > 0

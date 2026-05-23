@@ -215,9 +215,9 @@ class BaseAgent:
             actions.append(action)
         return actions
     
-    def _store_experience(self, observation = [], policy = [], value = 0, reward = 0, terminated = False):
+    def _store_experience(self, observation=None, policy=None, value=0, reward=0, terminated=False, action=None):
         if self.replay_buffer is not None:
-            self.replay_buffer.store_step(observation=observation, policy=policy, value=value)
+            self.replay_buffer.store_step(observation=observation, policy=policy, value=value, reward=reward, action=action)
 
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """

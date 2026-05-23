@@ -6,9 +6,11 @@ from typing import List, Any, Optional, Union, Dict
 class ReplayBuffer:
     def __init__(self, global_buffer: Optional[Any] = None):
         self.observations = []
+        self.actions = []
         self.values = []
+        self.rewards = []
         self.policys = []
-        
+
         # Create or use provided global buffer
         if global_buffer is None:
             from Models.global_buffer import GlobalBuffer
@@ -18,13 +20,16 @@ class ReplayBuffer:
 
     def reset(self):
         self.observations = []
+        self.actions = []
         self.values = []
+        self.rewards = []
         self.policys = []
 
-    def store_step(self, observation = [], policy = [], value = 0):
-        # Records a single step of gameplay experience
+    def store_step(self, observation=None, policy=None, value=0, action=None, reward=0):
         self.observations.append(observation)
+        self.actions.append(action)
         self.values.append(value)
+        self.rewards.append(reward)
         self.policys.append(policy)
 
     def get_value_sequence(self):
@@ -47,50 +52,54 @@ class ReplayBuffer:
             'has_data': self.has_data(),
             'num_values': len(self.get_value_sequence()),
             'num_observations': len(self.observations),
+            'num_actions': len(self.actions),
+            'num_rewards': len(self.rewards),
             'num_policies': len(self.policys)
         }
 
     def move_buffer_to_global(self, final_value):
         """Move buffer to global storage"""
         replay_set = []
+        final_val = float(final_value)
 
-        for current_start in range(config.UNROLL_STEPS, len(self.observations) - 1):
-            value = float(self.values[-1])
-            replay_set.append([self.observations[current_start-config.UNROLL_STEPS],
-                               [value] * config.UNROLL_STEPS,
-                            #    self.values[current_start-config.UNROLL_STEPS:current_start],
-                               self.policys[current_start-config.UNROLL_STEPS:current_start]])
-        
-        # Handle different global buffer types
+        for current_start in range(config.UNROLL_STEPS, len(self.observations)):
+            replay_set.append([
+                self.observations[current_start - config.UNROLL_STEPS],
+                self.actions[current_start - config.UNROLL_STEPS:current_start - 1],
+                [final_val] * config.UNROLL_STEPS,
+                self.rewards[current_start - config.UNROLL_STEPS:current_start],
+                self.policys[current_start - config.UNROLL_STEPS:current_start],
+            ])
+
         if hasattr(self.global_buffer, 'store_episode_sync'):
-            # GlobalBuffer with sync method
             self.global_buffer.store_episode_sync(replay_set)
         elif hasattr(self.global_buffer, 'store_episode'):
-            # Standard store_episode method
             self.global_buffer.store_episode(replay_set)
         else:
             raise ValueError(f"Global buffer {type(self.global_buffer)} does not have a supported store method")
-            
+
         self.reset()
-    
+
     async def move_buffer_to_global_async(self, final_value):
         """Async version of move_buffer_to_global for better performance"""
         replay_set = []
+        final_val = float(final_value)
 
         for current_start in range(config.UNROLL_STEPS, len(self.observations)):
-            value = float(self.values[-1])
-            replay_set.append([self.observations[current_start-config.UNROLL_STEPS],
-                               [value] * config.UNROLL_STEPS,
-                               self.policys[current_start-config.UNROLL_STEPS:current_start]])
-        
-        # Use async version if available
+            replay_set.append([
+                self.observations[current_start - config.UNROLL_STEPS],
+                self.actions[current_start - config.UNROLL_STEPS:current_start - 1],
+                [final_val] * config.UNROLL_STEPS,
+                self.rewards[current_start - config.UNROLL_STEPS:current_start],
+                self.policys[current_start - config.UNROLL_STEPS:current_start],
+            ])
+
         if hasattr(self.global_buffer, 'store_episode_async'):
             await self.global_buffer.store_episode_async(replay_set)
         else:
-            # Fallback to sync version
-            self.move_buffer_to_global()
+            self.move_buffer_to_global(final_value)
             return
-            
+
         self.reset()
 
 
