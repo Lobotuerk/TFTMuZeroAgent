@@ -60,6 +60,7 @@ POLICY_LOSS_SCALING = 1
 # I'll add a mathematical way of generating these numbers later.
 DEBUG = False
 CHECKPOINT_STEPS = 200
+REPLAY_BUFFER_SIZE = 10000
 GAMEPLAY_BUFFER_PATH = './data/gameplay/'
 COMBAT_BUFFER_PATH = './data/combats/'
 

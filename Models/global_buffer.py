@@ -1,6 +1,7 @@
 import config
 import numpy as np
 import threading
+import random
 from collections import deque
 from typing import Optional, List, Any
 
@@ -8,21 +9,24 @@ from typing import Optional, List, Any
 class GlobalBuffer:
     def __init__(self, batch_size: Optional[int] = None):
         self._lock = threading.Lock()
-        self.gameplay_experiences = deque(maxlen=500)
-        self.combat_experiences = deque(maxlen=500)
+        self.gameplay_experiences = deque(maxlen=config.REPLAY_BUFFER_SIZE)
+        self.combat_experiences = deque(maxlen=config.REPLAY_BUFFER_SIZE)
         self.batch_size = batch_size or config.BATCH_SIZE
 
     def sample_gameplay_batch(self, batch_size):
         with self._lock:
+            if len(self.gameplay_experiences) < batch_size:
+                return None
+
+            samples = random.sample(self.gameplay_experiences, batch_size)
+            
             observation_batch = []
             action_batch = []
             value_batch = []
             reward_batch = []
             policy_batch = []
-            for _ in range(min(batch_size, len(self.gameplay_experiences))):
-                if not self.gameplay_experiences:
-                    break
-                observation, action, value, reward, policy = self.gameplay_experiences.popleft()
+            
+            for observation, action, value, reward, policy in samples:
                 observation_batch.append(observation)
                 action_batch.append(action)
                 value_batch.append(value)
@@ -39,12 +43,15 @@ class GlobalBuffer:
     
     def sample_combat_batch(self, batch_size):
         with self._lock:
+            if len(self.combat_experiences) < batch_size:
+                return None
+
+            samples = random.sample(self.combat_experiences, batch_size)
+            
             observation_batch = []
             result_batch = []
-            for _ in range(min(batch_size, len(self.combat_experiences))):
-                if not self.combat_experiences:
-                    break
-                observation, result = self.combat_experiences.pop()
+            
+            for observation, result in samples:
                 observation_batch.append(observation)
                 result_batch.append(result)
 
