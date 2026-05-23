@@ -62,22 +62,8 @@ class SuperSuitSB3Adapter(VecEnv):
     
     def step_wait(self):
         """Execute stored actions and return results."""
-        # Handle actions in dict format (from parallel environment)
         actions = self._actions
-        
-        # Pass actions directly to the parallel environment
-        # No conversion needed since we removed vectorization
-        result = self.supersuit_env.step(actions)
-        
-        if len(result) == 5:
-            # New gymnasium format: obs, reward, terminated, truncated, info
-            obs, rewards, terminated, truncated, infos = result
-            # Convert to old format for SB3 compatibility
-            dones = terminated  # Keep dict format instead of numpy array
-            return obs, rewards, dones, infos
-        else:
-            # Old format: obs, reward, done, info
-            return result
+        return self.supersuit_env.step(actions)
     
     def close(self):
         """Close the environment."""
