@@ -218,35 +218,6 @@ def demo_network_integration():
     print("✅ Network integration demo completed\n")
 
 
-def demo_legacy_compatibility():
-    """Demo backward compatibility with legacy interfaces."""
-    print("=== DEMO: Legacy Compatibility ===\n")
-    
-    network = DemoNetwork()
-    mcts = MCTS(network=network, policy_size=100)
-    
-    print("🔄 Testing legacy policy interface:")
-    
-    # Test with numpy observation (legacy format)
-    observation = np.random.random(128)
-    mask = np.ones(10, dtype=bool)
-    
-    result = mcts.policy(observation, mask)
-    actions, target_policy, string_samples, board_dist, directive = result
-    
-    print(f"   Actions: {actions}")
-    print(f"   Target policy shape: {target_policy[0].shape}")
-    print(f"   String samples: {string_samples}")
-    print(f"   Board distribution shape: {board_dist.shape}")
-    print(f"   Directive shape: {directive.shape}")
-    
-    # Test get_info
-    info = mcts.get_info()
-    print(f"   Network info: {info}")
-    
-    print("\n✅ Legacy compatibility demo completed\n")
-
-
 def demo_performance_tracking():
     """Demo performance tracking and statistics."""
     print("=== DEMO: Performance Tracking ===\n")
@@ -279,22 +250,18 @@ def main():
     print("This demo shows the updated MCTS implementation with:")
     print("- Neural network enhanced rollouts")
     print("- TFT MCTS bridge integration")
-    print("- Legacy interface compatibility")
     print("- Multiple network architectures\n")
     
     try:
         demo_basic_functionality()
         demo_action_generation()
         demo_network_integration()
-        demo_legacy_compatibility()
         demo_performance_tracking()
         
         print("🎉 All demos completed successfully!")
         print("\nThe updated MCTS torch implementation is ready for use with:")
         print("✅ Neural network enhanced rollouts")
         print("✅ TFT MCTS bridge integration")
-        print("✅ PyMCTS compatibility")
-        print("✅ Legacy interface support")
         print("✅ Comprehensive action generation")
         
     except Exception as e:
