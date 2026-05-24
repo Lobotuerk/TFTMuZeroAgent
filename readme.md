@@ -31,19 +31,33 @@ The project is structured around a central **Training Orchestrator** that drives
 - **GCC**: version 7.5+ (required for building Cython/C++ extensions)
 
 ### Installation
-1. Clone the repository and its submodules (TFTSet4Gym, MonteCarloTreeSearch).
-2. Install dependencies:
+1. **Clone the repository and its submodules**:
    ```bash
-   pip install -r requirements.txt
+   git clone --recursive https://github.com/Lobotuerk/TFTMuZeroAgent.git
+   cd TFTMuZeroAgent
    ```
-3. Build the C++/Cython external packages:
+
+2. **Setup the environment**:
+   It is highly recommended to use the provided Conda environment to ensure compatibility with Python 3.8 and all dependencies.
    ```bash
-   cd core/ctree
-   bash make.sh
-   cd ../..
+   conda env create -f env.yml
+   conda activate TFT
+   ```
+
+3. **Build the C++ MCTS extensions**:
+   ```bash
+   cd MonteCarloTreeSearch
+   python setup.py build_ext --inplace
+   cd ..
    ```
 
 ### Running the System
+To run the system, you need to ensure that the project root and its submodules are in your `PYTHONPATH`.
+
+```bash
+export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/MonteCarloTreeSearch:$(pwd)/TFTSet4Gym
+```
+
 The primary entry point is `main.py`, which supports several modes of operation:
 
 - **Training**: Run the full RL lifecycle.
@@ -61,6 +75,7 @@ The primary entry point is `main.py`, which supports several modes of operation:
 - **Debug**: Test neural network architecture or run a single debug episode.
   ```bash
   python main.py --mode debug --debug_network
+  python main.py --mode debug --debug_single_episode
   ```
 
 ### Configuration
