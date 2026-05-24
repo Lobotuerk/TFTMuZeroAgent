@@ -34,22 +34,34 @@ class MuZeroAgent(BaseAgent):
     
     def __init__(self,
                  agent_name: str = "MuZeroAgent",
-                 global_buffer: Optional[Any] = None):
+                 global_buffer: Optional[Any] = None,
+                 action_size: Optional[int] = None,
+                 action_limits: Optional[List[int]] = None,
+                 obs_size: Optional[int] = None,
+                 simulations: Optional[int] = None,
+                 weights: Optional[Dict[str, Any]] = None):
         super().__init__(agent_name, global_buffer)
 
         # Read action dimensions from observation schema/config
-        self.action_limits = ACTION_DIM.copy()  # [7, 37, 10] from TFTSet4Gym config
-        self.action_size = len(self.action_limits)  # 3 action dimensions
+        self.action_limits = action_limits if action_limits is not None else ACTION_DIM.copy()
+        self.action_size = action_size if action_size is not None else len(self.action_limits)
         
         # Read observation size from schema if available
-        schema = get_observation_schema("current_player")
-        self.obs_size = schema.total_size
+        if obs_size is not None:
+            self.obs_size = obs_size
+        else:
+            schema = get_observation_schema("current_player")
+            self.obs_size = schema.total_size
         
         # Set simulations from config if not provided
-        self.simulations = getattr(config, 'NUM_SIMULATIONS', 10)
+        self.simulations = simulations if simulations is not None else getattr(config, 'NUM_SIMULATIONS', 10)
         
         # Model and MCTS initialization
         self.model = MuZeroNetwork()
+        
+        # Load weights if provided
+        if weights is not None:
+            self.load_weights_from_state_dict(weights)
         
         # Initialize Enhanced MCTS with action dimensions from schema/config
         # For TFTSet4Gym: ACTION_DIM = [7, 37, 10], so policy_size should accommodate the action space
@@ -137,6 +149,12 @@ class MuZeroAgent(BaseAgent):
             actions.append(env_move)
 
         return actions
+
+    def load_weights_from_state_dict(self, weights: Dict[str, Any]):
+        """Load model weights from a state dict"""
+        device = next(self.model.parameters()).device
+        state_dict = {k: torch.as_tensor(v).to(device) for k, v in weights.items()}
+        self.model.load_state_dict(state_dict)
 
     def load_weights(self, weights_path: str):
         """Load model weights from a specified path"""
@@ -240,4 +258,3 @@ EnhancedMuZeroAgent = MuZeroAgent
 
 def create_enhanced_muzero_agent(global_buffer=None):
     return MuZeroAgent(global_buffer=global_buffer)
-
