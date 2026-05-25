@@ -3,277 +3,344 @@
 TFT MCTS Implementation
 
 This module provides MCTS-compatible classes for Teamfight Tactics (TFT)
-that can integrate with both the TFTSet4Gym environment and the PyMCTS library.
-
-Following TDD approach - implementing minimal functionality to pass tests.
+that integrate with both the TFTSet4Gym environment and the PyMCTS library.
+It unifies legacy string-based actions with modern integer-based 3D actions.
 """
 
 import numpy as np
 import random
-from typing import List, Dict, Any, Optional
-from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
+import torch
+from typing import List, Dict, Any, Optional, Tuple, Union
+import sys
+import os
+
+# Add MonteCarloTreeSearch build directory to path
+mcts_build_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                               'MonteCarloTreeSearch')
+if mcts_build_path not in sys.path:
+    sys.path.insert(0, mcts_build_path)
+
+try:
+    import pymcts
+    PYMCTS_AVAILABLE = True
+    MCTS_MoveBase = pymcts.MCTS_move
+    MCTS_StateBase = pymcts.MCTS_state
+except ImportError:
+    PYMCTS_AVAILABLE = False
+    MCTS_MoveBase = object
+    MCTS_StateBase = object
+
+# Add parent directory to access config
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+import config
+from Models.Common_agents import extract_field_from_observation
 
 
-class TFTMove:
+class TFTMove(MCTS_MoveBase):
     """
-    Represents a single move/action in TFT that can be applied to a game state.
-    
-    This class encapsulates all possible TFT actions:
-    - buy: Purchase a unit from shop
-    - sell: Sell a unit from board/bench
-    - move: Move a unit between positions
-    - level: Buy experience/level up
-    - reroll: Reroll the shop
+    Represents a single move/action in TFT.
+    Supports both legacy string-based and modern 3D integer-based actions.
     """
     
-    def __init__(self, action_type: str, player_id: str, **kwargs):
-        """
-        Initialize a TFT move.
+    def __init__(self, action_type: Union[int, str], target_1: int = 0, target_2: int = 0, 
+                 index: int = 0, player_id: str = "player_0", **kwargs):
+        if PYMCTS_AVAILABLE:
+            super().__init__()
         
-        Args:
-            action_type: Type of action ("buy", "sell", "move", "level", "reroll")
-            player_id: ID of the player making the move
-            **kwargs: Additional parameters based on action type
-                - shop_index: For buy actions
-                - board_index: For sell actions  
-                - from_index, to_index: For move actions
-        """
+        # Action data
         self.action_type = action_type
+        self.target_1 = target_1
+        self.target_2 = target_2
+        self.index = index
         self.player_id = player_id
         
-        # Store additional parameters
+        # Legacy/Extra parameters support
         self.shop_index = kwargs.get('shop_index')
         self.board_index = kwargs.get('board_index')
         self.from_index = kwargs.get('from_index')
         self.to_index = kwargs.get('to_index')
-    
+        
+        # Map parameters if they weren't provided but action_type suggests them
+        if self.shop_index is None and action_type in [2, "buy"]:
+            self.shop_index = target_1
+        if self.board_index is None and action_type in [3, "sell"]:
+            self.board_index = target_1
+        if self.from_index is None and action_type in [1, "move"]:
+            self.from_index = target_1
+        if self.to_index is None and action_type in [1, "move"]:
+            self.to_index = target_2
+
     def __eq__(self, other) -> bool:
-        """Check equality between moves."""
         if not isinstance(other, TFTMove):
             return False
         
         return (self.action_type == other.action_type and
-                self.player_id == other.player_id and
-                self.shop_index == other.shop_index and
-                self.board_index == other.board_index and
-                self.from_index == other.from_index and
-                self.to_index == other.to_index)
+                self.target_1 == other.target_1 and
+                self.target_2 == other.target_2 and
+                self.index == other.index and
+                self.player_id == other.player_id)
+    
+    def sprint(self) -> str:
+        """String representation of the move for PyMCTS."""
+        return f"TFTMove(type={self.action_type}, t1={self.target_1}, t2={self.target_2}, idx={self.index})"
     
     def __str__(self) -> str:
-        """String representation of the move."""
-        base = f"TFTMove({self.action_type}"
-        
-        if self.shop_index is not None:
-            base += f", shop={self.shop_index}"
-        if self.board_index is not None:
-            base += f", board={self.board_index}"
-        if self.from_index is not None and self.to_index is not None:
-            base += f", from={self.from_index}, to={self.to_index}"
-            
-        return base + ")"
+        return self.sprint()
     
     def __repr__(self):
-        return self.__str__()
+        return self.sprint()
+
+    def to_env_action(self) -> List[int]:
+        """Convert to environment action format [action_type, target_1, target_2]."""
+        # Map string types to integers if necessary
+        type_map = {"pass": 0, "move": 1, "buy": 2, "sell": 3, "reroll": 4, "level": 5, "item": 6}
+        a_type = type_map.get(self.action_type, self.action_type)
+        if isinstance(a_type, str):
+            a_type = 0 # Fallback
+            
+        return [int(a_type), int(self.target_1), int(self.target_2)]
+
+    def to_numpy(self) -> List[float]:
+        """Convert move to one-hot numpy array for neural network processing."""
+        concat_size = getattr(config, 'ACTION_CONCAT_SIZE', 1134)
+        result = [0.0] * concat_size
+        if 0 <= self.index < concat_size:
+            result[self.index] = 1.0
+        return result
 
 
-class TFTState:
+class TFTState(MCTS_StateBase):
     """
     Represents a TFT game state for MCTS simulation.
-    
-    This class wraps the TFTSet4Gym environment state and provides
-    the interface needed for MCTS tree search.
+    Unifies raw environment observations with MuZero-style recurrent inference.
     """
     
-    def __init__(self, observations: Dict[str, np.ndarray], current_player: str, 
-                 env_state: Optional[Any] = None, round_num: int = 1):
-        """
-        Initialize TFT state.
-        
-        Args:
-            observations: Dictionary mapping player IDs to their observations
-            current_player: ID of the current player making decisions
-            env_state: Optional internal environment state for advanced usage
-            round_num: Current round number
-        """
-        self.observations = observations
+    def __init__(self, observation: Any = None, mask: Optional[np.ndarray] = None, 
+                 network=None, is_raw_observation: bool = True,
+                 precomputed: Optional[Dict[str, Any]] = None,
+                 current_player: str = "player_0", round_num: int = 1,
+                 **kwargs):
+        if PYMCTS_AVAILABLE:
+            super().__init__()
+            
+        self.observation = observation if observation is not None else kwargs.get('observations')
+        self.mask = mask.copy() if mask is not None else self._create_default_mask()
+        self.network = network
+        self.is_raw_observation = is_raw_observation
         self.current_player = current_player
-        self.env_state = env_state
         self.round_num = round_num
-        self.players = list(observations.keys())
-    
-    def actions_to_try(self) -> List[TFTMove]:
-        """
-        Generate all possible moves from current state.
         
-        Returns:
-            List of TFTMove objects representing valid actions
-        """
-        moves = []
+        # MCTS Values
+        self.hidden_state = None
+        self.policy = None
+        self.value = 0.5
+        
+        if self.observation is not None:
+            self._initialize_state(self.observation, is_raw_observation, precomputed)
+
+    @property
+    def player_turn(self):
+        return True # Default for MCTS integration
+
+    @property
+    def health(self):
+        if self.observation is not None:
+            val = extract_field_from_observation(self.observation, 'health')
+            if val is not None:
+                if isinstance(val, (np.ndarray, list)):
+                    if hasattr(val, 'size'): # numpy
+                        return float(val.flat[0]) if val.size > 0 else 100.0
+                    return float(val[0]) if len(val) > 0 else 100.0
+                return float(val)
+        return 100.0
+
+    @property
+    def level(self):
+        if self.observation is not None:
+            val = extract_field_from_observation(self.observation, 'level')
+            if val is not None:
+                if isinstance(val, (np.ndarray, list)):
+                    if hasattr(val, 'size'): # numpy
+                        return int(val.flat[0]) if val.size > 0 else 1
+                    return int(val[0]) if len(val) > 0 else 1
+                return int(val)
+        return 1
+
+    @property
+    def turns_for_combat(self):
+        if self.observation is not None:
+            val = extract_field_from_observation(self.observation, 'turns_for_combat')
+            if val is not None:
+                if isinstance(val, (np.ndarray, list)):
+                    if hasattr(val, 'size'): # numpy
+                        return int(val.flat[0]) if val.size > 0 else 0
+                    return int(val[0]) if len(val) > 0 else 0
+                return int(val)
+        return 0
+
+    def _initialize_state(self, observation, is_raw_observation, precomputed):
+        if precomputed is not None:
+            self.hidden_state = np.asarray(precomputed['hidden_state'], dtype=np.float32).flatten()
+            self.policy = np.asarray(precomputed['policy'], dtype=np.float32)
+            self.value = np.asarray(precomputed['value'], dtype=np.float32)
+        elif self.network is not None:
+            with torch.no_grad():
+                device = next(self.network.parameters()).device
+                input_obs = torch.tensor(observation, dtype=torch.float32).to(device)
+                
+                # Handle batching
+                # If it's a single observation [OBS_SIZE] or a single history [10, OBS_SIZE]
+                # we need to add the batch dimension for the network.
+                if input_obs.ndim == 1 or input_obs.ndim == 2:
+                    input_obs = input_obs.unsqueeze(0)
+                # If it's [1, 3, 4, 7] or similar 3D observation from env
+                elif is_raw_observation and input_obs.ndim == 3:
+                    input_obs = input_obs.unsqueeze(0)
+                
+                if is_raw_observation:
+                    network_output = self.network.initial_inference(input_obs)
+                    self.hidden_state = network_output["hidden_state"].squeeze(0).cpu().numpy()
+                    self.policy = network_output["policy_logits"].squeeze(0).cpu().numpy()
+                    self.value = network_output["value"].squeeze(0).cpu().numpy()
+                else:
+                    self.hidden_state = observation
+                    self.policy, self.value = self.network.prediction(input_obs)
+                    self.policy = self.policy.squeeze(0).cpu().numpy()
+                    self.value = self.value.squeeze(0).cpu().numpy()
+        else:
+            self.hidden_state = observation
+            # Basic heuristic for value if no network
+            self.value = 0.5
+
+    def _create_default_mask(self) -> np.ndarray:
+        return np.zeros((54,), dtype=bool)
+
+    def actions_to_try(self) -> List[TFTMove]:
+        """Generate all possible moves from current state."""
+        actions = []
         
         # Always allow basic actions
-        moves.append(TFTMove("reroll", self.current_player))
-        moves.append(TFTMove("level", self.current_player))
+        actions.append(TFTMove(0, 0, 0, index=0, player_id=self.current_player)) # Pass
+        actions.append(TFTMove(4, 0, 0, index=4, player_id=self.current_player)) # Roll
+        actions.append(TFTMove(5, 0, 0, index=5, player_id=self.current_player)) # Level
         
-        # Add buy actions for shop slots (assuming 5 shop slots)
+        # Buy: 5 shop slots
         for i in range(5):
-            moves.append(TFTMove("buy", self.current_player, shop_index=i))
-        
-        # Add sell actions for board/bench positions (assuming 28 total positions)
-        for i in range(28):
-            moves.append(TFTMove("sell", self.current_player, board_index=i))
-        
-        # Add move actions between board positions
-        for from_pos in range(28):
-            for to_pos in range(28):
-                if from_pos != to_pos:
-                    moves.append(TFTMove("move", self.current_player, 
-                                       from_index=from_pos, to_index=to_pos))
-        
-        # For now, return a subset to avoid explosion of moves
-        # In practice, you'd filter based on actual game state
-        basic_moves = [m for m in moves if m.action_type in ["reroll", "level"]]
-        shop_moves = [m for m in moves if m.action_type == "buy"][:3]  # First 3 shop slots
-        
-        return basic_moves + shop_moves
-    
-    def next_state(self, move: TFTMove) -> 'TFTState':
-        """
-        Apply a move to get the next game state.
-        
-        Args:
-            move: TFTMove to apply
+            actions.append(TFTMove(2, i, 0, index=2, player_id=self.current_player))
             
-        Returns:
-            New TFTState after applying the move
-        """
-        # For now, create a simple next state
-        # In full implementation, this would use the TFT environment
+        # Sell: 37 positions
+        for i in range(37):
+            actions.append(TFTMove(3, i, 0, index=3, player_id=self.current_player))
+            
+        # Move: Sample a subset to avoid explosion
+        for i in range(28):
+            for j in [0, 5, 10, 15, 20, 25, 30, 35]: # Sampled targets
+                if i != j:
+                    actions.append(TFTMove(1, i, j, index=1, player_id=self.current_player))
+                    
+        return actions
+
+    def next_state(self, move: TFTMove) -> 'TFTState':
+        """Apply a move to get the next game state."""
+        if self.network is not None:
+            with torch.no_grad():
+                device = next(self.network.parameters()).device
+                input_obs = torch.tensor(self.hidden_state, dtype=torch.float32).unsqueeze(0).to(device)
+                
+                network_output = self.network.recurrent_inference(input_obs, move.to_numpy())
+                new_hidden = network_output["hidden_state"].squeeze(0).cpu().numpy()
+                
+                precomputed = None
+                if "policy_logits" in network_output and "value" in network_output:
+                    precomputed = {
+                        "hidden_state": new_hidden,
+                        "policy": network_output["policy_logits"].squeeze(0).cpu().numpy(),
+                        "value": network_output["value"].squeeze(0).cpu().numpy()
+                    }
+                
+                return TFTState(new_hidden, self.mask, self.network, is_raw_observation=False, 
+                               precomputed=precomputed, current_player=self.current_player, 
+                               round_num=self.round_num)
         
-        # Simulate next player (for planning phase) or same player (for combat)
-        current_idx = self.players.index(self.current_player)
-        next_player_idx = (current_idx + 1) % len(self.players)
-        next_player = self.players[next_player_idx]
-        
-        # Create new state with incremented round if all players have acted
-        next_round = self.round_num + (1 if next_player_idx == 0 else 0)
-        
-        # For minimal implementation, return similar state with different player
-        return TFTState(
-            observations=self.observations.copy(),
-            current_player=next_player,
-            env_state=self.env_state,
-            round_num=next_round
-        )
-    
-    def is_terminal(self) -> bool:
-        """
-        Check if this is a terminal game state.
-        
-        Returns:
-            True if game is over, False otherwise
-        """
-        # For minimal implementation, games don't end
-        # In practice, check if only one player has HP > 0
-        return self.round_num > 50  # Arbitrary terminal condition
-    
-    def is_self_side_turn(self) -> bool:
-        """
-        Check if it's the self side's turn (needed for MCTS).
-        
-        Returns:
-            True if it's the main player's turn
-        """
-        # For MCTS, typically the first player is "self"
-        return self.current_player == self.players[0]
-    
+        # Basic state transition for prototype
+        return TFTState(self.observation, self.mask, None, is_raw_observation=True,
+                       current_player=self.current_player, round_num=self.round_num + 1)
+
     def rollout(self) -> float:
-        """
-        Perform a random rollout from this state to estimate value.
-        
-        Returns:
-            Value between 0.0 and 1.0 representing win probability for self
-        """
-        # Minimal implementation: random value
-        # In practice, this would simulate the game to completion
-        # or use a heuristic evaluation
-        
-        # Simple heuristic: earlier rounds have more uncertainty
-        uncertainty = max(0.1, 1.0 - (self.round_num / 50.0))
-        base_value = 0.5  # Neutral starting point
-        
-        # Add some randomness
-        random_factor = random.uniform(-uncertainty, uncertainty)
-        result = np.clip(base_value + random_factor, 0.0, 1.0)
-        
-        return result
-    
+        """Estimate value of current state."""
+        if hasattr(self.value, 'item'):
+            return float(self.value.item())
+        return float(self.value)
+
+    def is_terminal(self) -> bool:
+        return self.round_num > 50
+
+    def is_self_side_turn(self) -> bool:
+        return True
+
     def clone(self) -> 'TFTState':
-        """
-        Create a deep copy of this state.
-        
-        Returns:
-            Deep copy of the current state
-        """
         return TFTState(
-            observations={k: v.copy() for k, v in self.observations.items()},
+            observation=self.hidden_state.copy() if self.hidden_state is not None else self.observation,
+            mask=self.mask.copy() if self.mask is not None else None,
+            network=self.network,
+            is_raw_observation=False,
             current_player=self.current_player,
-            env_state=self.env_state,  # Shallow copy for now
             round_num=self.round_num
         )
+
+    def get_action_probabilities(self, moves: Optional[List[TFTMove]] = None) -> List[float]:
+        """Return softmax-normalized policy probabilities for each move."""
+        if moves is None:
+            moves = self.actions_to_try()
+
+        if self.policy is None:
+            return [1.0 / len(moves)] * len(moves)
+
+        scores = []
+        for move in moves:
+            idx = move.index
+            if 0 <= idx < len(self.policy):
+                val = self.policy[idx]
+                if hasattr(val, 'item'):
+                    scores.append(float(val.item()))
+                elif isinstance(val, (np.ndarray, list)) and len(val) > 0:
+                    scores.append(float(val[0]))
+                else:
+                    scores.append(float(val))
+            else:
+                scores.append(0.0)
+
+        scores = np.array(scores, dtype=np.float64)
+        scores = np.exp(scores - np.max(scores))
+        total = scores.sum()
+        if total > 0:
+            return (scores / total).tolist()
+        return [1.0 / len(moves)] * len(moves)
     
-    def __eq__(self, other) -> bool:
-        """Check equality between states."""
-        if not isinstance(other, TFTState):
-            return False
-        
-        return (self.current_player == other.current_player and
-                self.round_num == other.round_num and
-                self.players == other.players)
-    
-    def __str__(self) -> str:
-        """String representation of the state."""
-        return f"TFTState(player={self.current_player}, round={self.round_num}, players={len(self.players)})"
-    
-    def __repr__(self):
-        return self.__str__()
+    def print(self):
+        print(f"TFTState(player={self.current_player}, round={self.round_num}, value={self.value:.3f})")
 
 
-# Factory function for easy state creation
 def create_tft_state_from_env() -> TFTState:
-    """
-    Create a TFT state from a fresh TFTSet4Gym environment.
-    
-    Returns:
-        TFTState initialized from environment reset
-    """
+    """Factory function for environment-based states."""
+    from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
     env = parallel_env()
     observations, infos = env.reset()
     first_player = list(observations.keys())[0]
-    
-    return TFTState(observations=observations, current_player=first_player)
+    return TFTState(observation=observations[first_player], current_player=first_player)
 
 
 if __name__ == "__main__":
-    # Quick test of the implementation
-    print("Testing TFT MCTS implementation...")
-    
-    # Test move creation
-    move = TFTMove("buy", "player_0", shop_index=2)
+    print("Testing unified TFT MCTS implementation...")
+    move = TFTMove(2, target_1=2)
     print(f"Created move: {move}")
+    print(f"Env action: {move.to_env_action()}")
     
-    # Test state creation
-    try:
-        state = create_tft_state_from_env()
-        print(f"Created state: {state}")
-        
-        moves = state.actions_to_try()
-        print(f"Generated {len(moves)} moves")
-        
-        if moves:
-            next_state = state.next_state(moves[0])
-            print(f"Applied move, next state: {next_state}")
-            
-        print("✅ Basic implementation working!")
-        
-    except Exception as e:
-        print(f"❌ Error: {e}")
+    # Mock observation
+    obs = np.zeros(getattr(config, 'OBSERVATION_SIZE', 5152))
+    state = TFTState(obs)
+    print(f"Created state: {state}")
+    state.print()
