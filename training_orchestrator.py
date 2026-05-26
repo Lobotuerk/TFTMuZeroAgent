@@ -117,9 +117,12 @@ class _GameWorker:
                         processed[pid] = action[:3]
                     elif hasattr(action, "tolist"):
                         lst = action.tolist()
-                        processed[pid] = lst[:3] if isinstance(lst, list) and len(lst) >= 3 else [0, 0, 0]
+                        if isinstance(lst, list) and len(lst) >= 3:
+                            processed[pid] = lst[:3]
+                        else:
+                             raise ValueError(f"Invalid action format from agent {pid}: {action}")
                     else:
-                        processed[pid] = [0, 0, 0]
+                        raise ValueError(f"Invalid action format from agent {pid}: {action}")
                 actions = processed
 
                 observations, rewards, terminated, _, _ = env.step(actions)
@@ -207,7 +210,8 @@ class _ParallelEnvManager:
                     if on_game_done:
                         await on_game_done(result)
                 except Exception as e:
-                    pass
+                    print(f"Game worker {worker_id} crashed: {e}")
+                    raise e
 
                 if worker_id >= 0:
                     new = asyncio.create_task(self.workers[worker_id].run_game(agent_manager))

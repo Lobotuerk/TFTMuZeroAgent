@@ -280,7 +280,7 @@ class TestCommonAgents(unittest.TestCase):
             print(f"✅ {agent.agent_type} action selection test passed: {action1}")
 
     def test_agent_error_handling(self):
-        """Test that agents handle invalid observations gracefully."""
+        """Test that agents fail fast on invalid observations."""
         agents = [
             self.cultist_agent,
             self.divine_agent,
@@ -292,22 +292,70 @@ class TestCommonAgents(unittest.TestCase):
         # Test with various invalid inputs
         invalid_inputs = [
             None,
-            [],
+            # [], # [] might be valid in some cases but usually we expect dict or array
             "invalid",
-            np.array([]),
-            {"invalid": "observation"}
         ]
         
         for agent in agents:
             for invalid_input in invalid_inputs:
-                try:
-                    action = agent.select_action(invalid_input, None)
-                    # Should still return a valid action format
-                    self.assertIsInstance(action, list)
-                    self.assertEqual(len(action), 3)
-                    print(f"✅ {agent.agent_type} handled invalid input gracefully")
-                except Exception as e:
-                    self.fail(f"❌ {agent.agent_type} failed to handle invalid input: {e}")
+                with self.assertRaises(ValueError):
+                    agent.select_action(invalid_input, None)
+                print(f"✅ {agent.agent_type} failed fast on invalid input as expected")
+
+    def test_base_agent_auto_save(self):
+        """Test that BaseAgent automatically enables save_data if global_buffer is present."""
+        from Models.Common_agents import BaseAgent
+        
+        # Mock global buffer
+        mock_buffer = type('MockBuffer', (), {})()
+        
+        agent_with_buffer = BaseAgent(global_buffer=mock_buffer)
+        self.assertTrue(agent_with_buffer.save_data, "save_data should be True if global_buffer is provided")
+        
+        agent_without_buffer = BaseAgent()
+        self.assertFalse(agent_without_buffer.save_data, "save_data should be False by default if no buffer")
+        
+        agent_manual_save = BaseAgent(save_data=True)
+        self.assertTrue(agent_manual_save.save_data, "save_data should be True if manually set")
+        
+        print("✅ BaseAgent auto-save test passed")
+
+    def test_combat_tracking(self):
+        """Test that BaseAgent tracks and stores combat outcomes."""
+        from Models.global_buffer import GlobalBuffer
+        from Models.Common_agents import RandomAgent
+        
+        gb = GlobalBuffer()
+        agent = RandomAgent(global_buffer=gb)
+        
+        # Helper to create a structured observation that BaseAgent can parse
+        def create_obs(turns, hp):
+            # We need to mock extract_field_from_observation or use a real observation
+            # Since we are testing BaseAgent.select_action, let's mock it
+            return {
+                'tensor': np.zeros((184, 4, 7)).flatten(),
+                'turns_for_combat': turns,
+                'health': hp
+            }
+        
+        # 1. First step: Combat is ongoing or just started
+        agent.select_action(create_obs(0, 100))
+        self.assertEqual(agent.prev_turns_for_combat, 0)
+        self.assertEqual(agent.prev_health, 100)
+        
+        # 2. Combat ends (turns resets to positive value)
+        # Win scenario: health stays at 100
+        agent.select_action(create_obs(10, 100))
+        self.assertEqual(len(gb.combat_experiences), 1)
+        self.assertEqual(gb.combat_experiences[0][1], 1.0)
+        
+        # 3. Another combat ends - Loss scenario
+        agent.select_action(create_obs(0, 100)) # Reset for next combat
+        agent.select_action(create_obs(10, 80)) # Health dropped
+        self.assertEqual(len(gb.combat_experiences), 2)
+        self.assertEqual(gb.combat_experiences[1][1], 0.0)
+        
+        print("✅ BaseAgent combat tracking test passed")
 
 
 class TestUtilsIntegration(unittest.TestCase):

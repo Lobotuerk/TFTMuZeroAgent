@@ -263,38 +263,32 @@ class BatchInferenceServer:
 
         # ── Path 1: true GPU batched forward pass ──────────────
         if can_batch_gpu and batch_tensor.numel() > 0:
-            try:
-                with torch.no_grad():
-                    net_out = model.initial_inference(batch_tensor)
+            with torch.no_grad():
+                net_out = model.initial_inference(batch_tensor)
 
-                precomputed = []
-                for i in range(batch_size):
-                    precomputed.append({
-                        'hidden_state': net_out['hidden_state'][i].cpu().numpy(),
-                        'policy': net_out['policy_logits'][i].cpu().numpy(),
-                        'value': net_out['value'][i].cpu().numpy(),
-                    })
+            precomputed = []
+            for i in range(batch_size):
+                precomputed.append({
+                    'hidden_state': net_out['hidden_state'][i].cpu().numpy(),
+                    'policy': net_out['policy_logits'][i].cpu().numpy(),
+                    'value': net_out['value'][i].cpu().numpy(),
+                })
 
-                obs_list = [self._obs_to_flat(requests[i].observation)
-                            for i in range(batch_size)]
+            obs_list = [self._obs_to_flat(requests[i].observation)
+                        for i in range(batch_size)]
 
-                return agent.batch_select_action(
-                    obs_list, masks, precomputed_results=precomputed
-                )
-            except Exception as e:
-                print(f"Batched GPU inference failed, falling back: {e}")
+            return agent.batch_select_action(
+                obs_list, masks, precomputed_results=precomputed
+            )
 
-        # ── Path 2: numpy fallback ──────────────────────────────
+        # ── Path 2: Standard select_action path (no precomputed) ─────
         obs_list = []
         for i in range(batch_size):
-            try:
-                obs = self._obs_to_flat(
-                    requests[i].observation
-                    if batch_tensor.numel() == 0
-                    else batch_tensor[i].cpu().numpy()
-                )
-            except Exception:
-                obs = np.zeros(config.OBSERVATION_SIZE, dtype=np.float32)
+            obs = self._obs_to_flat(
+                requests[i].observation
+                if batch_tensor.numel() == 0
+                else batch_tensor[i].cpu().numpy()
+            )
             obs_list.append(obs)
 
         return agent.batch_select_action(obs_list, masks)

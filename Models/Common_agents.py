@@ -26,8 +26,21 @@ def extract_field_from_observation(observation, field_name):
     Returns:
         The extracted field value
     """
+    if isinstance(observation, dict) and field_name in observation:
+        val = observation[field_name]
+    else:
+        val = get_field_value_from_obs(observation, field_name)
     
-    return get_field_value_from_obs(observation, field_name)
+    # Handle tiled scalar fields by returning proper scalar values
+    if field_name in ['gold', 'level', 'health', 'turns_for_combat']:
+        if isinstance(val, np.ndarray):
+            if val.size > 0:
+                return val.flat[0]
+            else:
+                # If field is missing or empty, it should probably be an error now
+                raise ValueError(f"Field {field_name} is empty in observation")
+    
+    return val
 
 
 def get_board_units_from_observation(observation):
@@ -51,8 +64,6 @@ def get_bench_units_from_observation(observation):
     """Extract bench units using new schema system."""
     # Handle dictionary observations from parallel_env
     if isinstance(observation, dict):
-        # Extract the actual observation tensor from the dictionary
-        # parallel_env returns observations as {'tensor': array, 'action_mask': array}
         observation = observation.get('tensor', observation)
     
     bench_champions = extract_field_from_observation(observation, 'bench_champions')
@@ -66,8 +77,6 @@ def get_shop_units_from_observation(observation):
     """Extract shop units using new schema system."""
     # Handle dictionary observations from parallel_env
     if isinstance(observation, dict):
-        # Extract the actual observation tensor from the dictionary
-        # parallel_env returns observations as {'tensor': array, 'action_mask': array}
         observation = observation.get('tensor', observation)
     
     shop_champions = extract_field_from_observation(observation, 'shop_champions')
@@ -85,7 +94,9 @@ def _parse_board_from_fields(board_champions, board_stars, board_chosen):
         for i, unit_board in enumerate(board_champions):
             indexes = np.where(unit_board == 1.0)
             if len(indexes[0]) > 0 and len(indexes[1]) > 0:
-                champion_name = list(COST.keys())[i + 1] if i + 1 < len(COST.keys()) else f"unknown_{i}"
+                if i + 1 >= len(COST.keys()):
+                    raise ValueError(f"Unknown champion index on board: {i+1}")
+                champion_name = list(COST.keys())[i + 1]
                 
                 stars = 1
                 chosen = False
@@ -113,7 +124,9 @@ def _parse_bench_from_field(bench_champions):
         bench = bench_champions[:, 0, 0]
         for i, count in enumerate(bench):
             if count > 0:
-                champion_name = list(COST.keys())[i + 1] if i + 1 < len(COST.keys()) else f"unknown_{i}"
+                if i + 1 >= len(COST.keys()):
+                    raise ValueError(f"Unknown champion index on bench: {i+1}")
+                champion_name = list(COST.keys())[i + 1]
                 for _ in range(int(count)):
                     bench_list.append(champion_name)
     return bench_list
@@ -126,7 +139,9 @@ def _parse_shop_from_fields(shop_champions, shop_chosen):
         for slot in range(min(5, shop_champions.shape[2])):
             for i, unit_data in enumerate(shop_champions):
                 if unit_data[0, slot] > 0:  # Check if unit is in this shop slot
-                    champion_name = list(COST.keys())[i + 1] if i + 1 < len(COST.keys()) else f"unknown_{i}"
+                    if i + 1 >= len(COST.keys()):
+                        raise ValueError(f"Unknown champion index in shop: {i+1}")
+                    champion_name = list(COST.keys())[i + 1]
                     
                     # Check for chosen status with array-safe comparison and bounds checking
                     if shop_chosen is not None:
@@ -143,8 +158,8 @@ def _parse_shop_from_fields(shop_champions, shop_chosen):
                                 if chosen_value > 0.5:
                                     champion_name += "_c"
                         except (ValueError, TypeError, IndexError):
-                            # If comparison fails, skip chosen status
-                            pass
+                            # Fail explicitly on unexpected data format
+                            raise
                     
                     shop_units[slot] = champion_name
                     break
@@ -155,7 +170,14 @@ class BaseAgent:
     
     def __init__(self, agent_name="BaseAgent", global_buffer=None, save_data=False):
         self.agent_type = agent_name
-        self.save_data = save_data
+        # Always save data if a global buffer is assigned
+        self.save_data = save_data or (global_buffer is not None)
+        
+        # State tracking for combat detection
+        self.prev_turns_for_combat = None
+        self.prev_health = None
+        self.prev_observation = None
+        
         # Create local replay buffer that points to the global buffer
         if global_buffer is not None:
             from Models.replay_buffer import ReplayBuffer
@@ -166,16 +188,13 @@ class BaseAgent:
     def select_action(self, observation, action_mask=None, reward=None, terminated=None):
         """
         Select an action based on the current observation and action mask.
-        
-        Args:
-            observation: The current game state observation
-            action_mask: Valid actions that can be taken
-            reward: Reward signal (optional)
-            terminated: Termination flags (optional)
-            
-        Returns:
-            list: Action in format [action_type, target, value]
         """
+        if observation is None:
+            raise ValueError("Observation cannot be None")
+            
+        if not isinstance(observation, (dict, np.ndarray)):
+            raise ValueError(f"Invalid observation type: {type(observation)}")
+
         # If observation is a dict (standard TFTSet4Gym format), extract tensor and mask
         if isinstance(observation, dict) and 'tensor' in observation:
             obs = observation['tensor']
@@ -184,14 +203,36 @@ class BaseAgent:
             obs = observation
             mask = action_mask
         
+        if obs is None or (isinstance(obs, np.ndarray) and obs.size == 0):
+            raise ValueError("Observation tensor is empty or None")
+
         # Flatten to 1D array if needed (schema expects flat observation)
         if isinstance(obs, np.ndarray) and obs.ndim > 1:
             obs = obs.flatten()
             
+        # Combat outcome tracking
         try:
-            action = self._select_action_impl(obs, mask, reward, terminated)
+            current_turns = extract_field_from_observation(observation, 'turns_for_combat')
+            current_health = extract_field_from_observation(observation, 'health')
+            
+            if self.prev_turns_for_combat == 0 and current_turns > 0:
+                # Combat just finished (turns_for_combat reset to max)
+                if self.prev_health is not None and self.prev_observation is not None:
+                    # Win if health stayed the same, loss if it decreased
+                    result = 1.0 if current_health >= self.prev_health else 0.0
+                    self._store_combat(self.prev_observation, result)
+            
+            self.prev_turns_for_combat = current_turns
+            self.prev_health = current_health
+            # Use copy to avoid reference issues if observation is mutated
+            self.prev_observation = obs.copy() if isinstance(obs, np.ndarray) else obs
         except Exception:
-            action = [0, 0, 0]
+            # If schema extraction fails, we just don't track combat for this step
+            # but we don't fail the whole action selection unless requested
+            pass
+
+        # Select action using implementation - NO try-except wrapper (fail fast)
+        action = self._select_action_impl(obs, mask, reward, terminated)
 
         if self.save_data:
             self._store_experience(observation=obs, action=action, reward=reward or 0)
@@ -201,17 +242,6 @@ class BaseAgent:
     def batch_select_action(self, observations, masks, precomputed_results=None):
         """
         Select actions for a batch of observations.
-        
-        Default implementation iteratively calls self.select_action for each item.
-        Subclasses with native batched inference (e.g. MuZeroAgent) may override.
-        
-        Args:
-            observations: List of observations
-            masks: List of action masks
-            precomputed_results: Optional list of precomputed results per item
-            
-        Returns:
-            List of actions
         """
         actions = []
         for i, obs in enumerate(observations):
@@ -233,16 +263,12 @@ class BaseAgent:
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """
         Implementation method that subclasses should override.
-        This separates the core action selection from replay buffer management.
         """
         raise NotImplementedError("Subclasses must implement _select_action_impl")
     
     def terminate(self, final_value):
         """
-        Handle episode termination: add final value and send data to global storage.
-        
-        Args:
-            final_value: The final value for the episode
+        Handle episode termination.
         """
         if self.replay_buffer is not None:
             self.replay_buffer.move_buffer_to_global(final_value=final_value)
@@ -253,7 +279,7 @@ class BaseAgent:
         champ_names = list(COST.keys())
         if champ_name in champ_names:
             return champ_names.index(champ_name) - 1
-        return 0  # Default fallback
+        raise ValueError(f"Unknown champion: {champ_name}")
 
 class RandomAgent(BaseAgent):
     def __init__(self, agent_name="RandomAgent", global_buffer=None, save_data=False):
@@ -283,19 +309,23 @@ class BuyingAgent(BaseAgent):
             if sell_action:
                 return sell_action
         
-        # Try to buy desired units from shop (prioritize by cost for now)
+        # Try to buy desired units from shop
         shop_priorities = []
         for i, champ in enumerate(units_in_shop):
-            if champ in self.units_to_buy:
-                cost = COST.get(champ, 5)  # fallback to cost 5
+            if champ and champ != " " and champ in self.units_to_buy:
+                # Remove chosen suffix for cost lookup
+                base_name = champ.replace("_c", "")
+                if base_name not in COST:
+                    raise ValueError(f"Unknown champion in shop: {champ}")
+                cost = COST[base_name]
                 if gold >= cost:
                     shop_priorities.append((cost, i, champ))
         
-        # Buy cheapest desired unit first (or most expensive if prioritizing high-cost)
+        # Buy cheapest desired unit first
         if shop_priorities:
             shop_priorities.sort(key=lambda x: x[0])  # Sort by cost, cheapest first
             cost, shop_index, champ_name = shop_priorities[0]
-            champ_id = self._get_champion_id(champ_name)
+            champ_id = self._get_champion_id(champ_name.replace("_c", ""))
             return [2, champ_id, 0]  # action_type=2 for buy
         
         # Sell units not in our buying list
@@ -303,13 +333,12 @@ class BuyingAgent(BaseAgent):
         for unit in board:
             unit_name = unit.get("name", "")
             if unit_name not in self.units_to_buy:
-                pos = unit["pos_y"] * 7 + unit["pos_x"]  # Convert x,y to position
+                pos = unit["pos_y"] * 7 + unit["pos_x"]
                 return [3, pos, 0]
         
         # Level up logic
         if gold > 54.0 and level < 8.0:
             return [5, 0, 0]  # action_type=5 for level up
-        
         
         # Refresh logic  
         if (level >= 6.0 or len(board) >= level) and gold > 52.0:
@@ -324,36 +353,20 @@ class BuyingAgent(BaseAgent):
         return [0, 0, 0]  # Default: do nothing
     
     def count_units_needed_for_three_star(self, unit_counts):
-        """
-        Calculate how many units are needed to reach 3-star (9 total units).
-        
-        Args:
-            unit_counts: dict with unit names as keys and counts as values
-            
-        Returns:
-            dict with unit names as keys and units needed for 3-star as values
-        """
+        """Calculate how many units are needed to reach 3-star (9 total units)."""
         units_needed = {}
         for unit_name, count in unit_counts.items():
-            # Need 9 total units for 3-star (1 + 3 + 9 pattern for 1*, 2*, 3*)
             units_needed[unit_name] = max(0, 9 - count)
         return units_needed
     
     def get_unit_counts(self, observation):
-        """
-        Count all units of each type on board and bench.
-        
-        Returns:
-            dict with unit names as keys and total counts as values
-        """
+        """Count all units of each type on board and bench."""
         unit_counts = {}
         
         # Count board units
         board = get_board_units_from_observation(observation)
         for unit in board:
             name = unit["name"]
-            # Count by star level - each star level represents cumulative units
-            # 1-star = 1 unit, 2-star = 3 units (1 + 2), 3-star = 9 units (1 + 2 + 6)
             stars = int(unit["stars"])
             if stars == 1:
                 unit_count = 1
@@ -362,14 +375,14 @@ class BuyingAgent(BaseAgent):
             elif stars == 3:
                 unit_count = 9
             else:
-                unit_count = 1  # fallback
+                unit_count = 1  # default
                 
             unit_counts[name] = unit_counts.get(name, 0) + unit_count
         
-        # Count bench units (these are always 1-star)
+        # Count bench units
         bench = get_bench_units_from_observation(observation)
         for unit_name in bench:
-            if unit_name and unit_name != " ":  # bench can have None entries
+            if unit_name and unit_name != " ":
                 unit_counts[unit_name] = unit_counts.get(unit_name, 0) + 1
                 
         return unit_counts
@@ -380,50 +393,33 @@ class BuyingAgent(BaseAgent):
         bench = get_bench_units_from_observation(observation)
         level = extract_field_from_observation(observation, 'level')
         
-        # Board is full if we have max units for our level
         board_full = len(board) >= int(level)
-        
-        # Bench is full if all 9 slots are occupied
         bench_full = len([unit for unit in bench if unit and unit != " "]) >= 9
         
         return board_full and bench_full
     
     def find_lowest_priority_unit_to_sell(self, observation):
-        """
-        Find the lowest priority unit to sell when board and bench are full.
-        Priority based on how close to 3-star (fewer units needed = higher priority).
-        Won't sell if we only have 1 copy of a unit.
-        
-        Returns:
-            tuple: (action_type, position) or None if no unit should be sold
-        """
+        """Find the lowest priority unit to sell when board and bench are full."""
         unit_counts = self.get_unit_counts(observation)
         units_needed = self.count_units_needed_for_three_star(unit_counts)
         
-        # Get board and bench units with their positions
         board = get_board_units_from_observation(observation)
         bench = get_bench_units_from_observation(observation)
         
         candidates = []
-        
-        # Check board units
         for unit in board:
             name = unit["name"]
             if name in self.units_to_buy and unit_counts.get(name, 0) > 1:
-                # Convert x,y to simple position (row * 7 + col)
                 pos = unit["pos_y"] * 7 + unit["pos_x"]
-                priority = units_needed.get(name, 9)  # Lower number = higher priority
-                candidates.append((priority, 3, pos))  # action_type=3 for sell
+                priority = units_needed.get(name, 9)
+                candidates.append((priority, 3, pos))
         
-        # Check bench units
         for i, unit_name in enumerate(bench):
             if unit_name and unit_name != " " and unit_name in self.units_to_buy and unit_counts.get(unit_name, 0) > 1:
-                pos = 28 + i  # bench positions start at 28
+                pos = 28 + i
                 priority = units_needed.get(unit_name, 9)
                 candidates.append((priority, 3, pos))
         
-        # Sort by priority (highest priority value = lowest priority to keep)
-        # We want to sell the unit that needs the MOST additional units (highest priority value)
         if candidates:
             candidates.sort(key=lambda x: x[0], reverse=True)
             _, action_type, position = candidates[0]
@@ -443,27 +439,22 @@ class DivineAgent(BuyingAgent):
 
 class RerollAgent(BuyingAgent):
     def __init__(self, global_buffer=None, save_data=False):
-        reroll_units = ["yasuo", "fiora", "vayne", "nidalee", "garen"]  # Low cost reroll units
+        reroll_units = ["yasuo", "fiora", "vayne", "nidalee", "garen"]
         super().__init__(reroll_units, "RerollAgent", global_buffer, save_data=save_data)
         
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
-        """Reroll strategy focuses on low-cost units and frequent refreshing."""
+        """Reroll strategy implementation."""
         gold = extract_field_from_observation(obs, 'gold')
         units_in_shop = get_shop_units_from_observation(obs)
         
-        # Prioritize buying our target units
         for champ in units_in_shop:
-            if champ in self.units_to_buy and gold >= 5:  # Lower gold threshold for reroll
-                action = [2, self._get_champion_id(champ), 0]
+            if champ in self.units_to_buy and gold >= 5:
+                action = [2, self._get_champion_id(champ.replace("_c", "")), 0]
                 return action
         
-        # More aggressive refreshing for reroll strategy
         level = extract_field_from_observation(obs, 'level')
-            
-        if gold > 30.0 and level <= 6:  # Refresh more often at lower levels
+        if gold > 30.0 and level <= 6:
             return [4, 0, 0]
-            
-        # Don't level up as much - stay low level for better reroll odds
         if gold > 60.0 and level < 6:
             return [5, 0, 0]
             
@@ -474,26 +465,20 @@ class FastLevelAgent(BaseAgent):
         super().__init__("FastLevelAgent", global_buffer, save_data=save_data)
         
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
-        """Strategy focused on fast leveling and strongest board."""
-        # Observation is already in the correct schema format
-            
+        """Fast level strategy implementation."""
         gold = extract_field_from_observation(obs, 'gold')
         level = extract_field_from_observation(obs, 'level')
         
-        # Prioritize leveling up quickly
         if gold > 40.0 and level < 8:
-            return [5, 0, 0]  # Level up
+            return [5, 0, 0]
             
-        # Buy any decent units when we have excess gold
         units_in_shop = get_shop_units_from_observation(obs)
-        if gold > 60.0 and len(units_in_shop) > 0:
-            # Buy first available unit
+        if gold > 60.0 and len(units_in_shop) > 0 and units_in_shop[0] != " ":
             champ = units_in_shop[0]
-            champ_id = self._get_champion_id(champ)
+            champ_id = self._get_champion_id(champ.replace("_c", ""))
             return [2, champ_id, 0]
             
-        # Refresh when we have lots of gold and high level
         if gold > 70.0 and level >= 7:
             return [4, 0, 0]
             
-        return [0, 0, 0]  # Default: do nothing
+        return [0, 0, 0]
