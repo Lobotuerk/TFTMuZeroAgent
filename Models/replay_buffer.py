@@ -4,7 +4,7 @@ from typing import List, Any, Optional, Union, Dict, Callable
 
 
 class ReplayBuffer:
-    def __init__(self, global_buffer: Optional[Any] = None):
+    def __init__(self, global_buffer: Optional[Any] = None, action_to_policy: Optional[Callable] = None):
         self.observations = []
         self.actions = []
         self.values = []
@@ -14,9 +14,13 @@ class ReplayBuffer:
         # Create or use provided global buffer
         if global_buffer is None:
             from Models.global_buffer import GlobalBuffer
-            self.global_buffer = GlobalBuffer()
+            self.global_buffer = GlobalBuffer(action_to_policy=action_to_policy)
         else:
             self.global_buffer = global_buffer
+            # If a converter was provided, set it on the existing global buffer if it doesn't have one
+            if action_to_policy is not None and hasattr(self.global_buffer, 'action_to_policy'):
+                if self.global_buffer.action_to_policy is None:
+                    self.global_buffer.action_to_policy = action_to_policy
 
     def reset(self):
         self.observations = []
