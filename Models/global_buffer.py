@@ -3,15 +3,16 @@ import numpy as np
 import threading
 import random
 from collections import deque
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Callable
 
 
 class GlobalBuffer:
-    def __init__(self, batch_size: Optional[int] = None):
+    def __init__(self, batch_size: Optional[int] = None, action_to_policy: Optional[Callable] = None):
         self._lock = threading.Lock()
         self.gameplay_experiences = deque(maxlen=config.REPLAY_BUFFER_SIZE)
         self.combat_experiences = deque(maxlen=config.REPLAY_BUFFER_SIZE)
         self.batch_size = batch_size or config.BATCH_SIZE
+        self.action_to_policy = action_to_policy
 
     def sample_gameplay_batch(self, batch_size):
         with self._lock:
@@ -60,9 +61,22 @@ class GlobalBuffer:
                 np.array(result_batch)
             ]
 
+    def _convert_sample_if_needed(self, sample):
+        """Convert 3D actions in a sample to policy format if a converter is available."""
+        if self.action_to_policy is None:
+            return sample
+        converted = []
+        for item in sample:
+            obs, action, value, reward, policy = item
+            from Models.action_conversion import action_to_policy_if_needed, is_3d_action
+            if is_3d_action(action):
+                policy = action_to_policy_if_needed(action, policy, self.action_to_policy)
+            converted.append((obs, action, value, reward, policy))
+        return converted
+
     def store_episode(self, sample):
         with self._lock:
-            self.gameplay_experiences.extend(sample)
+            self.gameplay_experiences.extend(self._convert_sample_if_needed(sample))
 
     def store_episode_sync(self, sample):
         self.store_episode(sample)
@@ -101,5 +115,5 @@ class GlobalBuffer:
         return len(self.combat_experiences)
 
 
-def create_global_buffer(batch_size: Optional[int] = None) -> GlobalBuffer:
-    return GlobalBuffer(batch_size)
+def create_global_buffer(batch_size: Optional[int] = None, action_to_policy: Optional[Callable] = None) -> GlobalBuffer:
+    return GlobalBuffer(batch_size, action_to_policy=action_to_policy)

@@ -28,6 +28,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import config
 from Models.global_buffer import GlobalBuffer
+from Models.action_conversion import action_3d_to_policy
 from Models.MuZero_torch_trainer import Trainer
 from Models.MuZero_torch_agent import MuZeroAgent
 from Models.Common_agents import CultistAgent, DivineAgent, RandomAgent
@@ -308,7 +309,7 @@ class TrainingOrchestrator:
         """Create all components: buffer, agents, batch processor, trainer."""
         self.trainer = Trainer()
         self.summary_writer = self._build_logger()
-        self.global_buffer = GlobalBuffer(config.BATCH_SIZE)
+        self.global_buffer = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
 
         # --- agent config -------------------------------------------------
         self.base_agent = MuZeroAgent(
