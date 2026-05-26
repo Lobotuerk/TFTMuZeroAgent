@@ -412,17 +412,25 @@ class EnhancedAgentManager:
     def get_performance_stats(self) -> Dict[str, Any]:
         return self.batch_processor.get_performance_stats()
 
-    async def flush_all_buffers(self):
+    async def flush_all_buffers(self, final_values: Optional[Dict[str, float]] = None):
         """Flush all agents' replay buffers to global storage concurrently"""
         tasks = []
-        for agent in self.agents.values():
+        for agent_type, agent in self.agents.items():
             if hasattr(agent, 'replay_buffer') and agent.replay_buffer is not None:
+                # Use per-player final value if available, otherwise default to 0
+                final_value = 0.0
+                if final_values:
+                    # Find any player ID that uses this agent type to get its final value
+                    for pid, p_agent_type in self.player_to_agent.items():
+                        if p_agent_type == agent_type and pid in final_values:
+                            final_value = final_values[pid]
+                            break
+
                 if hasattr(agent.replay_buffer, 'move_buffer_to_global_async'):
-                    tasks.append(agent.replay_buffer.move_buffer_to_global_async())
+                    tasks.append(agent.replay_buffer.move_buffer_to_global_async(final_value))
                 elif hasattr(agent.replay_buffer, 'move_buffer_to_global'):
-                    # Call synchronous version in executor if needed, or just call directly
-                    # For now, keeping it simple as most are likely async now
-                    agent.replay_buffer.move_buffer_to_global(0)
+                    # Call synchronous version
+                    agent.replay_buffer.move_buffer_to_global(final_value)
         
         if tasks:
             await asyncio.gather(*tasks)
@@ -685,8 +693,14 @@ class EnvironmentPool:
         Returns:
             List of game result dicts since last collection.
         """
+        # Aggregate scores from all games in game_results to use as final values
+        final_values = {}
+        for result in self.game_results:
+            if 'scores' in result:
+                final_values.update(result['scores'])
+
         # Flush all agent replay buffers to global buffer
-        await self.agent_manager.flush_all_buffers()
+        await self.agent_manager.flush_all_buffers(final_values=final_values)
 
         async with self._lock:
             collected = list(self.game_results)

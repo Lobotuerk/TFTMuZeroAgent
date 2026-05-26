@@ -96,7 +96,7 @@ async def test_environment_pool_experience_collection():
     class MockReplayBuffer:
         def __init__(self):
             self.flushed = False
-        async def move_buffer_to_global_async(self):
+        async def move_buffer_to_global_async(self, final_value):
             self.flushed = True
             
     class MockAgent:
