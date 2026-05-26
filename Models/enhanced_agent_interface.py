@@ -279,10 +279,11 @@ class BatchInferenceServer:
             
             rewards = [req.reward for req in requests]
             terminated = [req.terminated for req in requests]
+            player_ids = [req.player_id for req in requests]
 
             return agent.batch_select_action(
                 obs_list, masks, precomputed_results=precomputed,
-                rewards=rewards, terminated=terminated
+                rewards=rewards, terminated=terminated, player_ids=player_ids
             )
 
         # ── Path 2: Standard select_action path (no precomputed) ─────
@@ -297,8 +298,11 @@ class BatchInferenceServer:
             
         rewards = [req.reward for req in requests]
         terminated = [req.terminated for req in requests]
+        player_ids = [req.player_id for req in requests]
 
-        return agent.batch_select_action(obs_list, masks, rewards=rewards, terminated=terminated)
+        return agent.batch_select_action(
+            obs_list, masks, rewards=rewards, terminated=terminated, player_ids=player_ids
+        )
 
     # ── helpers ─────────────────────────────────────────────────
 
@@ -421,26 +425,23 @@ class EnhancedAgentManager:
 
     async def flush_all_buffers(self, final_values: Optional[Dict[str, float]] = None):
         """Flush all agents' replay buffers to global storage concurrently"""
-        tasks = []
+        final_vals = final_values or {}
         for agent_type, agent in self.agents.items():
-            if hasattr(agent, 'replay_buffer') and agent.replay_buffer is not None:
-                # Use per-player final value if available, otherwise default to 0
+            if hasattr(agent, 'terminate'):
+                # Pass player-specific final values via dict
+                agent.terminate(final_vals)
+            elif hasattr(agent, 'replay_buffer') and agent.replay_buffer is not None:
+                # Legacy fallback
                 final_value = 0.0
-                if final_values:
-                    # Find any player ID that uses this agent type to get its final value
+                if final_vals:
                     for pid, p_agent_type in self.player_to_agent.items():
-                        if p_agent_type == agent_type and pid in final_values:
-                            final_value = final_values[pid]
+                        if p_agent_type == agent_type and pid in final_vals:
+                            final_value = final_vals[pid]
                             break
-
                 if hasattr(agent.replay_buffer, 'move_buffer_to_global_async'):
-                    tasks.append(agent.replay_buffer.move_buffer_to_global_async(final_value))
-                elif hasattr(agent.replay_buffer, 'move_buffer_to_global'):
-                    # Call synchronous version
+                    await agent.replay_buffer.move_buffer_to_global_async(final_value)
+                else:
                     agent.replay_buffer.move_buffer_to_global(final_value)
-        
-        if tasks:
-            await asyncio.gather(*tasks)
 
 
 # ── game runner ──────────────────────────────────────────────────

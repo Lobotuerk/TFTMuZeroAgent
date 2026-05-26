@@ -171,26 +171,34 @@ class BaseAgent:
         self.agent_type = agent_name
         # Always save data if a global buffer is assigned
         self.save_data = save_data or (global_buffer is not None)
-        
-        # State tracking for combat detection
-        self.prev_turns_for_combat = None
-        self.prev_health = None
-        self.prev_observation = None
-        
-        # Create local replay buffer that points to the global buffer
-        if global_buffer is not None:
-            from Models.replay_buffer import ReplayBuffer
-            self.replay_buffer = ReplayBuffer(global_buffer)
-        else:
-            self.replay_buffer = None
-    
-    def select_action(self, observation, action_mask=None, reward=None, terminated=None):
+        self.global_buffer = global_buffer
+
+        # State tracking for combat detection (per player)
+        self.prev_turns_for_combat = {} # player_id -> value
+        self.prev_health = {}           # player_id -> value
+        self.prev_observation = {}      # player_id -> value
+
+        # Create local replay buffers that point to the global buffer
+        # player_id -> ReplayBuffer
+        self.replay_buffers = {}
+
+    def _get_buffer(self, player_id):
+        """Get or create a replay buffer for a specific player."""
+        if player_id not in self.replay_buffers:
+            if self.global_buffer is not None:
+                from Models.replay_buffer import ReplayBuffer
+                self.replay_buffers[player_id] = ReplayBuffer(self.global_buffer)
+            else:
+                self.replay_buffers[player_id] = None
+        return self.replay_buffers[player_id]
+
+    def select_action(self, observation, action_mask=None, reward=None, terminated=None, precomputed_results=None, player_id="default"):
         """
         Select an action based on the current observation and action mask.
         """
         if observation is None:
             raise ValueError("Observation cannot be None")
-            
+
         if not isinstance(observation, (dict, np.ndarray)):
             raise ValueError(f"Invalid observation type: {type(observation)}")
 
@@ -201,44 +209,67 @@ class BaseAgent:
         else:
             obs = observation
             mask = action_mask
-        
+
         if obs is None or (isinstance(obs, np.ndarray) and obs.size == 0):
             raise ValueError("Observation tensor is empty or None")
 
         # Flatten to 1D array if needed (schema expects flat observation)
         if isinstance(obs, np.ndarray) and obs.ndim > 1:
             obs = obs.flatten()
-            
+
         # Combat outcome tracking
         try:
             current_turns = extract_field_from_observation(observation, 'turns_for_combat')
             current_health = extract_field_from_observation(observation, 'health')
-            
-            if self.prev_turns_for_combat == 0 and current_turns > 0:
+
+            p_turns = self.prev_turns_for_combat.get(player_id)
+            p_health = self.prev_health.get(player_id)
+            p_obs = self.prev_observation.get(player_id)
+
+            if p_turns == 0 and current_turns > 0:
                 # Combat just finished (turns_for_combat reset to max)
-                if self.prev_health is not None and self.prev_observation is not None:
+                if p_health is not None and p_obs is not None:
                     # Win if health stayed the same, loss if it decreased
-                    result = 1.0 if current_health >= self.prev_health else 0.0
-                    self._store_combat(self.prev_observation, result)
-            
-            self.prev_turns_for_combat = current_turns
-            self.prev_health = current_health
+                    result = 1.0 if current_health >= p_health else 0.0
+                    self._store_combat(p_obs, result)
+
+            self.prev_turns_for_combat[player_id] = current_turns
+            self.prev_health[player_id] = current_health
             # Use copy to avoid reference issues if observation is mutated
-            self.prev_observation = obs.copy() if isinstance(obs, np.ndarray) else obs
+            self.prev_observation[player_id] = obs.copy() if isinstance(obs, np.ndarray) else obs
         except Exception:
             # If schema extraction fails, we just don't track combat for this step
-            # but we don't fail the whole action selection unless requested
             pass
 
-        # Select action using implementation - NO try-except wrapper (fail fast)
-        action = self._select_action_impl(obs, mask, reward, terminated)
+        # Select action using implementation - handle complex returns and precomputed results
+        result = self._select_action_impl(obs, mask, reward, terminated, precomputed_results=precomputed_results)
+
+        # Parse result: could be just action, or (action, policy), or (action, policy, value)
+        policy = None
+        value = 0
+        if isinstance(result, tuple):
+            action = result[0]
+            if len(result) > 1:
+                policy = result[1]
+            if len(result) > 2:
+                value = result[2]
+        else:
+            action = result
 
         if self.save_data:
-            self._store_experience(observation=obs, action=action, reward=reward or 0)
+            self._store_experience(
+                observation=obs, 
+                action=action, 
+                policy=policy, 
+                value=value, 
+                reward=reward or 0,
+                terminated=terminated or False,
+                player_id=player_id
+            )
 
         return action
 
-    def batch_select_action(self, observations, masks, precomputed_results=None, rewards=None, terminated=None):
+    def batch_select_action(self, observations, masks, rewards=None, terminated=None, precomputed_results=None, player_ids=None, **kwargs):
         """
         Select actions for a batch of observations.
         """
@@ -247,33 +278,47 @@ class BaseAgent:
             mask = masks[i] if i < len(masks) else None
             reward = rewards[i] if rewards and i < len(rewards) else None
             term = terminated[i] if terminated and i < len(terminated) else None
-            action = self.select_action(obs, mask, reward=reward, terminated=term)
+            pc = precomputed_results[i] if precomputed_results and i < len(precomputed_results) else None
+            pid = player_ids[i] if player_ids and i < len(player_ids) else "default"
+
+            action = self.select_action(obs, mask, reward=reward, terminated=term, precomputed_results=pc, player_id=pid)
             actions.append(action)
         return actions
-    
-    def _store_experience(self, observation=None, policy=None, value=0, reward=0, terminated=False, action=None):
-        if self.replay_buffer is not None:
-            self.replay_buffer.store_step(observation=observation, policy=policy, value=value, reward=reward, action=action)
+
+    def _store_experience(self, observation=None, policy=None, value=0, reward=0, terminated=False, action=None, player_id="default"):
+        buffer = self._get_buffer(player_id)
+        if buffer is not None:
+            buffer.store_step(observation=observation, policy=policy, value=value, reward=reward, action=action)
 
     def _store_combat(self, observation, result):
         """Store combat experience (observation, result)."""
-        if self.replay_buffer is not None and self.replay_buffer.global_buffer is not None:
-            if hasattr(self.replay_buffer.global_buffer, 'store_combat'):
-                self.replay_buffer.global_buffer.store_combat((observation, result))
+        if self.global_buffer is not None:
+            if hasattr(self.global_buffer, 'store_combat'):
+                self.global_buffer.store_combat((observation, result))
 
-    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None, precomputed_results=None):
         """
         Implementation method that subclasses should override.
         """
         raise NotImplementedError("Subclasses must implement _select_action_impl")
-    
-    def terminate(self, final_value):
+
+    def terminate(self, final_value, player_id=None):
         """
         Handle episode termination.
         """
-        if self.replay_buffer is not None:
-            self.replay_buffer.move_buffer_to_global(final_value=final_value)
-            self.replay_buffer.reset()
+        if player_id is not None:
+            buffer = self.replay_buffers.get(player_id)
+            if buffer is not None:
+                buffer.move_buffer_to_global(final_value=final_value)
+                # We don't necessarily want to delete it from the dict, but reset it
+                buffer.reset()
+        else:
+            # Terminate all buffers (e.g. end of game)
+            # In this case final_value should be a dict or we use it for all
+            for pid, buffer in self.replay_buffers.items():
+                val = final_value[pid] if isinstance(final_value, dict) and pid in final_value else final_value
+                buffer.move_buffer_to_global(final_value=val)
+                buffer.reset()
     
     def _get_champion_id(self, champ_name):
         """Get champion ID from name using COST dictionary."""
@@ -286,7 +331,7 @@ class RandomAgent(BaseAgent):
     def __init__(self, agent_name="RandomAgent", global_buffer=None, save_data=False):
         super().__init__(agent_name, global_buffer, save_data=save_data)
 
-    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None, precomputed_results=None):
         """Select a random valid action."""
         return [np.random.randint(0, 6), np.random.randint(0, 37), np.random.randint(0, 28)]
 
@@ -295,7 +340,7 @@ class BuyingAgent(BaseAgent):
         super().__init__(agent_name, global_buffer, save_data=save_data)
         self.units_to_buy = units_to_buy
 
-    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None, precomputed_results=None):
         """Select action based on buying strategy."""
         gold = extract_field_from_observation(obs, 'gold')
         units_in_shop = get_shop_units_from_observation(obs)
@@ -443,7 +488,7 @@ class RerollAgent(BuyingAgent):
         reroll_units = ["yasuo", "fiora", "vayne", "nidalee", "garen"]
         super().__init__(reroll_units, "RerollAgent", global_buffer, save_data=save_data)
         
-    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None, precomputed_results=None):
         """Reroll strategy implementation."""
         gold = extract_field_from_observation(obs, 'gold')
         units_in_shop = get_shop_units_from_observation(obs)
@@ -465,7 +510,7 @@ class FastLevelAgent(BaseAgent):
     def __init__(self, global_buffer=None, save_data=False):
         super().__init__("FastLevelAgent", global_buffer, save_data=save_data)
         
-    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None, precomputed_results=None):
         """Fast level strategy implementation."""
         gold = extract_field_from_observation(obs, 'gold')
         level = extract_field_from_observation(obs, 'level')

@@ -94,20 +94,6 @@ class MuZeroAgent(BaseAgent):
                               batch_terminated: Optional[List[bool]] = None) -> List[List[int]]:
         """
         Select actions for multiple observations in a single batched forward pass.
-        
-        Runs initial_inference ONCE on the stacked observation tensor, then
-        runs individual MCTS searches using the pre-computed hidden states.
-        This minimizes GPU overhead by avoiding N redundant representation
-        network forward passes.
-        
-        Args:
-            batch_observations: Stacked observation tensor of shape (B, ...) already on GPU
-            batch_masks: List of action masks, one per observation
-            batch_rewards: Optional list of rewards, one per observation
-            batch_terminated: Optional list of terminated flags, one per observation
-            
-        Returns:
-            List of actions, one per observation
         """
         batch_size = len(batch_masks)
         if batch_size == 0:
@@ -117,8 +103,6 @@ class MuZeroAgent(BaseAgent):
             network_outputs = self.model.initial_inference(batch_observations)
 
         hidden_states = network_outputs["hidden_state"]
-
-        dummy_obs = np.zeros(config.OBSERVATION_SIZE, dtype=np.float32)
 
         actions = []
         for i in range(batch_size):
@@ -132,21 +116,16 @@ class MuZeroAgent(BaseAgent):
                 'policy': pl,
                 'value': vl,
             }
-            env_move, action_vector = self._generate_action_with_mcts(
-                dummy_obs, mask, precomputed=precomputed
-            )
-
+            
+            obs_np = batch_observations[i].cpu().numpy()
             reward = batch_rewards[i] if batch_rewards and i < len(batch_rewards) else 0.0
-            terminated = batch_terminated[i] if batch_terminated and i < len(batch_terminated) else False
-            self._store_experience(
-                observation=batch_observations[i].cpu().numpy(),
-                policy=action_vector,
-                reward=reward,
-                terminated=terminated,
-                action=env_move
+            term = batch_terminated[i] if batch_terminated and i < len(batch_terminated) else False
+            
+            # Use centralized select_action path
+            action = self.select_action(
+                obs_np, mask, reward=reward, terminated=term, precomputed_results=precomputed
             )
-
-            actions.append(env_move)
+            actions.append(action)
 
         return actions
 
@@ -163,69 +142,22 @@ class MuZeroAgent(BaseAgent):
         print(f"Weights loaded successfully from {weights_path}")
     
     def _select_action_impl(self, 
-                     observation, action_mask, reward=None, terminated=None) -> List[int]:
+                     observation, action_mask, reward=None, terminated=None, precomputed_results=None) -> Tuple[List[int], np.ndarray, float]:
         """
         Select actions using MCTS with enhanced observation processing
-        
-        Args:
-            observation: Raw observation from environment
-            mask: Action mask (optional)
-            reward: Reward signal (optional)
-            terminated: Termination flags (optional)
-        
-        Returns:
-            Selected actions for each player
         """
-        
         # Generate actions using MCTS
-        env_move, action_vector = self._generate_action_with_mcts(observation, observation)
+        env_move, action_vector = self._generate_action_with_mcts(
+            observation, action_mask, precomputed=precomputed_results
+        )
+        
+        # Extract value from precomputed if available
+        value = 0.0
+        if precomputed_results and 'value' in precomputed_results:
+            value = float(precomputed_results['value'])
 
-        return env_move
+        return env_move, action_vector, value
     
-    def batch_select_action(self, observations: List[np.ndarray], masks: List[np.ndarray],
-                            precomputed_results: Optional[List[Dict[str, Any]]] = None,
-                            rewards: Optional[List[float]] = None,
-                            terminated: Optional[List[bool]] = None) -> List[Any]:
-        """Select actions for a batch of observations using MCTS.
-        
-        Uses pre-computed neural network results when available to avoid
-        redundant initial_inference calls on each item.
-        
-        Args:
-            observations: List of observation arrays, one per environment
-            masks: List of action mask arrays, one per environment
-            precomputed_results: Optional list of pre-computed NN results per item
-            rewards: Optional list of rewards per environment
-            terminated: Optional list of termination status per environment
-            
-        Returns:
-            List of selected environment actions
-        """
-        actions = []
-        for i, (obs, mask) in enumerate(zip(observations, masks)):
-            pc = precomputed_results[i] if precomputed_results else None
-            env_move, policy = self._generate_action_with_mcts(obs, mask, precomputed=pc)
-            actions.append(env_move)
-            
-            # Store experience if requested
-            if self.save_data:
-                reward = rewards[i] if rewards and i < len(rewards) else 0.0
-                term = terminated[i] if terminated and i < len(terminated) else False
-                
-                # Convert policy logits to policy vector if possible
-                policy_vector = policy
-                if isinstance(policy, torch.Tensor):
-                    policy_vector = policy.detach().cpu().numpy()
-                
-                self._store_experience(
-                    observation=obs,
-                    policy=policy_vector,
-                    reward=reward,
-                    terminated=term,
-                    action=env_move
-                )
-        return actions
-
     def _generate_action_with_mcts(self, 
                                    observation: np.ndarray, 
                                    mask: np.ndarray,
