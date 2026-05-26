@@ -183,7 +183,9 @@ class MuZeroAgent(BaseAgent):
         return env_move
     
     def batch_select_action(self, observations: List[np.ndarray], masks: List[np.ndarray],
-                            precomputed_results: Optional[List[Dict[str, Any]]] = None) -> List[Any]:
+                            precomputed_results: Optional[List[Dict[str, Any]]] = None,
+                            rewards: Optional[List[float]] = None,
+                            terminated: Optional[List[bool]] = None) -> List[Any]:
         """Select actions for a batch of observations using MCTS.
         
         Uses pre-computed neural network results when available to avoid
@@ -193,6 +195,8 @@ class MuZeroAgent(BaseAgent):
             observations: List of observation arrays, one per environment
             masks: List of action mask arrays, one per environment
             precomputed_results: Optional list of pre-computed NN results per item
+            rewards: Optional list of rewards per environment
+            terminated: Optional list of termination status per environment
             
         Returns:
             List of selected environment actions
@@ -200,8 +204,26 @@ class MuZeroAgent(BaseAgent):
         actions = []
         for i, (obs, mask) in enumerate(zip(observations, masks)):
             pc = precomputed_results[i] if precomputed_results else None
-            env_move, _ = self._generate_action_with_mcts(obs, mask, precomputed=pc)
+            env_move, policy = self._generate_action_with_mcts(obs, mask, precomputed=pc)
             actions.append(env_move)
+            
+            # Store experience if requested
+            if self.save_data:
+                reward = rewards[i] if rewards and i < len(rewards) else 0.0
+                term = terminated[i] if terminated and i < len(terminated) else False
+                
+                # Convert policy logits to policy vector if possible
+                policy_vector = policy
+                if isinstance(policy, torch.Tensor):
+                    policy_vector = policy.detach().cpu().numpy()
+                
+                self._store_experience(
+                    observation=obs,
+                    policy=policy_vector,
+                    reward=reward,
+                    terminated=term,
+                    action=env_move
+                )
         return actions
 
     def _generate_action_with_mcts(self, 

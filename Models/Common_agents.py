@@ -18,18 +18,15 @@ from Models.replay_buffer import ReplayBuffer
 def extract_field_from_observation(observation, field_name):
     """
     Extract a specific field from an observation using the new schema system.
-    
-    Args:
-        observation: The observation tensor (numpy array) or dictionary from parallel_env
-        field_name: Name of the field to extract
-        
-    Returns:
-        The extracted field value
     """
     if isinstance(observation, dict) and field_name in observation:
         val = observation[field_name]
     else:
         val = get_field_value_from_obs(observation, field_name)
+    
+    # Normalize: squeeze any leading dimensions of size 1 (batch dimension)
+    if isinstance(val, np.ndarray) and val.ndim > 0 and val.shape[0] == 1:
+        val = np.squeeze(val, axis=0)
     
     # Handle tiled scalar fields by returning proper scalar values
     if field_name in ['gold', 'level', 'health', 'turns_for_combat']:
@@ -101,9 +98,11 @@ def _parse_board_from_fields(board_champions, board_stars, board_chosen):
                 stars = 1
                 chosen = False
                 if board_stars is not None and len(indexes[0]) > 0:
-                    stars = board_stars[indexes[0][0], indexes[1][0]] if board_stars.ndim >= 2 else 1
+                    val = board_stars[indexes[0][0], indexes[1][0]] if board_stars.ndim >= 2 else 1
+                    stars = np.ravel(val)[0] if isinstance(val, np.ndarray) else val
                 if board_chosen is not None and len(indexes[0]) > 0:
-                    chosen = board_chosen[indexes[0][0], indexes[1][0]] > 0.5 if board_chosen.ndim >= 2 else False
+                    val = board_chosen[indexes[0][0], indexes[1][0]] if board_chosen.ndim >= 2 else False
+                    chosen = (np.ravel(val)[0] if isinstance(val, np.ndarray) else val) > 0.5
                 
                 champ = {
                     "name": champion_name,
@@ -239,14 +238,16 @@ class BaseAgent:
 
         return action
 
-    def batch_select_action(self, observations, masks, precomputed_results=None):
+    def batch_select_action(self, observations, masks, precomputed_results=None, rewards=None, terminated=None):
         """
         Select actions for a batch of observations.
         """
         actions = []
         for i, obs in enumerate(observations):
             mask = masks[i] if i < len(masks) else None
-            action = self.select_action(obs, mask)
+            reward = rewards[i] if rewards and i < len(rewards) else None
+            term = terminated[i] if terminated and i < len(terminated) else None
+            action = self.select_action(obs, mask, reward=reward, terminated=term)
             actions.append(action)
         return actions
     

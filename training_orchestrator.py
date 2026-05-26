@@ -106,7 +106,7 @@ class _GameWorker:
                 actions_task = agent_manager.get_actions(
                     observations, float_rewards, terminated
                 )
-                actions = await asyncio.wait_for(actions_task, timeout=2.0)
+                actions = await asyncio.wait_for(actions_task, timeout=10.0)
 
                 processed = {}
                 for pid, action in actions.items():
@@ -140,6 +140,10 @@ class _GameWorker:
                     placements[pid] = i + 1
 
             agent_mapping = agent_manager.get_player_agent_mapping() if return_placements else {}
+            
+            # Flush all agent buffers with final scores
+            await agent_manager.flush_all_buffers(final_values=scores)
+            
             duration = time.time() - start_time
             self.games_completed += 1
 

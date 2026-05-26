@@ -276,9 +276,13 @@ class BatchInferenceServer:
 
             obs_list = [self._obs_to_flat(requests[i].observation)
                         for i in range(batch_size)]
+            
+            rewards = [req.reward for req in requests]
+            terminated = [req.terminated for req in requests]
 
             return agent.batch_select_action(
-                obs_list, masks, precomputed_results=precomputed
+                obs_list, masks, precomputed_results=precomputed,
+                rewards=rewards, terminated=terminated
             )
 
         # ── Path 2: Standard select_action path (no precomputed) ─────
@@ -290,8 +294,11 @@ class BatchInferenceServer:
                 else batch_tensor[i].cpu().numpy()
             )
             obs_list.append(obs)
+            
+        rewards = [req.reward for req in requests]
+        terminated = [req.terminated for req in requests]
 
-        return agent.batch_select_action(obs_list, masks)
+        return agent.batch_select_action(obs_list, masks, rewards=rewards, terminated=terminated)
 
     # ── helpers ─────────────────────────────────────────────────
 

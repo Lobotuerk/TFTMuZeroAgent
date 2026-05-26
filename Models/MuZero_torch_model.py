@@ -394,7 +394,7 @@ class RepNetwork(torch.nn.Module):
         self.relu = torch.nn.LeakyReLU(inplace=True)
         # self.resnet = resnet(input_size, layer_sizes, output_size)
         # TODO Grab all observation related parameters from the simulator
-        self.dense1 = torch.nn.Linear(config.OBSERVATION_SIZE * 10, hidden)
+        self.dense1 = torch.nn.Linear(config.OBSERVATION_SIZE, hidden)
         # self.dropout1 = torch.nn.Dropout(0.5)
         self.dense2 = torch.nn.Linear(hidden, hidden)
         self.dense3 = torch.nn.Linear(hidden, hidden)
