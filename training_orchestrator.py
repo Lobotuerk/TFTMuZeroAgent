@@ -18,7 +18,6 @@ import time
 import copy
 import datetime
 import os
-import random
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any, Callable
 from dataclasses import dataclass
@@ -104,22 +103,10 @@ class _GameWorker:
                 step_count += 1
                 float_rewards = {k: float(v) for k, v in rewards.items()}
 
-                try:
-                    actions_task = agent_manager.get_actions(
-                        observations, float_rewards, terminated
-                    )
-                    actions = await asyncio.wait_for(actions_task, timeout=2.0)
-                except (asyncio.TimeoutError, Exception):
-                    actions = {}
-                    for pid in observations:
-                        if not terminated.get(pid, True):
-                            actions[pid] = [
-                                random.randint(0, 5),
-                                random.randint(0, 36),
-                                random.randint(0, 27),
-                            ]
-                        else:
-                            actions[pid] = [0, 0, 0]
+                actions_task = agent_manager.get_actions(
+                    observations, float_rewards, terminated
+                )
+                actions = await asyncio.wait_for(actions_task, timeout=2.0)
 
                 processed = {}
                 for pid, action in actions.items():

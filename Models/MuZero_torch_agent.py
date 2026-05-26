@@ -179,7 +179,6 @@ class MuZeroAgent(BaseAgent):
         
         # Generate actions using MCTS
         env_move, action_vector = self._generate_action_with_mcts(observation, observation)
-        self._store_experience(observation=observation, policy=action_vector, reward=reward, terminated=terminated, action=env_move)
 
         return env_move
     

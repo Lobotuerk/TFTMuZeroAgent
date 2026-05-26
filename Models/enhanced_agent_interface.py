@@ -181,10 +181,7 @@ class BatchInferenceServer:
 
                 agent = self.agent_instances.get(agent_type)
                 if agent is None:
-                    for req in requests:
-                        if req.future and not req.future.done():
-                            req.future.set_result([0, 0, 0])
-                    continue
+                    raise RuntimeError(f"Unregistered agent type requested: {agent_type.__name__}")
 
                 results = await self._run_inference(agent, requests)
                 self._distribute_results(requests, results)
