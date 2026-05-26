@@ -373,18 +373,39 @@ class TrainingOrchestrator:
     async def collect(self) -> None:
         """
         Start the continuous game-collection loop.
-        This runs forever (or until :meth:`stop_training` is called) and
-        calls :meth:`train_step` whenever the global buffer has data.
+        This runs forever (or until :meth:`stop_training` is called).
+        Training runs in a separate background task.
         """
         self.training_active = True
         print("COLLECT phase started – running continuous games...")
 
         async def _on_game_done(result: GameResult):
             self.games_completed += 1
+
+        train_task = asyncio.create_task(self._training_loop())
+
+        try:
+            await self.env_manager.run_continuously(self.agent_manager, _on_game_done)
+        finally:
+            self.training_active = False
+            await train_task
+
+    async def _training_loop(self) -> None:
+        """
+        Dedicated, non-blocking background task that handles continuous 
+        training from the GlobalBuffer and periodic weight syncing.
+        """
+        print("TRAIN phase started – background training loop active.")
+        while self.training_active:
             if self.global_buffer and self.global_buffer.available_gameplay_batch():
                 await self._train_step()
-
-        await self.env_manager.run_continuously(self.agent_manager, _on_game_done)
+                
+                # Periodically sync weights to collection agents
+                if self.training_step % config.SYNC_STEPS == 0:
+                    self.sync_weights()
+            else:
+                # Wait for more experience to be collected
+                await asyncio.sleep(0.5)
 
     # ------------------------------------------------------------------
     # 2️⃣  TRAIN phase
@@ -565,12 +586,11 @@ class TrainingOrchestrator:
 
         async def _internal_callback(result: GameResult):
             self.games_completed += 1
-            if self.global_buffer and self.global_buffer.available_gameplay_batch():
-                await self._train_step()
 
         collect_task = asyncio.create_task(
             self.env_manager.run_continuously(self.agent_manager, _internal_callback)
         )
+        train_task = asyncio.create_task(self._training_loop())
 
         try:
             while self.training_active and self.training_step < max_steps:
@@ -582,7 +602,7 @@ class TrainingOrchestrator:
         finally:
             self.training_active = False
             self.env_manager.stop()
-            await collect_task
+            await asyncio.gather(collect_task, train_task, return_exceptions=True)
             if self.summary_writer:
                 self.summary_writer.close()
 
