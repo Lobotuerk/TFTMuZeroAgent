@@ -153,10 +153,12 @@ def _parse_shop_from_fields(shop_champions, shop_chosen):
 class BaseAgent:
     """Base class for all TFT agents providing common interface and utilities."""
     
-    def __init__(self, agent_name="BaseAgent", global_buffer=None):
+    def __init__(self, agent_name="BaseAgent", global_buffer=None, save_data=False):
         self.agent_type = agent_name
+        self.save_data = save_data
         # Create local replay buffer that points to the global buffer
         if global_buffer is not None:
+            from Models.replay_buffer import ReplayBuffer
             self.replay_buffer = ReplayBuffer(global_buffer)
         else:
             self.replay_buffer = None
@@ -191,8 +193,11 @@ class BaseAgent:
         except Exception:
             action = [0, 0, 0]
 
+        if self.save_data:
+            self._store_experience(observation=obs, action=action, reward=reward or 0)
+
         return action
-    
+
     def batch_select_action(self, observations, masks, precomputed_results=None):
         """
         Select actions for a batch of observations.
@@ -218,6 +223,12 @@ class BaseAgent:
     def _store_experience(self, observation=None, policy=None, value=0, reward=0, terminated=False, action=None):
         if self.replay_buffer is not None:
             self.replay_buffer.store_step(observation=observation, policy=policy, value=value, reward=reward, action=action)
+
+    def _store_combat(self, observation, result):
+        """Store combat experience (observation, result)."""
+        if self.replay_buffer is not None and self.replay_buffer.global_buffer is not None:
+            if hasattr(self.replay_buffer.global_buffer, 'store_combat'):
+                self.replay_buffer.global_buffer.store_combat((observation, result))
 
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """
@@ -245,16 +256,16 @@ class BaseAgent:
         return 0  # Default fallback
 
 class RandomAgent(BaseAgent):
-    def __init__(self, agent_name="RandomAgent", global_buffer=None):
-        super().__init__(agent_name, global_buffer)
+    def __init__(self, agent_name="RandomAgent", global_buffer=None, save_data=False):
+        super().__init__(agent_name, global_buffer, save_data=save_data)
 
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """Select a random valid action."""
         return [np.random.randint(0, 6), np.random.randint(0, 37), np.random.randint(0, 28)]
 
 class BuyingAgent(BaseAgent):
-    def __init__(self, units_to_buy, agent_name="BuyingAgent", global_buffer=None):
-        super().__init__(agent_name, global_buffer)
+    def __init__(self, units_to_buy, agent_name="BuyingAgent", global_buffer=None, save_data=False):
+        super().__init__(agent_name, global_buffer, save_data=save_data)
         self.units_to_buy = units_to_buy
 
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
@@ -421,19 +432,19 @@ class BuyingAgent(BaseAgent):
         return None
 
 class CultistAgent(BuyingAgent):
-    def __init__(self, global_buffer=None):
+    def __init__(self, global_buffer=None, save_data=False):
         cultist_units = ["elise", "twistedfate", "pyke", "evelynn", "aatrox", "zilean", "kalista", "jhin"]
-        super().__init__(cultist_units, "CultistAgent", global_buffer)
+        super().__init__(cultist_units, "CultistAgent", global_buffer, save_data=save_data)
 
 class DivineAgent(BuyingAgent):
-    def __init__(self, global_buffer=None):
+    def __init__(self, global_buffer=None, save_data=False):
         divine_units = ["wukong", "jax", "irelia", "lux", "warwick", "leesin", "ashe", "kindred", "teemo"]
-        super().__init__(divine_units, "DivineAgent", global_buffer)
+        super().__init__(divine_units, "DivineAgent", global_buffer, save_data=save_data)
 
 class RerollAgent(BuyingAgent):
-    def __init__(self, global_buffer=None):
+    def __init__(self, global_buffer=None, save_data=False):
         reroll_units = ["yasuo", "fiora", "vayne", "nidalee", "garen"]  # Low cost reroll units
-        super().__init__(reroll_units, "RerollAgent", global_buffer)
+        super().__init__(reroll_units, "RerollAgent", global_buffer, save_data=save_data)
         
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """Reroll strategy focuses on low-cost units and frequent refreshing."""
@@ -459,8 +470,8 @@ class RerollAgent(BuyingAgent):
         return super()._select_action_impl(obs, action_mask)
 
 class FastLevelAgent(BaseAgent):
-    def __init__(self, global_buffer=None):
-        super().__init__("FastLevelAgent", global_buffer)
+    def __init__(self, global_buffer=None, save_data=False):
+        super().__init__("FastLevelAgent", global_buffer, save_data=save_data)
         
     def _select_action_impl(self, obs, action_mask, reward=None, terminated=None):
         """Strategy focused on fast leveling and strongest board."""
