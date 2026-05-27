@@ -225,7 +225,7 @@ class BoardGenerator(torch.nn.Module):
         super(BoardGenerator, self).__init__()
         self.main = torch.nn.Sequential(
             # input is Z, going into a convolution
-            torch.nn.ConvTranspose2d(config.OBSERVATION_SIZE, ngf * 8, (2,2), (1,1), bias=False),
+            torch.nn.ConvTranspose2d(3304, ngf * 8, (2,2), (1,1), bias=False),
             torch.nn.BatchNorm2d(ngf * 8),
             torch.nn.LeakyReLU(0.2,True),
             # NoiseLayer(),
@@ -256,8 +256,10 @@ class BoardGenerator(torch.nn.Module):
         )
     
     def forward(self, input):
+        # TODO: Add support for desired_outcome integration with the main network
         input = torch.flatten(input, start_dim=1)
-        # input = input.expand(input.shape + (1, 1))
+        # Slice to first 3304 features (board_champions, board_stars, board_chosen, bench_champions)
+        input = input[:, :3304]
         input = torch.unsqueeze(torch.unsqueeze(input, 2), 3)
         return self.main(input)
 
