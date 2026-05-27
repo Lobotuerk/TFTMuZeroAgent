@@ -192,9 +192,10 @@ class BaseAgent:
                 self.replay_buffers[player_id] = None
         return self.replay_buffers[player_id]
 
-    def select_action(self, observation, action_mask=None, reward=None, terminated=None, precomputed_results=None, player_id="default"):
+    def _preprocess_observation(self, observation, action_mask=None, player_id="default"):
         """
-        Select an action based on the current observation and action mask.
+        Validate, extract and preprocess observation, and handle combat tracking.
+        Returns (processed_obs, processed_mask)
         """
         if observation is None:
             raise ValueError("Observation cannot be None")
@@ -241,9 +242,13 @@ class BaseAgent:
             # If schema extraction fails, we just don't track combat for this step
             pass
 
-        # Select action using implementation - handle complex returns and precomputed results
-        result = self._select_action_impl(obs, mask, reward, terminated, precomputed_results=precomputed_results)
+        return obs, mask
 
+    def _postprocess_result(self, obs, result, reward=None, terminated=None, player_id="default"):
+        """
+        Parse result and handle experience storage.
+        Returns action
+        """
         # Parse result: could be just action, or (action, policy), or (action, policy, value)
         policy = None
         value = 0
@@ -269,21 +274,73 @@ class BaseAgent:
 
         return action
 
+    def select_action(self, observation, action_mask=None, reward=None, terminated=None, precomputed_results=None, player_id="default"):
+        """
+        Select an action based on the current observation and action mask.
+        """
+        obs, mask = self._preprocess_observation(observation, action_mask, player_id)
+
+        # Select action using implementation - handle complex returns and precomputed results
+        result = self._select_action_impl(obs, mask, reward, terminated, precomputed_results=precomputed_results)
+
+        return self._postprocess_result(obs, result, reward, terminated, player_id)
+
     def batch_select_action(self, observations, masks, rewards=None, terminated=None, precomputed_results=None, player_ids=None, **kwargs):
         """
         Select actions for a batch of observations.
         """
+        processed_obs = []
+        processed_masks = []
+        pids = []
+        
+        # Phase 1: Preprocessing and Combat Tracking
+        for i, observation in enumerate(observations):
+            mask = masks[i] if i < len(masks) else None
+            pid = player_ids[i] if player_ids and i < len(player_ids) else "default"
+            
+            obs, m = self._preprocess_observation(observation, mask, pid)
+            processed_obs.append(obs)
+            processed_masks.append(m)
+            pids.append(pid)
+
+        # Phase 2: Batched Inference
+        results = self._batch_select_action_impl(
+            processed_obs, 
+            processed_masks, 
+            rewards=rewards, 
+            terminated=terminated, 
+            precomputed_results=precomputed_results,
+            **kwargs
+        )
+
+        # Phase 3: Postprocessing and Experience Storage
         actions = []
+        for i, result in enumerate(results):
+            obs = processed_obs[i]
+            reward = rewards[i] if rewards and i < len(rewards) else None
+            term = terminated[i] if terminated and i < len(terminated) else None
+            pid = pids[i]
+            
+            action = self._postprocess_result(obs, result, reward, term, pid)
+            actions.append(action)
+            
+        return actions
+
+    def _batch_select_action_impl(self, observations, masks, rewards=None, terminated=None, precomputed_results=None, **kwargs):
+        """
+        Default batched implementation that falls back to _select_action_impl.
+        Subclasses can override this for performance.
+        """
+        results = []
         for i, obs in enumerate(observations):
             mask = masks[i] if i < len(masks) else None
             reward = rewards[i] if rewards and i < len(rewards) else None
             term = terminated[i] if terminated and i < len(terminated) else None
             pc = precomputed_results[i] if precomputed_results and i < len(precomputed_results) else None
-            pid = player_ids[i] if player_ids and i < len(player_ids) else "default"
-
-            action = self.select_action(obs, mask, reward=reward, terminated=term, precomputed_results=pc, player_id=pid)
-            actions.append(action)
-        return actions
+            
+            result = self._select_action_impl(obs, mask, reward, term, precomputed_results=pc)
+            results.append(result)
+        return results
 
     def _store_experience(self, observation=None, policy=None, value=0, reward=0, terminated=False, action=None, player_id="default"):
         buffer = self._get_buffer(player_id)
