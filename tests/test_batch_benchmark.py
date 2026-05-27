@@ -122,7 +122,7 @@ class TestBatchedInferenceSpeedup:
             def select_action(self, observation, mask, reward=None, terminated=None):
                 return [0, 0, 0]
 
-            def batch_select_action(self, observations, masks, precomputed_results=None):
+            def batch_select_action(self, observations, masks, rewards=None, terminated=None, precomputed_results=None, player_ids=None, **kwargs):
                 self.batch_select_action_called = True
                 return [[0, 0, 0] for _ in observations]
 
@@ -165,7 +165,7 @@ class TestBatchedInferenceSpeedup:
             def select_action(self, observation, mask, reward=None, terminated=None):
                 return [0, 0, 0]
 
-            def batch_select_action(self, observations, masks, precomputed_results=None):
+            def batch_select_action(self, observations, masks, rewards=None, terminated=None, precomputed_results=None, player_ids=None, **kwargs):
                 if precomputed_results is not None:
                     self.precomputed_received += len(precomputed_results)
                 return [[0, 0, 0] for _ in observations]

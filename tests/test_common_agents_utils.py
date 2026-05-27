@@ -340,8 +340,8 @@ class TestCommonAgents(unittest.TestCase):
         
         # 1. First step: Combat is ongoing or just started
         agent.select_action(create_obs(0, 100))
-        self.assertEqual(agent.prev_turns_for_combat, 0)
-        self.assertEqual(agent.prev_health, 100)
+        self.assertEqual(agent.prev_turns_for_combat["default"], 0)
+        self.assertEqual(agent.prev_health["default"], 100)
         
         # 2. Combat ends (turns resets to positive value)
         # Win scenario: health stays at 100

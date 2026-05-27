@@ -10,6 +10,7 @@ integration.
 import asyncio
 import time
 import numpy as np
+import torch
 import sys
 import os
 
@@ -26,9 +27,11 @@ from Models.enhanced_agent_interface import (
 )
 
 
-class MockNetwork:
+class MockNetwork(torch.nn.Module):
     def __init__(self):
+        super().__init__()
         self._training_steps = 0
+        self.dummy_param = torch.nn.Parameter(torch.zeros(1))
 
     def initial_inference(self, observation):
         batch_size = observation.shape[0] if observation.ndim > 1 else 1
