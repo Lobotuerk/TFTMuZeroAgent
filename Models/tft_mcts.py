@@ -201,7 +201,11 @@ class TFTState(MCTS_StateBase):
                     input_obs = input_obs.unsqueeze(0)
                 
                 if is_raw_observation:
-                    network_output = self.network.initial_inference(input_obs)
+                    res = self.network.initial_inference(input_obs)
+                    if isinstance(res, tuple):
+                        network_output = res[0]
+                    else:
+                        network_output = res
                     self.hidden_state = network_output["hidden_state"].squeeze(0).cpu().numpy()
                     self.policy = network_output["policy_logits"].squeeze(0).cpu().numpy()
                     self.value = network_output["value"].squeeze(0).cpu().numpy()

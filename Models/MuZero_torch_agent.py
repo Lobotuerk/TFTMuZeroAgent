@@ -107,6 +107,10 @@ class MuZeroAgent(BaseAgent):
 
             with torch.no_grad():
                 network_outputs = self.model.initial_inference(batch_tensor)
+                
+            # Handle both dict and (dict, directive, board) returns from model
+            if isinstance(network_outputs, tuple):
+                network_outputs = network_outputs[0]
 
             precomputed_list = []
             for i in range(batch_size):
