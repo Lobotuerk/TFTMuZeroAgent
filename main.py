@@ -134,7 +134,7 @@ async def async_main():
                         default=config.EVALUATION_GAMES)
     parser.add_argument("--eval_concurrent", "-ec", type=int,
                         default=config.EVALUATION_CONCURRENT_GAMES)
-    parser.add_argument("--batch_size", "-bs", type=int, default=8)
+    parser.add_argument("--batch_size", "-bs", type=int, default=config.BATCH_SIZE)
     parser.add_argument("--checkpoint_interval", "-ci", type=int,
                         default=config.CHECKPOINT_STEPS)
 
