@@ -143,13 +143,17 @@ class MuZeroNetwork(AbstractNetwork):
         return next_hidden_state_normalized, reward
 
     def initial_inference(self, observation):
-        observation_tensor = observation.cuda()
+        if not torch.is_tensor(observation):
+            observation_tensor = torch.from_numpy(observation).float().cuda()
+        else:
+            observation_tensor = observation.cuda()
+
         hidden_state = self.representation(observation_tensor)
         policy_logits, value_logits = self.prediction(hidden_state)
-        # directive = self.directive_generator(observation_tensor)
-        # board_distribution = self.board_generator(observation_tensor)
+        directive = self.directive_generator(observation_tensor)
+        board_distribution = self.board_generator(observation_tensor)
 
-        reward = np.zeros(observation.shape[0])
+        reward = np.zeros(observation_tensor.shape[0])
 
         # value = self.value_encoder.decode(value_logits.detach().cpu().numpy())
         value = value_logits
@@ -160,10 +164,10 @@ class MuZeroNetwork(AbstractNetwork):
             "reward": reward,
             "policy_logits": policy_logits,
             "hidden_state": hidden_state,
-            # "directive": directive,
-            # "board_distribution": board_distribution
+            "directive": directive,
+            "board_distribution": board_distribution
         }
-        return outputs
+        return outputs, directive, board_distribution
 
     @staticmethod
     def rnn_to_flat(state):
@@ -225,7 +229,7 @@ class BoardGenerator(torch.nn.Module):
         super(BoardGenerator, self).__init__()
         self.main = torch.nn.Sequential(
             # input is Z, going into a convolution
-            torch.nn.ConvTranspose2d(3304, ngf * 8, (2,2), (1,1), bias=False),
+            torch.nn.ConvTranspose2d(config.OBSERVATION_SIZE, ngf * 8, (2,2), (1,1), bias=False),
             torch.nn.BatchNorm2d(ngf * 8),
             torch.nn.LeakyReLU(0.2,True),
             # NoiseLayer(),
@@ -256,10 +260,8 @@ class BoardGenerator(torch.nn.Module):
         )
     
     def forward(self, input):
-        # TODO: Add support for desired_outcome integration with the main network
         input = torch.flatten(input, start_dim=1)
-        # Slice to first 3304 features (board_champions, board_stars, board_chosen, bench_champions)
-        input = input[:, :3304]
+        # input = input.expand(input.shape + (1, 1))
         input = torch.unsqueeze(torch.unsqueeze(input, 2), 3)
         return self.main(input)
 
