@@ -103,8 +103,9 @@ class MuZeroNetwork(AbstractNetwork):
     def representation(self, observation):
         encoded_state = self.representation_network(observation)
         # Scale encoded state between [0, 1] (See appendix paper Training)
-        min_encoded_state = encoded_state.min(0, keepdim=True)[0]
-        max_encoded_state = encoded_state.max(0, keepdim=True)[0]
+        # Scale across the hidden state dimensions (dim=1) instead of batch (dim=0)
+        min_encoded_state = encoded_state.min(dim=1, keepdim=True)[0]
+        max_encoded_state = encoded_state.max(dim=1, keepdim=True)[0]
         scale_encoded_state = max_encoded_state - min_encoded_state
         scale_encoded_state[scale_encoded_state < 1e-5] += 1e-5
         encoded_state_normalized = (
@@ -119,7 +120,7 @@ class MuZeroNetwork(AbstractNetwork):
         else:
             action_np = action
             
-        cube_action = torch.from_numpy(action_to_3d(action_np)).to(hidden_state.device)
+        cube_action = torch.from_numpy(action_to_3d(action_np)).float().to(hidden_state.device)
 
         # for cell, states in zip(self.dynamics_hidden_state_network, lstm_state):
         #     inputs, new_states = cell(inputs, states)
@@ -132,8 +133,9 @@ class MuZeroNetwork(AbstractNetwork):
         next_hidden_state, reward = self.dynamics_network(hidden_state, cube_action)
 
         # Scale encoded state between [0, 1] (See paper appendix Training)
-        min_next_hidden_state = next_hidden_state.min(0, keepdim=True)[0]
-        max_next_hidden_state = next_hidden_state.max(0, keepdim=True)[0]
+        # Scale across the hidden state dimensions (dim=1) instead of batch (dim=0)
+        min_next_hidden_state = next_hidden_state.min(dim=1, keepdim=True)[0]
+        max_next_hidden_state = next_hidden_state.max(dim=1, keepdim=True)[0]
         scale_next_hidden_state = max_next_hidden_state - min_next_hidden_state
         scale_next_hidden_state[scale_next_hidden_state < 1e-5] += 1e-5
         next_hidden_state_normalized = (
@@ -195,18 +197,22 @@ class MuZeroNetwork(AbstractNetwork):
         next_hidden_state, reward_logits = self.dynamics(hidden_state, action)
         policy_logits, value_logits = self.prediction(next_hidden_state)
 
-        # value = self.value_encoder.decode(value_logits.detach().cpu().numpy())
-        value = value_logits
-        # reward = self.reward_encoder.decode(reward_logits.detach().cpu().numpy())
-        reward = np.zeros(hidden_state.shape[0])
-
-        outputs = {
-            "value": value,
-            "reward": reward,
+        # In evaluation mode (inference/MCTS), we detach to save memory and prevent graph leaks.
+        # In training mode, we keep the graph for backpropagation through time.
+        if not self.training:
+            return {
+                "value": value_logits.detach(),
+                "reward": reward_logits.detach(),
+                "policy_logits": policy_logits.detach(),
+                "hidden_state": next_hidden_state.detach()
+            }
+        
+        return {
+            "value": value_logits,
+            "reward": reward_logits,
             "policy_logits": policy_logits,
             "hidden_state": next_hidden_state
         }
-        return outputs
 
 def mlp(input_size,
         layer_sizes,
@@ -466,7 +472,7 @@ class DynNetwork(torch.nn.Module):
 
         # x = torch.squeeze(x)
         action = torch.squeeze(action, dim=1)
-        x = torch.concatenate((x, action), dim=1).type(torch.float32).cuda()
+        x = torch.cat((x, action), dim=1)
         x = self.relu(self.dense1(x))
         x = self.relu(self.dense2(x)) + x
         x = self.relu(self.dense3(x)) + x

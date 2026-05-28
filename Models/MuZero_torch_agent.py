@@ -115,7 +115,7 @@ class MuZeroAgent(BaseAgent):
             precomputed_list = []
             for i in range(batch_size):
                 precomputed_list.append({
-                    'hidden_state': network_outputs['hidden_state'][i].cpu().numpy(),
+                    'hidden_state': network_outputs['hidden_state'][i].detach(),
                     'policy': network_outputs['policy_logits'][i].cpu().numpy(),
                     'value': network_outputs['value'][i].cpu().numpy(),
                 })

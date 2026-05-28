@@ -34,7 +34,7 @@ class EnhancedMCTS:
     """
     
     def __init__(self, sample_size: int, action_size: int, action_limits: List[int], 
-                 policy_size: int, network, use_pymcts: bool = True, queue_size = 10):
+                 policy_size: int, network, use_pymcts: bool = True, queue_size = None):
         self.max_depth_search = 0
         self.runs = 0
         self.network = network
@@ -53,6 +53,10 @@ class EnhancedMCTS:
         self.mcts_max_iterations = 100
         self.mcts_max_seconds = 10
 
+        # Use config if queue_size is not provided
+        if queue_size is None:
+            queue_size = getattr(config, 'OBSERVATION_TIME_STEPS', 1)
+            
         self.obs_queue = deque(maxlen=queue_size)
         # Fill queue with empty observations
         for _ in range(queue_size):
@@ -99,7 +103,7 @@ class EnhancedMCTS:
 
         self.mcts_agent = pymcts.MCTS_agent(
             pymcts.SerializedPythonState(tft_state), 
-            max_iter=self.mcts_max_iterations,
+            max_iter=self.num_simulations,
             max_seconds=self.mcts_max_seconds
         )
         

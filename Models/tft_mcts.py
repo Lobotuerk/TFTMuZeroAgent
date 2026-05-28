@@ -44,6 +44,8 @@ class TFTMove(MCTS_MoveBase):
     Represents a single move/action in TFT.
     Supports both legacy string-based and modern 3D integer-based actions.
     """
+    __slots__ = ['action_type', 'target_1', 'target_2', 'index', 'player_id', 
+                 'shop_index', 'board_index', 'from_index', 'to_index']
     
     def __init__(self, action_type: Union[int, str], target_1: int = 0, target_2: int = 0, 
                  index: int = 0, player_id: str = "player_0", **kwargs):
@@ -138,6 +140,9 @@ class TFTState(MCTS_StateBase):
         self.policy = None
         self.value = 0.5
         
+        # Cache for actions to avoid redundant generation
+        self._cached_actions = None
+        
         if self.observation is not None:
             self._initialize_state(self.observation, is_raw_observation, precomputed)
 
@@ -183,20 +188,26 @@ class TFTState(MCTS_StateBase):
 
     def _initialize_state(self, observation, is_raw_observation, precomputed):
         if precomputed is not None:
-            self.hidden_state = np.asarray(precomputed['hidden_state'], dtype=np.float32).flatten()
+            # Keep hidden_state as tensor if it already is one, otherwise convert to numpy
+            hs = precomputed['hidden_state']
+            if isinstance(hs, torch.Tensor):
+                self.hidden_state = hs.detach()
+            else:
+                self.hidden_state = np.asarray(hs, dtype=np.float32).flatten()
+                
             self.policy = np.asarray(precomputed['policy'], dtype=np.float32)
             self.value = np.asarray(precomputed['value'], dtype=np.float32)
         elif self.network is not None:
             with torch.no_grad():
                 device = next(self.network.parameters()).device
-                input_obs = torch.tensor(observation, dtype=torch.float32).to(device)
+                if isinstance(observation, torch.Tensor):
+                    input_obs = observation.to(device)
+                else:
+                    input_obs = torch.tensor(observation, dtype=torch.float32).to(device)
                 
                 # Handle batching
-                # If it's a single observation [OBS_SIZE] or a single history [10, OBS_SIZE]
-                # we need to add the batch dimension for the network.
                 if input_obs.ndim == 1 or input_obs.ndim == 2:
                     input_obs = input_obs.unsqueeze(0)
-                # If it's [1, 3, 4, 7] or similar 3D observation from env
                 elif is_raw_observation and input_obs.ndim == 3:
                     input_obs = input_obs.unsqueeze(0)
                 
@@ -206,17 +217,17 @@ class TFTState(MCTS_StateBase):
                         network_output = res[0]
                     else:
                         network_output = res
-                    self.hidden_state = network_output["hidden_state"].squeeze(0).cpu().numpy()
+                    self.hidden_state = network_output["hidden_state"].squeeze(0).detach()
                     self.policy = network_output["policy_logits"].squeeze(0).cpu().numpy()
                     self.value = network_output["value"].squeeze(0).cpu().numpy()
                 else:
-                    self.hidden_state = observation
+                    # If not raw, observation is already a hidden state
+                    self.hidden_state = input_obs.squeeze(0).detach()
                     self.policy, self.value = self.network.prediction(input_obs)
                     self.policy = self.policy.squeeze(0).cpu().numpy()
                     self.value = self.value.squeeze(0).cpu().numpy()
         else:
             self.hidden_state = observation
-            # Basic heuristic for value if no network
             self.value = 0.5
 
     def _create_default_mask(self) -> np.ndarray:
@@ -224,12 +235,16 @@ class TFTState(MCTS_StateBase):
 
     def actions_to_try(self) -> List[TFTMove]:
         """Generate all possible moves from current state."""
+        if self._cached_actions is not None:
+            return self._cached_actions
+            
         actions = []
         
-        # Always allow basic actions
-        actions.append(TFTMove(0, 0, 0, index=0, player_id=self.current_player)) # Pass
-        actions.append(TFTMove(4, 0, 0, index=4, player_id=self.current_player)) # Roll
-        actions.append(TFTMove(5, 0, 0, index=5, player_id=self.current_player)) # Level
+        # Always allow basic actions (index 0, 4, 5 are usually always valid if not masked)
+        # Pass (0), Roll (4), Level (5)
+        for i in [0, 4, 5]:
+            # if i < len(self.mask) and self.mask[i]:
+            actions.append(TFTMove(i, 0, 0, index=i, player_id=self.current_player))
         
         # Buy: 5 shop slots
         for i in range(5):
@@ -244,7 +259,8 @@ class TFTState(MCTS_StateBase):
             for j in [0, 5, 10, 15, 20, 25, 30, 35]: # Sampled targets
                 if i != j:
                     actions.append(TFTMove(1, i, j, index=1, player_id=self.current_player))
-                    
+        
+        self._cached_actions = actions
         return actions
 
     def next_state(self, move: TFTMove) -> 'TFTState':
@@ -252,10 +268,14 @@ class TFTState(MCTS_StateBase):
         if self.network is not None:
             with torch.no_grad():
                 device = next(self.network.parameters()).device
-                input_obs = torch.tensor(self.hidden_state, dtype=torch.float32).unsqueeze(0).to(device)
+                # hidden_state is already a tensor on GPU
+                if isinstance(self.hidden_state, torch.Tensor):
+                    input_obs = self.hidden_state.unsqueeze(0).to(device)
+                else:
+                    input_obs = torch.tensor(self.hidden_state, dtype=torch.float32).unsqueeze(0).to(device)
                 
                 network_output = self.network.recurrent_inference(input_obs, move.to_numpy())
-                new_hidden = network_output["hidden_state"].squeeze(0).cpu().numpy()
+                new_hidden = network_output["hidden_state"].squeeze(0).detach()
                 
                 precomputed = None
                 if "policy_logits" in network_output and "value" in network_output:
@@ -286,8 +306,14 @@ class TFTState(MCTS_StateBase):
         return True
 
     def clone(self) -> 'TFTState':
+        hs = self.hidden_state
+        if isinstance(hs, torch.Tensor):
+            hs = hs.clone()
+        elif hs is not None:
+            hs = hs.copy()
+            
         return TFTState(
-            observation=self.hidden_state.copy() if self.hidden_state is not None else self.observation,
+            observation=hs if hs is not None else self.observation,
             mask=self.mask.copy() if self.mask is not None else None,
             network=self.network,
             is_raw_observation=False,
@@ -303,21 +329,16 @@ class TFTState(MCTS_StateBase):
         if self.policy is None:
             return [1.0 / len(moves)] * len(moves)
 
-        scores = []
-        for move in moves:
-            idx = move.index
-            if 0 <= idx < len(self.policy):
-                val = self.policy[idx]
-                if hasattr(val, 'item'):
-                    scores.append(float(val.item()))
-                elif isinstance(val, (np.ndarray, list)) and len(val) > 0:
-                    scores.append(float(val[0]))
-                else:
-                    scores.append(float(val))
-            else:
-                scores.append(0.0)
+        # Vectorized extraction of scores from policy array
+        indices = np.array([move.index for move in moves], dtype=np.int32)
+        
+        # Handle indices out of range of policy vector
+        valid_mask = (indices >= 0) & (indices < len(self.policy))
+        scores = np.full(len(moves), -1e9, dtype=np.float64)
+        
+        scores[valid_mask] = self.policy[indices[valid_mask]].astype(np.float64)
 
-        scores = np.array(scores, dtype=np.float64)
+        # Stable Softmax
         scores = np.exp(scores - np.max(scores))
         total = scores.sum()
         if total > 0:
