@@ -30,7 +30,7 @@ def _build_config(args) -> TrainingConfig:
     cfg.evaluation_interval = getattr(args, "eval_interval", config.CHECKPOINT_STEPS)
     cfg.evaluation_games = getattr(args, "eval_games", config.EVALUATION_GAMES)
     cfg.evaluation_concurrent = getattr(args, "eval_concurrent", config.EVALUATION_CONCURRENT_GAMES)
-    cfg.max_batch_size = getattr(args, "batch_size", 16)
+    cfg.max_batch_size = getattr(args, "batch_size", config.BATCH_SIZE)
     cfg.save_interval = getattr(args, "checkpoint_interval", config.CHECKPOINT_STEPS)
     cfg.starting_train_step = getattr(args, "starting_episode", 0)
     cfg.run_name = getattr(args, "run_name", "")
