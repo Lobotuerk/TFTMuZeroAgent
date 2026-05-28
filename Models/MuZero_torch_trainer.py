@@ -52,8 +52,9 @@ class Trainer(object):
 
     def compute_loss(self, agent, observation, action, target_value, target_reward, target_policy, combats, train_step, summary_writer):
 
-        target_reward = torch.from_numpy(target_reward).to('cuda')
-        target_value = torch.from_numpy(target_value).to('cuda')
+        device = next(agent.parameters()).device
+        target_reward = torch.from_numpy(target_reward).to(device)
+        target_value = torch.from_numpy(target_value).to(device)
 
         # initial step
         output, directive, board_distribution = agent.initial_inference(observation)
@@ -100,13 +101,13 @@ class Trainer(object):
         accs = collections.defaultdict(list)
         # Updated for TFTSet4Gym: policy shape is (batch, time_steps, 3, 37) 
         # Flatten last two dims: 3 * 37 = 111
-        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, 111)).to('cuda')
+        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, 111)).to(device)
         
         # Initialize losses as tensors with proper shape
         batch_size = target_value.shape[0]
-        value_loss = torch.zeros(batch_size, device='cuda')
-        policy_loss = torch.zeros(batch_size, device='cuda')
-        directive_loss = torch.zeros(batch_size, device='cuda')
+        value_loss = torch.zeros(batch_size, device=device)
+        policy_loss = torch.zeros(batch_size, device=device)
+        directive_loss = torch.zeros(batch_size, device=device)
 
         # Define loss functions
         MSE_loss = torch.nn.L1Loss(reduction='none')
@@ -202,8 +203,8 @@ class Trainer(object):
                 obs_flat = obs
             
             _, _, board_distribution = agent.initial_inference(obs_flat)
-            torch_obs = torch.from_numpy(obs[:,0:58,:,:]).float().cuda()
-            torch_results = torch.from_numpy(results).float().cuda()
+            torch_obs = torch.from_numpy(obs[:,0:58,:,:]).float().to(device)
+            torch_results = torch.from_numpy(results).float().to(device)
             # from shape [batch] to shape [batch, 1 ,1 ,1]
             torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
             
