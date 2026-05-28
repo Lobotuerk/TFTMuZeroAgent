@@ -87,47 +87,47 @@ class MuZeroAgent(BaseAgent):
             'combat_encounters': 0
         }
 
-    def batched_select_action(self,
-                              batch_observations: torch.Tensor,
-                              batch_masks: List[np.ndarray],
-                              batch_rewards: Optional[List[float]] = None,
-                              batch_terminated: Optional[List[bool]] = None) -> List[List[int]]:
-        """
-        Select actions for multiple observations in a single batched forward pass.
-        """
-        batch_size = len(batch_masks)
+    def _batch_select_action_impl(self, observations, masks, rewards=None, terminated=None, precomputed_results=None, **kwargs):
+        batch_size = len(observations)
         if batch_size == 0:
             return []
 
-        with torch.no_grad():
-            network_outputs = self.model.initial_inference(batch_observations)
+        if precomputed_results is not None:
+            precomputed_list = precomputed_results
+        else:
+            obs_tensors = []
+            for obs in observations:
+                if isinstance(obs, np.ndarray):
+                    obs_tensors.append(torch.from_numpy(obs).float())
+                else:
+                    obs_tensors.append(torch.tensor(obs, dtype=torch.float32))
+            batch_tensor = torch.stack(obs_tensors)
+            if torch.cuda.is_available():
+                batch_tensor = batch_tensor.cuda()
 
-        hidden_states = network_outputs["hidden_state"]
+            with torch.no_grad():
+                network_outputs = self.model.initial_inference(batch_tensor)
 
-        actions = []
+            precomputed_list = []
+            for i in range(batch_size):
+                precomputed_list.append({
+                    'hidden_state': network_outputs['hidden_state'][i].cpu().numpy(),
+                    'policy': network_outputs['policy_logits'][i].cpu().numpy(),
+                    'value': network_outputs['value'][i].cpu().numpy(),
+                })
+
+        results = []
         for i in range(batch_size):
-            hs = hidden_states[i].cpu().numpy()
-            pl = network_outputs["policy_logits"][i].cpu().numpy()
-            vl = network_outputs["value"][i].cpu().numpy()
-            mask = batch_masks[i] if i < len(batch_masks) else np.ones(54, dtype=bool)
+            obs = observations[i]
+            mask = masks[i] if i < len(masks) else np.ones(54, dtype=bool)
+            pc = precomputed_list[i]
 
-            precomputed = {
-                'hidden_state': hs,
-                'policy': pl,
-                'value': vl,
-            }
-            
-            obs_np = batch_observations[i].cpu().numpy()
-            reward = batch_rewards[i] if batch_rewards and i < len(batch_rewards) else 0.0
-            term = batch_terminated[i] if batch_terminated and i < len(batch_terminated) else False
-            
-            # Use centralized select_action path
-            action = self.select_action(
-                obs_np, mask, reward=reward, terminated=term, precomputed_results=precomputed
-            )
-            actions.append(action)
+            env_move, action_vector = self._generate_action_with_mcts(obs, mask, precomputed=pc)
 
-        return actions
+            value = float(pc['value']) if 'value' in pc else 0.0
+            results.append((env_move, action_vector, value))
+
+        return results
 
     def load_weights_from_state_dict(self, weights: Dict[str, Any]):
         """Load model weights from a state dict"""
