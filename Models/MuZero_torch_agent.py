@@ -124,7 +124,10 @@ class MuZeroAgent(BaseAgent):
 
             env_move, action_vector = self._generate_action_with_mcts(obs, mask, precomputed=pc)
 
-            value = float(pc['value']) if 'value' in pc else 0.0
+            value = 0.0
+            if 'value' in pc:
+                v = pc['value']
+                value = float(v.item() if hasattr(v, 'item') else v)
             results.append((env_move, action_vector, value))
 
         return results
@@ -154,7 +157,8 @@ class MuZeroAgent(BaseAgent):
         # Extract value from precomputed if available
         value = 0.0
         if precomputed_results and 'value' in precomputed_results:
-            value = float(precomputed_results['value'])
+            v = precomputed_results['value']
+            value = float(v.item() if hasattr(v, 'item') else v)
 
         return env_move, action_vector, value
     
