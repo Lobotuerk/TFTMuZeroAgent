@@ -10,33 +10,26 @@ Prediction = collections.namedtuple(
 
 class Trainer(object):
     def __init__(self):
-        self.init_learning_rate = config.INIT_LEARNING_RATE
-        self.decay_steps = 1.0
-        self.alpha = config.LR_DECAY_FUNCTION
         self.optimizer = None
+        self.scheduler = None
 
     def create_optimizer(self, agent):
         optimizer = torch.optim.Adam(agent.parameters(), lr=config.INIT_LEARNING_RATE)
         return optimizer
 
-    def decayed_learning_rate(self, step):
-        step = min(step, self.decay_steps)
-        cosine_decay = 0.5 * (1 + np.cos(np.pi * step / self.decay_steps))
-        decayed = (1 - self.alpha) * cosine_decay + self.alpha
-        return self.init_learning_rate * decayed
-
-    # Same as muzero-general
-    def adjust_lr(self, train_step):
-        lr = self.init_learning_rate
-
-        for param_group in self.optimizer.param_groups:
-            param_group["lr"] = lr
+    def create_scheduler(self, optimizer):
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=config.LEARNING_RATE_DECAY,
+            eta_min=config.INIT_LEARNING_RATE * config.LR_DECAY_FUNCTION
+        )
 
     def train_network(self, batch, combats, agent, train_step, summary_writer):
-        self.optimizer = self.create_optimizer(agent)
+        if self.optimizer is None:
+            self.optimizer = self.create_optimizer(agent)
+            self.scheduler = self.create_scheduler(self.optimizer)
         observation, action, value, reward, policy = batch
         agent.train()
-        # self.adjust_lr(train_step)
 
         self.optimizer.zero_grad()
 
@@ -49,6 +42,7 @@ class Trainer(object):
         loss.backward()
 
         self.optimizer.step()
+        self.scheduler.step()
 
     def compute_loss(self, agent, observation, action, target_value, target_reward, target_policy, combats, train_step, summary_writer):
 
