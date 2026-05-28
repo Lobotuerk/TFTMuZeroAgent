@@ -130,9 +130,10 @@ class BatchInferenceServer:
                              observation: np.ndarray,
                              mask: np.ndarray,
                              reward: float = 0.0,
-                             terminated: bool = False) -> Any:
+                             terminated: bool = False,
+                             player_id: str = "") -> Any:
         request = InferenceRequest(
-            player_id="",
+            player_id=player_id,
             observation=observation,
             mask=mask,
             reward=reward,
@@ -423,6 +424,7 @@ class EnhancedAgentManager:
                 mask,
                 rewards.get(player_id, 0.0),
                 terminated.get(player_id, False),
+                player_id=player_id,
             )
             tasks.append(task)
             player_ids.append(player_id)
