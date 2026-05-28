@@ -106,13 +106,13 @@ class Trainer(object):
         # Initialize losses as tensors with proper shape
         batch_size = target_value.shape[0]
         value_loss = torch.zeros(batch_size, device=device)
-        policy_loss = torch.zeros(batch_size, device=device)
+        policy_loss = torch.tensor(0.0, device=device)
         directive_loss = torch.zeros(batch_size, device=device)
 
         # Define loss functions
         MSE_loss = torch.nn.L1Loss(reduction='none')
         cross_loss = torch.nn.CrossEntropyLoss(reduction='none')
-        kl_loss_fn = torch.nn.KLDivLoss(reduction='none')
+        kl_loss_fn = torch.nn.KLDivLoss(reduction='batchmean')
         for tstep, prediction in enumerate(predictions):
             # prediction.value_logits is [batch_size, 601]
 
@@ -157,7 +157,7 @@ class Trainer(object):
             
             target_policy_normalized = torch.nn.functional.softmax(target_policy[:, tstep], dim=-1)
             policy_log_probs = torch.nn.functional.log_softmax(policy_logits_flat, dim=-1)
-            policy_loss += torch.sum(kl_loss_fn(policy_log_probs, target_policy_normalized), dim=-1)
+            policy_loss += kl_loss_fn(policy_log_probs, target_policy_normalized)
             # policy_loss = []
             # for batch_idx in range(len(target_policy[tstep])):
             #     local_policy_loss = (-torch.tensor(target_policy[tstep][batch_idx]).cuda() *

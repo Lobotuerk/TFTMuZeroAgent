@@ -146,8 +146,8 @@ class MuZeroNetwork(AbstractNetwork):
         observation_tensor = observation.cuda()
         hidden_state = self.representation(observation_tensor)
         policy_logits, value_logits = self.prediction(hidden_state)
-        # directive = self.directive_generator(observation_tensor)
-        # board_distribution = self.board_generator(observation_tensor)
+        directive = self.directive_generator(observation_tensor)
+        board_distribution = self.board_generator(observation_tensor)
 
         reward = np.zeros(observation.shape[0])
 
@@ -160,10 +160,10 @@ class MuZeroNetwork(AbstractNetwork):
             "reward": reward,
             "policy_logits": policy_logits,
             "hidden_state": hidden_state,
-            # "directive": directive,
-            # "board_distribution": board_distribution
+            "directive": directive,
+            "board_distribution": board_distribution
         }
-        return outputs
+        return outputs, directive, board_distribution
 
     @staticmethod
     def rnn_to_flat(state):
