@@ -110,7 +110,7 @@ class Trainer(object):
         directive_loss = torch.zeros(batch_size, device=device)
 
         # Define loss functions
-        MSE_loss = torch.nn.L1Loss(reduction='none')
+        MAE_loss = torch.nn.L1Loss(reduction='none')
         cross_loss = torch.nn.CrossEntropyLoss(reduction='none')
         kl_loss_fn = torch.nn.KLDivLoss(reduction='batchmean')
         for tstep, prediction in enumerate(predictions):
@@ -126,7 +126,7 @@ class Trainer(object):
             # reward_logits = reward_logits.requires_grad_(True)
             policy_logits = prediction.policy_logits
 
-            value_loss_step = MSE_loss(value.squeeze(), target_value[:, tstep])
+            value_loss_step = MAE_loss(value.squeeze(), target_value[:, tstep])
             value_loss += value_loss_step
             # value_loss = (-target_value_encoded[:, tstep] *
             #               torch.nn.LogSoftmax(dim=-1)(value_logits)).sum(-1)
@@ -204,7 +204,7 @@ class Trainer(object):
             torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
             
             # Compute board loss for combat data
-            combat_board_loss = torch.sum(MSE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
+            combat_board_loss = torch.sum(MAE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 
