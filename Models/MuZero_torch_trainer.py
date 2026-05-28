@@ -112,6 +112,7 @@ class Trainer(object):
         # Define loss functions
         MSE_loss = torch.nn.L1Loss(reduction='none')
         cross_loss = torch.nn.CrossEntropyLoss(reduction='none')
+        kl_loss_fn = torch.nn.KLDivLoss(reduction='none')
         for tstep, prediction in enumerate(predictions):
             # prediction.value_logits is [batch_size, 601]
 
@@ -154,15 +155,9 @@ class Trainer(object):
             # Flatten policy_logits to match target_policy shape: (batch_size, 3*37=111)
             policy_logits_flat = policy_logits.view(policy_logits.shape[0], -1)
             
-            # Use KL divergence loss for policy since target_policy is a probability distribution
-            # Apply softmax to policy_logits to get probabilities
-            policy_probs = torch.nn.functional.softmax(policy_logits_flat, dim=-1)
             target_policy_normalized = torch.nn.functional.softmax(target_policy[:, tstep], dim=-1)
-            
-            # KL divergence: KL(target || prediction) = sum(target * log(target / prediction))
-            # Use log_softmax for numerical stability
             policy_log_probs = torch.nn.functional.log_softmax(policy_logits_flat, dim=-1)
-            policy_loss += torch.sum(target_policy_normalized * (torch.log(target_policy_normalized + 1e-8) - policy_log_probs), dim=-1)
+            policy_loss += torch.sum(kl_loss_fn(policy_log_probs, target_policy_normalized), dim=-1)
             # policy_loss = []
             # for batch_idx in range(len(target_policy[tstep])):
             #     local_policy_loss = (-torch.tensor(target_policy[tstep][batch_idx]).cuda() *
