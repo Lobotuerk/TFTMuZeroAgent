@@ -106,7 +106,7 @@ class _GameWorker:
                 actions_task = agent_manager.get_actions(
                     observations, float_rewards, terminated
                 )
-                actions = await asyncio.wait_for(actions_task, timeout=10.0)
+                actions = await asyncio.wait_for(actions_task, timeout=30.0)
 
                 processed = {}
                 for pid, action in actions.items():

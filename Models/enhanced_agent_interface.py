@@ -230,6 +230,14 @@ class BatchInferenceServer:
 
         self.inference_times[type(agent)].append(time.time() - start_time)
         self.batch_sizes[type(agent)].append(len(requests))
+
+        n = len(self.inference_times[type(agent)])
+        if n % 100 == 0:
+            avg_time = np.mean(self.inference_times[type(agent)][-100:])
+            avg_batch = np.mean(self.batch_sizes[type(agent)][-100:])
+            print(f"[{type(agent).__name__}] avg inference: {avg_time*1000:.2f}ms  "
+                  f"avg batch size: {avg_batch:.1f}  (total batches: {n})")
+
         return result
 
     def _infer_sync(self,
