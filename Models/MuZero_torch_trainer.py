@@ -107,8 +107,7 @@ class Trainer(object):
         value_loss = torch.zeros(batch_size, device='cuda')
         policy_loss = torch.zeros(batch_size, device='cuda')
         directive_loss = torch.zeros(batch_size, device='cuda')
-        board_loss = torch.zeros(batch_size, device='cuda')
-        
+
         # Define loss functions
         MSE_loss = torch.nn.L1Loss(reduction='none')
         cross_loss = torch.nn.CrossEntropyLoss(reduction='none')
@@ -210,27 +209,13 @@ class Trainer(object):
             
             # Compute board loss for combat data
             combat_board_loss = torch.sum(MSE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
-            
-            # Handle different batch sizes between main training and combat data
-            combat_batch_size = combat_board_loss.shape[0]
-            if combat_batch_size == batch_size:
-                # Same batch size, can directly add
-                board_loss += combat_board_loss
-            elif combat_batch_size < batch_size:
-                # Combat batch is smaller, pad with zeros
-                padded_combat_loss = torch.zeros(batch_size, device='cuda')
-                padded_combat_loss[:combat_batch_size] = combat_board_loss
-                board_loss += padded_combat_loss
-            else:
-                # Combat batch is larger, truncate
-                board_loss += combat_board_loss[:batch_size]
-            
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 
-        loss = value_loss + policy_loss + board_loss
-        mean_loss = torch.mean(loss)
-        loss.register_hook(lambda grad: grad * (1 / config.UNROLL_STEPS))
+        mean_loss = value_loss.mean() + policy_loss.mean()
+        if len(combats) > 0:
+            mean_loss += combat_board_loss.mean()
+        mean_loss.register_hook(lambda grad: grad * (1 / config.UNROLL_STEPS))
 
         # Leaving this here in case I want to use it later.
         # This was used in Atari but not in board games. Also, very unclear how to
@@ -265,7 +250,7 @@ class Trainer(object):
 
         summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
         if len(combats) > 0:
-            summary_writer.add_scalar('losses/board', torch.mean(board_loss), train_step)
+            summary_writer.add_scalar('losses/board', combat_board_loss.mean(), train_step)
         # summary_writer.add_scalar('losses/reward', get_mean('reward_loss'), train_step)
         summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
         # summary_writer.add_scalar('losses/directive', torch.mean(torch.sum(directive_loss, dim=0)), train_step)
