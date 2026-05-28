@@ -52,8 +52,9 @@ class Trainer(object):
 
     def compute_loss(self, agent, observation, action, target_value, target_reward, target_policy, combats, train_step, summary_writer):
 
-        target_reward = torch.from_numpy(target_reward).to('cuda')
-        target_value = torch.from_numpy(target_value).to('cuda')
+        device = next(agent.parameters()).device
+        target_reward = torch.from_numpy(target_reward).to(device)
+        target_value = torch.from_numpy(target_value).to(device)
 
         # initial step
         output, directive, board_distribution = agent.initial_inference(observation)
@@ -100,19 +101,18 @@ class Trainer(object):
         accs = collections.defaultdict(list)
         # Updated for TFTSet4Gym: policy shape is (batch, time_steps, 3, 37) 
         # Flatten last two dims: 3 * 37 = 111
-        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, config.ACTION_CONCAT_SIZE)).to('cuda')
+        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, 111)).to(device)
         
         # Initialize losses as tensors with proper shape
         batch_size = target_value.shape[0]
-        value_loss = torch.zeros(batch_size, device='cuda')
-        policy_loss = torch.tensor(0.0, device='cuda')
-        directive_loss = torch.zeros(batch_size, device='cuda')
-        board_loss = torch.zeros(batch_size, device='cuda')
-        
+        value_loss = torch.zeros(batch_size, device=device)
+        policy_loss = torch.zeros(batch_size, device=device)
+        directive_loss = torch.zeros(batch_size, device=device)
+
         # Define loss functions
         MSE_loss = torch.nn.L1Loss(reduction='none')
         cross_loss = torch.nn.CrossEntropyLoss(reduction='none')
-        kl_loss_fn = torch.nn.KLDivLoss(reduction='batchmean')
+        kl_loss_fn = torch.nn.KLDivLoss(reduction='none')
         for tstep, prediction in enumerate(predictions):
             # prediction.value_logits is [batch_size, 601]
 
@@ -157,7 +157,7 @@ class Trainer(object):
             
             target_policy_normalized = torch.nn.functional.softmax(target_policy[:, tstep], dim=-1)
             policy_log_probs = torch.nn.functional.log_softmax(policy_logits_flat, dim=-1)
-            policy_loss += kl_loss_fn(policy_log_probs, target_policy_normalized)
+            policy_loss += torch.sum(kl_loss_fn(policy_log_probs, target_policy_normalized), dim=-1)
             # policy_loss = []
             # for batch_idx in range(len(target_policy[tstep])):
             #     local_policy_loss = (-torch.tensor(target_policy[tstep][batch_idx]).cuda() *
@@ -198,34 +198,20 @@ class Trainer(object):
                 obs_flat = obs
             
             _, _, board_distribution = agent.initial_inference(obs_flat)
-            torch_obs = torch.from_numpy(obs[:,0:58,:,:]).float().cuda()
-            torch_results = torch.from_numpy(results).float().cuda()
+            torch_obs = torch.from_numpy(obs[:,0:58,:,:]).float().to(device)
+            torch_results = torch.from_numpy(results).float().to(device)
             # from shape [batch] to shape [batch, 1 ,1 ,1]
             torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
             
             # Compute board loss for combat data
             combat_board_loss = torch.sum(MSE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
-            
-            # Handle different batch sizes between main training and combat data
-            combat_batch_size = combat_board_loss.shape[0]
-            if combat_batch_size == batch_size:
-                # Same batch size, can directly add
-                board_loss += combat_board_loss
-            elif combat_batch_size < batch_size:
-                # Combat batch is smaller, pad with zeros
-                padded_combat_loss = torch.zeros(batch_size, device='cuda')
-                padded_combat_loss[:combat_batch_size] = combat_board_loss
-                board_loss += padded_combat_loss
-            else:
-                # Combat batch is larger, truncate
-                board_loss += combat_board_loss[:batch_size]
-            
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 
-        loss = value_loss + policy_loss + board_loss
-        mean_loss = torch.mean(loss)
-        loss.register_hook(lambda grad: grad * (1 / config.UNROLL_STEPS))
+        mean_loss = value_loss.mean() + policy_loss.mean()
+        if len(combats) > 0:
+            mean_loss += combat_board_loss.mean()
+        mean_loss.register_hook(lambda grad: grad * (1 / config.UNROLL_STEPS))
 
         # Leaving this here in case I want to use it later.
         # This was used in Atari but not in board games. Also, very unclear how to
@@ -260,7 +246,7 @@ class Trainer(object):
 
         summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
         if len(combats) > 0:
-            summary_writer.add_scalar('losses/board', torch.mean(board_loss), train_step)
+            summary_writer.add_scalar('losses/board', combat_board_loss.mean(), train_step)
         # summary_writer.add_scalar('losses/reward', get_mean('reward_loss'), train_step)
         summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
         # summary_writer.add_scalar('losses/directive', torch.mean(torch.sum(directive_loss, dim=0)), train_step)
