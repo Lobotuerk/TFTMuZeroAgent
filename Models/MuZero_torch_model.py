@@ -143,7 +143,11 @@ class MuZeroNetwork(AbstractNetwork):
         return next_hidden_state_normalized, reward
 
     def initial_inference(self, observation):
-        observation_tensor = observation.cuda()
+        device = next(self.parameters()).device
+        if isinstance(observation, np.ndarray):
+            observation_tensor = torch.from_numpy(observation).float().to(device)
+        else:
+            observation_tensor = observation.to(device)
         hidden_state = self.representation(observation_tensor)
         policy_logits, value_logits = self.prediction(hidden_state)
         directive = self.directive_generator(observation_tensor)
@@ -437,7 +441,7 @@ class DynNetwork(torch.nn.Module):
         # self.bn_reward = torch.nn.BatchNorm1d(1)
         # self.fc_reward = mlp(3, [config.LAYER_HIDDEN_SIZE] * config.N_HEAD_HIDDEN_LAYERS, 1, output_activation=torch.nn.LeakyReLU)
         # self.resnet = resnet(input_size, layer_sizes, output_size)
-        self.dense1 = torch.nn.Linear(hidden + config.ACTION_CONCAT_SIZE, hidden)
+        self.dense1 = torch.nn.Linear(hidden + config.ACTION_ENCODING_SIZE, hidden)
         # self.dropout1 = torch.nn.Dropout(0.5)
         self.dense2 = torch.nn.Linear(hidden, hidden)
         self.dense3 = torch.nn.Linear(hidden, hidden)

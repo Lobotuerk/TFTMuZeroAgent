@@ -84,7 +84,7 @@ class Trainer(object):
         accs = collections.defaultdict(list)
         # Updated for TFTSet4Gym: policy shape is (batch, time_steps, 3, 37) 
         # Flatten last two dims: 3 * 37 = 111
-        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, 111)).to(device)
+        target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, config.ACTION_CONCAT_SIZE)).to(device)
         
         # Initialize losses as tensors with proper shape
         batch_size = target_value.shape[0]
