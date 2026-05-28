@@ -274,6 +274,10 @@ class BatchInferenceServer:
             with torch.no_grad():
                 net_out = model.initial_inference(batch_tensor)
 
+            # Handle both dict and (dict, directive, board) returns from model
+            if isinstance(net_out, tuple):
+                net_out = net_out[0]
+
             precomputed = []
             for i in range(batch_size):
                 precomputed.append({
