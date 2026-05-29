@@ -502,7 +502,7 @@ class TrainingOrchestrator:
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
-            global_buffer=self.global_buffer,
+            global_buffer=None,
             weights=copy.deepcopy(self.base_agent.get_weights()),
         )
         eval_old = MuZeroAgent(
@@ -510,7 +510,7 @@ class TrainingOrchestrator:
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
-            global_buffer=self.global_buffer,
+            global_buffer=None,
             weights=copy.deepcopy(self.current_weights),
         )
         random_agent = RandomAgent("EvalRandom")
