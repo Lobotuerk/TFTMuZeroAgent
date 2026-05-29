@@ -175,9 +175,23 @@ class _ParallelEnvManager:
         self.workers = [_GameWorker(i) for i in range(num_workers)]
         self.active_tasks: Dict[asyncio.Task, int] = {}
         self.should_continue = True
+        self.should_spawn = True
 
     def stop(self):
         self.should_continue = False
+
+    def pause(self):
+        """Prevent spawning new games; let running ones drain naturally."""
+        self.should_spawn = False
+
+    def resume(self):
+        """Allow spawning new games again."""
+        self.should_spawn = True
+
+    async def wait_for_drain(self):
+        """Wait until all active game tasks have finished."""
+        while self.active_tasks:
+            await asyncio.sleep(0.5)
 
     async def run_continuously(self,
                                agent_manager: EnhancedAgentManager,
@@ -191,6 +205,9 @@ class _ParallelEnvManager:
         games_completed = 0
         while self.should_continue:
             if not self.active_tasks:
+                if not self.should_spawn:
+                    await asyncio.sleep(0.1)
+                    continue
                 for i, w in enumerate(self.workers):
                     task = asyncio.create_task(w.run_game(agent_manager))
                     self.active_tasks[task] = i
@@ -217,7 +234,7 @@ class _ParallelEnvManager:
                     print(f"Game worker {worker_id} crashed: {e}")
                     raise e
 
-                if worker_id >= 0:
+                if worker_id >= 0 and self.should_spawn:
                     new = asyncio.create_task(self.workers[worker_id].run_game(agent_manager))
                     self.active_tasks[new] = worker_id
 
@@ -432,7 +449,10 @@ class TrainingOrchestrator:
 
         # Periodic evaluation and checkpointing
         if self.training_step % self.cfg.evaluation_interval == 0:
+            self.env_manager.pause()
+            await self.env_manager.wait_for_drain()
             await self.evaluate()
+            self.env_manager.resume()
 
         if self.training_step % self.cfg.save_interval == 0:
             self.save_checkpoint()
