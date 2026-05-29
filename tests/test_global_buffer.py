@@ -64,6 +64,7 @@ def test_read_gameplay_batch(buffer):
     batch = buffer.read_gameplay_batch()
     assert batch is not None
     assert len(batch) == 5
+    assert buffer.get_gameplay_buffer_size() == 0
 
 
 def test_clear_gameplay_buffer(buffer):
@@ -91,6 +92,7 @@ def test_read_combat_batch(buffer):
     batch = buffer.read_combat_batch()
     assert batch is not None
     assert len(batch) == 2
+    assert buffer.get_combat_buffer_size() == 0
 
 
 def test_clear_combat_buffer(buffer):
@@ -118,6 +120,7 @@ def test_sample_gameplay_batch_shape(buffer):
     obs, actions, values, rewards, policies = batch
     assert len(obs) == 4
     assert len(actions) == 4
+    assert buffer.get_gameplay_buffer_size() == 4
 
 
 def test_store_episode_large(buffer):

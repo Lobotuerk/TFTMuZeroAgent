@@ -19,7 +19,13 @@ class GlobalBuffer:
             if len(self.gameplay_experiences) < batch_size:
                 return None
 
-            samples = random.sample(self.gameplay_experiences, batch_size)
+            indices = random.sample(range(len(self.gameplay_experiences)), batch_size)
+            samples = [self.gameplay_experiences[i] for i in indices]
+            removed_indices = set(indices)
+            self.gameplay_experiences = deque(
+                [item for i, item in enumerate(self.gameplay_experiences) if i not in removed_indices],
+                maxlen=self.gameplay_experiences.maxlen
+            )
             
             observation_batch = []
             action_batch = []
@@ -47,7 +53,13 @@ class GlobalBuffer:
             if len(self.combat_experiences) < batch_size:
                 return None
 
-            samples = random.sample(self.combat_experiences, batch_size)
+            indices = random.sample(range(len(self.combat_experiences)), batch_size)
+            samples = [self.combat_experiences[i] for i in indices]
+            removed_indices = set(indices)
+            self.combat_experiences = deque(
+                [item for i, item in enumerate(self.combat_experiences) if i not in removed_indices],
+                maxlen=self.combat_experiences.maxlen
+            )
             
             observation_batch = []
             result_batch = []
