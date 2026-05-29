@@ -370,12 +370,16 @@ class BaseAgent:
                 # We don't necessarily want to delete it from the dict, but reset it
                 buffer.reset()
         else:
-            # Terminate all buffers (e.g. end of game)
-            # In this case final_value should be a dict or we use it for all
+            # Terminate only the buffers that have scores in final_value if it's a dict
+            # This is critical for shared agents across multiple concurrent games
             for pid, buffer in self.replay_buffers.items():
-                val = final_value[pid] if isinstance(final_value, dict) and pid in final_value else final_value
-                buffer.move_buffer_to_global(final_value=val)
-                buffer.reset()
+                if isinstance(final_value, dict):
+                    if pid in final_value:
+                        buffer.move_buffer_to_global(final_value=final_value[pid])
+                        buffer.reset()
+                else:
+                    buffer.move_buffer_to_global(final_value=final_value)
+                    buffer.reset()
     
     def _get_champion_id(self, champ_name):
         """Get champion ID from name using COST dictionary."""
