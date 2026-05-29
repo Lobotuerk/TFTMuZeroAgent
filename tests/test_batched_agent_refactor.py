@@ -81,5 +81,33 @@ class TestBatchedAgentRefactor(unittest.TestCase):
         self.assertEqual(len(agent.replay_buffers["p2"].observations), 1)
         self.assertEqual(len(agent.replay_buffers["p3"].observations), 1)
 
+    def test_shared_agent_termination(self):
+        gb = GlobalBuffer()
+        agent = RandomAgent(global_buffer=gb, save_data=True)
+        
+        # Two players active
+        agent.select_action(np.zeros(5152), player_id="p1")
+        agent.select_action(np.zeros(5152), player_id="p2")
+        
+        # Check buffers are created
+        self.assertIn("p1", agent.replay_buffers)
+        self.assertIn("p2", agent.replay_buffers)
+        self.assertEqual(len(agent.replay_buffers["p1"].observations), 1)
+        self.assertEqual(len(agent.replay_buffers["p2"].observations), 1)
+        
+        # Terminate only p1 with a dict
+        agent.terminate(final_value={"p1": 1.0})
+        
+        # p1 buffer should be flushed and reset (it will be empty because move_buffer_to_global calls reset)
+        self.assertEqual(len(agent.replay_buffers["p1"].observations), 0)
+        # p2 buffer should NOT be flushed
+        self.assertEqual(len(agent.replay_buffers["p2"].observations), 1)
+        
+        # Terminate p2 as a float
+        agent.terminate(final_value=0.5)
+        
+        # p2 buffer should now be flushed
+        self.assertEqual(len(agent.replay_buffers["p2"].observations), 0)
+
 if __name__ == '__main__':
     unittest.main()
