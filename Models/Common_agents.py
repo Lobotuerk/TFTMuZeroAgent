@@ -227,7 +227,7 @@ class BaseAgent:
             p_health = self.prev_health.get(player_id)
             p_obs = self.prev_observation.get(player_id)
 
-            if p_turns == 0 and current_turns > 0:
+            if p_turns is not None and current_turns > p_turns:
                 # Combat just finished (turns_for_combat reset to max)
                 if p_health is not None and p_obs is not None:
                     # Win if health stayed the same, loss if it decreased

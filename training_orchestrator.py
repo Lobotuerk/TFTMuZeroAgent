@@ -441,7 +441,9 @@ class TrainingOrchestrator:
             batch = self.global_buffer.read_gameplay_batch()
             combat_batch = []
             if hasattr(self.global_buffer, "available_combat_batch") and self.global_buffer.available_combat_batch():
-                combat_batch = self.global_buffer.read_combat_batch()
+                cb = self.global_buffer.read_combat_batch()
+                if cb is not None:
+                    combat_batch = cb
     
             self.trainer.train_network(
                 batch=batch,
