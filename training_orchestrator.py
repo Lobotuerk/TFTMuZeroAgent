@@ -106,7 +106,7 @@ class _GameWorker:
                 float_rewards = {k: float(v) for k, v in rewards.items()}
 
                 actions_task = agent_manager.get_actions(
-                    observations, float_rewards, terminated
+                    observations, float_rewards, terminated, game_id=game_id
                 )
                 actions = await asyncio.wait_for(actions_task, timeout=30.0)
 
@@ -144,7 +144,7 @@ class _GameWorker:
             agent_mapping = agent_manager.get_player_agent_mapping() if return_placements else {}
             
             # Flush all agent buffers with final scores
-            await agent_manager.flush_all_buffers(final_values=scores)
+            await agent_manager.flush_all_buffers(final_values=scores, game_id=game_id)
             
             duration = time.time() - start_time
             self.games_completed += 1
@@ -434,32 +434,38 @@ class TrainingOrchestrator:
 
     async def _train_step(self) -> None:
         """Perform a single training step (called automatically during collect)."""
-        if not self.global_buffer or not self.global_buffer.available_gameplay_batch():
-            return
-
-        batch = self.global_buffer.read_gameplay_batch()
-        combat_batch = []
-        if hasattr(self.global_buffer, "available_combat_batch") and self.global_buffer.available_combat_batch():
-            combat_batch = self.global_buffer.read_combat_batch()
-
-        self.trainer.train_network(
-            batch=batch,
-            combats=combat_batch,
-            agent=self.base_agent.model,
-            train_step=self.training_step,
-            summary_writer=self.summary_writer,
-        )
-        self.training_step += 1
-
-        # Periodic evaluation and checkpointing
-        if self.training_step % self.cfg.evaluation_interval == 0:
-            self.env_manager.pause()
-            await self.env_manager.wait_for_drain()
-            await self.evaluate()
-            self.env_manager.resume()
-
-        if self.training_step % self.cfg.save_interval == 0:
-            self.save_checkpoint()
+        try:
+            if not self.global_buffer or not self.global_buffer.available_gameplay_batch():
+                return
+    
+            batch = self.global_buffer.read_gameplay_batch()
+            combat_batch = []
+            if hasattr(self.global_buffer, "available_combat_batch") and self.global_buffer.available_combat_batch():
+                combat_batch = self.global_buffer.read_combat_batch()
+    
+            self.trainer.train_network(
+                batch=batch,
+                combats=combat_batch,
+                agent=self.base_agent.model,
+                train_step=self.training_step,
+                summary_writer=self.summary_writer,
+            )
+            self.training_step += 1
+    
+            # Periodic evaluation and checkpointing
+            if self.training_step % self.cfg.evaluation_interval == 0:
+                self.env_manager.pause()
+                await self.env_manager.wait_for_drain()
+                await self.evaluate()
+                self.env_manager.resume()
+    
+            if self.training_step % self.cfg.save_interval == 0:
+                self.save_checkpoint()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"Error in _train_step: {e}")
+            raise
 
     def train_step(self) -> bool:
         """

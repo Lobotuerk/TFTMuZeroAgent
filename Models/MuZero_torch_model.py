@@ -16,14 +16,13 @@ def dcord_to_2dcord(dcord):
 
 def action_to_3d(action):
     """Convert action to 3D format for TFTSet4Gym compatibility"""
-    # TFTSet4Gym uses 3D actions: [action_type, target_1, target_2]
-    # Create (batch_size, 1, 3) format for dynamics network
-    # action_2d = np.atleast_2d(action)
-    # cube_action = np.zeros((action_2d.shape[0], 1, 3))
-    # for i in range(action_2d.shape[0]):
-    #     # Take only first 3 elements to match TFTSet4Gym format
-    #     cube_action[i] = action_2d[i]
-    return np.atleast_2d(action)
+    from Models.action_conversion import action_3d_to_policy
+    action_2d = np.atleast_2d(action)
+    batch_size = action_2d.shape[0]
+    encoded = np.zeros((batch_size, 1, 111), dtype=np.float32)
+    for i in range(batch_size):
+        encoded[i, 0, :] = action_3d_to_policy(action_2d[i], num_slots=37)
+    return encoded
 
 def dict_to_cpu(dictionary):
     cpu_dict = {}

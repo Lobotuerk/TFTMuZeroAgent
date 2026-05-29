@@ -410,7 +410,8 @@ class EnhancedAgentManager:
     async def get_actions(self,
                           observations: Dict[str, Dict],
                           rewards: Dict[str, float],
-                          terminated: Dict[str, bool]) -> Dict[str, Any]:
+                          terminated: Dict[str, bool],
+                          game_id: str = "") -> Dict[str, Any]:
         tasks = []
         player_ids = []
         for player_id, obs in observations.items():
@@ -418,28 +419,32 @@ class EnhancedAgentManager:
             if agent_type is None:
                 continue
             mask = obs.get('action_mask', np.ones(54, dtype=bool))
+            unique_pid = f"{game_id}_{player_id}" if game_id else player_id
             task = self.batch_processor.request_action(
                 agent_type,
                 obs['tensor'],
                 mask,
                 rewards.get(player_id, 0.0),
                 terminated.get(player_id, False),
-                player_id=player_id,
+                player_id=unique_pid,
             )
             tasks.append(task)
             player_ids.append(player_id)
 
         # Use asyncio.gather to submit all requests concurrently, enabling batching
         results = await asyncio.gather(*tasks)
-        
+
         return {pid: result for pid, result in zip(player_ids, results)}
 
     def get_performance_stats(self) -> Dict[str, Any]:
         return self.batch_processor.get_performance_stats()
 
-    async def flush_all_buffers(self, final_values: Optional[Dict[str, float]] = None):
+    async def flush_all_buffers(self, final_values: Optional[Dict[str, float]] = None, game_id: str = ""):
         """Flush all agents' replay buffers to global storage concurrently"""
         final_vals = final_values or {}
+        if game_id:
+            final_vals = {f"{game_id}_{k}": v for k, v in final_vals.items()}
+
         for agent_type, agent in self.agents.items():
             if hasattr(agent, 'terminate'):
                 # Pass player-specific final values via dict
@@ -480,7 +485,7 @@ class AsyncGameEnvironment:
         start = time.time()
         while not all(terminated.values()):
             actions = await self.agent_manager.get_actions(
-                observations, rewards, terminated
+                observations, rewards, terminated, game_id=game_id
             )
             observations, rewards, terminated, _, info = env.step(actions)
             for player in terminated:
