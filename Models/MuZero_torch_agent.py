@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import asyncio
+import os
 from typing import List, Optional, Any, Union, Dict, Tuple
 import config
 
@@ -35,12 +36,15 @@ class MuZeroAgent(BaseAgent):
     def __init__(self,
                  agent_name: str = "MuZeroAgent",
                  global_buffer: Optional[Any] = None,
+                 config_obj: Optional[Any] = None,
                  action_size: Optional[int] = None,
                  action_limits: Optional[List[int]] = None,
                  obs_size: Optional[int] = None,
                  simulations: Optional[int] = None,
                  weights: Optional[Dict[str, Any]] = None):
         super().__init__(agent_name, global_buffer)
+
+        self.config = config_obj if config_obj is not None else config
 
         # Read action dimensions from observation schema/config
         self.action_limits = action_limits if action_limits is not None else ACTION_DIM.copy()
@@ -54,7 +58,7 @@ class MuZeroAgent(BaseAgent):
             self.obs_size = schema.total_size
         
         # Set simulations from config if not provided
-        self.simulations = simulations if simulations is not None else getattr(config, 'NUM_SIMULATIONS', 10)
+        self.simulations = simulations if simulations is not None else getattr(self.config, 'NUM_SIMULATIONS', 10)
         
         # Model and MCTS initialization
         self.model = MuZeroNetwork()
@@ -196,6 +200,16 @@ class MuZeroAgent(BaseAgent):
     def update_weights(self, weights):
         """Update model weights"""
         self.model.load_state_dict(weights)
+
+    def save_model(self, episode):
+        """Save model weights to the configured results path"""
+        results_path = getattr(self.config, 'results_path', getattr(self.config, 'RESULTS_PATH', './Checkpoints'))
+        if not os.path.exists(results_path):
+            os.makedirs(results_path)
+
+        path = os.path.join(results_path, f"checkpoint_{episode}")
+        torch.save(self.get_weights(), path)
+        print(f"Model saved to {path}")
 
     def get_stats(self):
         """Get performance statistics"""

@@ -8,6 +8,7 @@ from dataclasses import fields
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from training_orchestrator import TrainingConfig, _GameWorker, GameResult
+import config
 
 
 class TestTrainingConfig:
@@ -15,12 +16,16 @@ class TestTrainingConfig:
         cfg = TrainingConfig()
         assert cfg.starting_train_step == 0
         assert cfg.run_name == ""
-        assert cfg.concurrent_games == 4
-        assert cfg.evaluation_games == 10
-        assert cfg.evaluation_concurrent == 2
+        assert cfg.concurrent_games == config.CONCURRENT_GAMES
+        assert cfg.evaluation_games == config.EVALUATION_GAMES
+        assert cfg.evaluation_concurrent == config.EVALUATION_CONCURRENT_GAMES
         assert cfg.max_batch_size == 16
         assert cfg.batch_timeout_ms == 5.0
         assert cfg.gpu_memory_fraction == 0.7
+        assert hasattr(cfg, 'sync_steps')
+        assert hasattr(cfg, 'results_path')
+        assert cfg.sync_steps == config.SYNC_STEPS
+        assert cfg.results_path == config.RESULTS_PATH
 
     def test_custom_values(self):
         cfg = TrainingConfig(
@@ -32,6 +37,8 @@ class TestTrainingConfig:
             max_batch_size=32,
             batch_timeout_ms=10.0,
             gpu_memory_fraction=0.5,
+            sync_steps=2,
+            results_path="./test_results"
         )
         assert cfg.starting_train_step == 100
         assert cfg.run_name == "test_run"
@@ -41,6 +48,8 @@ class TestTrainingConfig:
         assert cfg.max_batch_size == 32
         assert cfg.batch_timeout_ms == 10.0
         assert cfg.gpu_memory_fraction == 0.5
+        assert cfg.sync_steps == 2
+        assert cfg.results_path == "./test_results"
 
     def test_partial_custom_values(self):
         cfg = TrainingConfig(starting_train_step=50, concurrent_games=2)

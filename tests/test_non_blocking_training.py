@@ -52,29 +52,18 @@ async def test_non_blocking_training_loop():
         mock_base_agent = MockAgent.return_value
         mock_base_agent.get_weights.return_value = {}
 
-        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1))
+        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1, sync_steps=1))
         orch.setup()
-        
-        # Override SYNC_STEPS for testing
-        original_sync_steps = config.SYNC_STEPS
-        config.SYNC_STEPS = 1
         
         try:
             # Run collect which now starts the background training task
             # We'll use a timeout to ensure it doesn't run forever if something is wrong
             await asyncio.wait_for(orch.collect(), timeout=2.0)
             
-            # After collect finishes (due to mock_run_continuously finishing)
-            # The finally block in collect waits for the train_task
-            # But wait, collect's train_task depends on self.training_active
-            # and collect doesn't set it to False.
-            # Actually, I should stop it manually or make run_continuously set it to False.
-            
         except asyncio.TimeoutError:
             pass
         finally:
             orch.training_active = False
-            config.SYNC_STEPS = original_sync_steps
 
         # Verify games were counted
         assert orch.games_completed == 2
@@ -114,10 +103,8 @@ async def test_run_non_blocking():
         MockSetup.return_value = (MagicMock(), MagicMock())
         MockAgent.return_value.get_weights.return_value = {}
 
-        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1))
+        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1, sync_steps=5))
         orch.setup()
-        
-        config.SYNC_STEPS = 5
         
         # Start run and cancel after some time
         run_task = asyncio.create_task(orch.run(max_steps=10))

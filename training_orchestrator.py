@@ -58,6 +58,8 @@ class TrainingConfig:
     max_batch_size: int = 16
     batch_timeout_ms: float = 5.0
     gpu_memory_fraction: float = 0.7
+    sync_steps: int = config.SYNC_STEPS
+    results_path: str = config.RESULTS_PATH
 
 
 @dataclass
@@ -330,6 +332,7 @@ class TrainingOrchestrator:
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
             global_buffer=self.global_buffer,
+            config_obj=self.cfg,
         )
 
         if self.training_step > 0:
@@ -347,6 +350,7 @@ class TrainingOrchestrator:
             simulations=config.NUM_SIMULATIONS,
             global_buffer=self.global_buffer,
             weights=copy.deepcopy(self.current_weights),
+            config_obj=self.cfg,
         )
         self._training_agents = [training_muzero]
 
@@ -418,7 +422,7 @@ class TrainingOrchestrator:
                 await self._train_step()
                 
                 # Periodically sync weights to collection agents
-                if self.training_step % config.SYNC_STEPS == 0:
+                if self.training_step % self.cfg.sync_steps == 0:
                     self.sync_weights()
             else:
                 # Wait for more experience to be collected
@@ -504,6 +508,7 @@ class TrainingOrchestrator:
             simulations=config.NUM_SIMULATIONS,
             global_buffer=None,
             weights=copy.deepcopy(self.base_agent.get_weights()),
+            config_obj=self.cfg,
         )
         eval_old = MuZeroAgent(
             action_size=3,
@@ -512,6 +517,7 @@ class TrainingOrchestrator:
             simulations=config.NUM_SIMULATIONS,
             global_buffer=None,
             weights=copy.deepcopy(self.current_weights),
+            config_obj=self.cfg,
         )
         random_agent = RandomAgent("EvalRandom")
         cultist_agent = CultistAgent()

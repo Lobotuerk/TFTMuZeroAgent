@@ -63,6 +63,7 @@ CHECKPOINT_STEPS = 200
 REPLAY_BUFFER_SIZE = 10000
 GAMEPLAY_BUFFER_PATH = './data/gameplay/'
 COMBAT_BUFFER_PATH = './data/combats/'
+RESULTS_PATH = './Checkpoints'
 
 #### TESTING ####
 RUN_UNIT_TEST = False
