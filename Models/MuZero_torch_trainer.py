@@ -117,24 +117,36 @@ class Trainer(object):
 
         if len(combats) > 0:
             obs, results = combats
-            if obs.ndim == 4:
-                obs_flat = obs.reshape(obs.shape[0], -1)
-                target_size = 5152
-                if obs_flat.shape[1] < target_size:
-                    obs_flat = np.pad(obs_flat, ((0, 0), (0, target_size - obs_flat.shape[1])))
-                elif obs_flat.shape[1] > target_size:
-                    obs_flat = obs_flat[:, :target_size]
-            else:
+            # Ensure obs is 4D for spatial loss calculation [batch, depth, height, width]
+            if obs.ndim == 2:
+                # If flat, reshape to standard TFT observation shape (184, 4, 7)
+                obs_4d = obs.reshape(obs.shape[0], 184, 4, 7)
                 obs_flat = obs
+            elif obs.ndim == 4:
+                obs_4d = obs
+                obs_flat = obs.reshape(obs.shape[0], -1)
+            else:
+                # Fallback for unexpected shapes
+                obs_4d = obs
+                obs_flat = obs
+
+            # Ensure obs_flat has correct size for initial_inference
+            target_size = config.OBSERVATION_SIZE
+            if obs_flat.shape[1] < target_size:
+                obs_flat = np.pad(obs_flat, ((0, 0), (0, target_size - obs_flat.shape[1])))
+            elif obs_flat.shape[1] > target_size:
+                obs_flat = obs_flat[:, :target_size]
             
             _, _, board_distribution = agent.initial_inference(obs_flat)
-            torch_obs = torch.from_numpy(obs[:,0:58,:,:]).float().to(device)
+            
+            # Use 4D observation for board loss (comparing spatial distributions)
+            torch_obs = torch.from_numpy(obs_4d[:, 0:58, :, :]).float().to(device)
             torch_results = torch.from_numpy(results).float().to(device)
             # from shape [batch] to shape [batch, 1 ,1 ,1]
             torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
             
             # Compute board loss for combat data
-            combat_board_loss = torch.sum(MAE_loss(board_distribution, torch_obs) * torch_results, dim=[1,2,3])
+            combat_board_loss = torch.sum(torch.abs(board_distribution - torch_obs) * torch_results, dim=[1,2,3])
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 

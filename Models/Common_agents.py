@@ -22,7 +22,11 @@ def extract_field_from_observation(observation, field_name):
     if isinstance(observation, dict) and field_name in observation:
         val = observation[field_name]
     else:
-        val = get_field_value_from_obs(observation, field_name)
+        # If it's a dict but doesn't have the field at top level, it might be in 'tensor'
+        obs_to_extract = observation
+        if isinstance(observation, dict) and 'tensor' in observation:
+            obs_to_extract = observation['tensor']
+        val = get_field_value_from_obs(obs_to_extract, field_name)
     
     # Normalize: squeeze any leading dimensions of size 1 (batch dimension)
     if isinstance(val, np.ndarray) and val.ndim > 0 and val.shape[0] == 1:
@@ -214,10 +218,6 @@ class BaseAgent:
         if obs is None or (isinstance(obs, np.ndarray) and obs.size == 0):
             raise ValueError("Observation tensor is empty or None")
 
-        # Flatten to 1D array if needed (schema expects flat observation)
-        if isinstance(obs, np.ndarray) and obs.ndim > 1:
-            obs = obs.flatten()
-
         # Combat outcome tracking
         try:
             current_turns = extract_field_from_observation(observation, 'turns_for_combat')
@@ -241,6 +241,10 @@ class BaseAgent:
         except Exception:
             # If schema extraction fails, we just don't track combat for this step
             pass
+
+        # Flatten to 1D array if needed (schema expects flat observation)
+        if isinstance(obs, np.ndarray) and obs.ndim > 1:
+            obs = obs.flatten()
 
         return obs, mask
 
