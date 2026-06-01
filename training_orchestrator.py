@@ -626,11 +626,13 @@ class TrainingOrchestrator:
         )
         train_task = asyncio.create_task(self._training_loop())
 
+        last_logged_step = -1
         try:
             while self.training_active and self.training_step < max_steps:
                 await asyncio.sleep(1.0)
-                if self.training_step % 100 == 0 and self.training_step > 0:
+                if self.training_step % 100 == 0 and self.training_step > 0 and self.training_step != last_logged_step:
                     print(f"  step={self.training_step}  games={self.games_completed}")
+                    last_logged_step = self.training_step
         except asyncio.CancelledError:
             pass
         finally:
