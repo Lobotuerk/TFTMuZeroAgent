@@ -359,10 +359,7 @@ class TrainingOrchestrator:
         divine_agent = DivineAgent()
 
         agent_configs: List[Tuple[Any, int]] = [
-            (training_muzero, 2),
-            (random_agent, 4),
-            (cultist_agent, 1),
-            (divine_agent, 1),
+            (training_muzero, 8)
         ]
 
         # --- batch processor + agent manager -------------------------------

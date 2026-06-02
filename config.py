@@ -38,11 +38,11 @@ N_HEAD_HIDDEN_LAYERS = 4
 
 ### TIME RELATED VALUES ###
 ACTIONS_PER_TURN = 25
-CONCURRENT_GAMES = 8
+CONCURRENT_GAMES = 13
 NUM_PLAYERS = 8
-NUM_SIMULATIONS = 100
+NUM_SIMULATIONS = 50
 SAMPLES_PER_PLAYER = 2048  # Normal is 128
-UNROLL_STEPS = 25
+UNROLL_STEPS = 15
 EVALUATION_GAMES = 10
 EVALUATION_CONCURRENT_GAMES = 5
 
@@ -54,7 +54,7 @@ LR_DECAY_FUNCTION = 0.1
 WEIGHT_DECAY = 1e-5
 REWARD_LOSS_SCALING = 0
 POLICY_LOSS_SCALING = 1
-SYNC_STEPS = 10
+SYNC_STEPS = 25
 # Putting this here so that we don't scale the policy by a multiple of 5
 # Because we calculate the loss for each of the 5 dimensions.
 # I'll add a mathematical way of generating these numbers later.

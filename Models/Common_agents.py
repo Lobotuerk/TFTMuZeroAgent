@@ -548,6 +548,11 @@ class DivineAgent(BuyingAgent):
         divine_units = ["wukong", "jax", "irelia", "lux", "warwick", "leesin", "ashe", "kindred", "teemo"]
         super().__init__(divine_units, "DivineAgent", global_buffer, save_data=save_data)
 
+class WarlordAgent(BuyingAgent):
+    def __init__(self, global_buffer=None, save_data=False):
+        warlord_units = ["garen", "jarvaniv", "katarina", "nidalee", "pyke", "vi", "zed", "xinzhao", "azir"]
+        super().__init__(warlord_units, "WarlordAgent", global_buffer, save_data=save_data)
+
 class RerollAgent(BuyingAgent):
     def __init__(self, global_buffer=None, save_data=False):
         reroll_units = ["yasuo", "fiora", "vayne", "nidalee", "garen"]
