@@ -355,7 +355,7 @@ class TrainingOrchestrator:
                 self.current_model.model.load_state_dict(state)
 
         # MuZero agents for *collection* – start with current model weights
-        training_muzero = MuZeroAgent(
+        collection_agent = MuZeroAgent(
             action_size=3,
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
@@ -364,14 +364,14 @@ class TrainingOrchestrator:
             weights=copy.deepcopy(self.current_model.get_weights()),
             config_obj=self.cfg,
         )
-        self._training_agents = [training_muzero]
+        self._training_agents = [collection_agent]
 
         random_agent = RandomAgent("RandomTraining")
         cultist_agent = CultistAgent()
         divine_agent = DivineAgent()
 
         agent_configs: List[Tuple[Any, int]] = [
-            (training_muzero, 8)
+            (collection_agent, 8)
         ]
 
         # --- batch processor + agent manager -------------------------------
@@ -423,17 +423,12 @@ class TrainingOrchestrator:
     async def _training_loop(self) -> None:
         """
         Dedicated, non-blocking background task that handles continuous 
-        training from the GlobalBuffer and periodic weight syncing.
+        training from the GlobalBuffer.
         """
         print("TRAIN phase started – background training loop active.")
         while self.training_active:
             if self.global_buffer and self.global_buffer.available_gameplay_batch():
                 await self._train_step()
-                
-                # Periodically sync weights to collection agents and save current model
-                if self.training_step % self.cfg.sync_steps == 0:
-                    self.sync_weights()
-                    self.save_current_checkpoint()
             else:
                 # Wait for more experience to be collected
                 await asyncio.sleep(0.5)
@@ -582,8 +577,6 @@ class TrainingOrchestrator:
             if self.global_buffer:
                 if hasattr(self.global_buffer, "clear_gameplay_buffer"):
                     self.global_buffer.clear_gameplay_buffer()
-                if hasattr(self.global_buffer, "clear_combat_buffer"):
-                    self.global_buffer.clear_combat_buffer()
 
         return {"current_placement": current_mean, "best_placement": best_mean}
 
