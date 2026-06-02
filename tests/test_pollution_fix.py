@@ -64,4 +64,4 @@ def test_muzero_agent_with_buffer_pollution():
     agent.terminate(final_value=1.0, player_id="test_player")
     
     # Buffer should now have something
-    assert len(buffer.gameplay_experiences) > 0 or len(buffer.combat_experiences) > 0
+    assert len(buffer.gameplay_buffer) > 0 or len(buffer.combat_buffer) > 0

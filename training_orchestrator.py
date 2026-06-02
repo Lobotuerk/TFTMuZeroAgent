@@ -571,8 +571,6 @@ class TrainingOrchestrator:
             if self.global_buffer:
                 if hasattr(self.global_buffer, "clear_gameplay_buffer"):
                     self.global_buffer.clear_gameplay_buffer()
-                if hasattr(self.global_buffer, "clear_combat_buffer"):
-                    self.global_buffer.clear_combat_buffer()
             self.sync_weights()
 
         return {"new_placement": base_mean, "old_placement": old_mean}
