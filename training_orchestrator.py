@@ -311,8 +311,8 @@ class TrainingOrchestrator:
         self.training_active: bool = False
 
         # Model / weights
-        self.base_agent: Optional[MuZeroAgent] = None
-        self.current_weights: Optional[Dict] = None
+        self.best_model: Optional[MuZeroAgent] = None
+        self.current_model: Optional[MuZeroAgent] = None
         self._training_agents: List[MuZeroAgent] = []
 
     # ------------------------------------------------------------------
@@ -326,7 +326,8 @@ class TrainingOrchestrator:
         self.global_buffer = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
 
         # --- agent config -------------------------------------------------
-        self.base_agent = MuZeroAgent(
+        # best_model: the best performing model — only updated when evaluation beats it
+        self.best_model = MuZeroAgent(
             action_size=3,
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
@@ -335,21 +336,32 @@ class TrainingOrchestrator:
             config_obj=self.cfg,
         )
 
+        # current_model: the model actively being trained
+        self.current_model = MuZeroAgent(
+            action_size=3,
+            action_limits=[7, 37, 10],
+            obs_size=config.OBSERVATION_SIZE,
+            simulations=config.NUM_SIMULATIONS,
+            global_buffer=self.global_buffer,
+            weights=copy.deepcopy(self.best_model.get_weights()),
+            config_obj=self.cfg,
+        )
+
         if self.training_step > 0:
-            ckpt = f"./checkpoint/checkpoint_{self.training_step}"
+            ckpt = f"./checkpoint/best_{self.training_step}"
             if os.path.isfile(ckpt):
-                self.base_agent.model.load_state_dict(torch.load(ckpt))
+                state = torch.load(ckpt)
+                self.best_model.model.load_state_dict(state)
+                self.current_model.model.load_state_dict(state)
 
-        self.current_weights = copy.deepcopy(self.base_agent.get_weights())
-
-        # MuZero agents for *collection* – start with current weights
+        # MuZero agents for *collection* – start with current model weights
         training_muzero = MuZeroAgent(
             action_size=3,
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
             global_buffer=self.global_buffer,
-            weights=copy.deepcopy(self.current_weights),
+            weights=copy.deepcopy(self.current_model.get_weights()),
             config_obj=self.cfg,
         )
         self._training_agents = [training_muzero]
@@ -418,9 +430,10 @@ class TrainingOrchestrator:
             if self.global_buffer and self.global_buffer.available_gameplay_batch():
                 await self._train_step()
                 
-                # Periodically sync weights to collection agents
+                # Periodically sync weights to collection agents and save current model
                 if self.training_step % self.cfg.sync_steps == 0:
                     self.sync_weights()
+                    self.save_current_checkpoint()
             else:
                 # Wait for more experience to be collected
                 await asyncio.sleep(0.5)
@@ -445,21 +458,18 @@ class TrainingOrchestrator:
             self.trainer.train_network(
                 batch=batch,
                 combats=combat_batch,
-                agent=self.base_agent.model,
+                agent=self.current_model.model,
                 train_step=self.training_step,
                 summary_writer=self.summary_writer,
             )
             self.training_step += 1
     
-            # Periodic evaluation and checkpointing
+            # Periodic evaluation
             if self.training_step % self.cfg.evaluation_interval == 0:
                 self.env_manager.pause()
                 await self.env_manager.wait_for_drain()
                 await self.evaluate()
                 self.env_manager.resume()
-    
-            if self.training_step % self.cfg.save_interval == 0:
-                self.save_checkpoint()
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -482,13 +492,12 @@ class TrainingOrchestrator:
 
     def sync_weights(self) -> None:
         """
-        Distribute the latest trained weights to the active collection
-        agents so they immediately benefit from the new policy.
+        Distribute the latest trained weights from the current model to the
+        active collection agents so they benefit from the new policy.
         """
-        if not self.base_agent:
+        if not self.current_model:
             return
-        new_weights = self.base_agent.get_weights()
-        self.current_weights = copy.deepcopy(new_weights)
+        new_weights = self.current_model.get_weights()
         for agent in self._training_agents:
             agent.update_weights(new_weights)
         print(f"SYNC: distributed weights to {len(self._training_agents)} agent(s)")
@@ -500,28 +509,28 @@ class TrainingOrchestrator:
     async def evaluate(self) -> Dict[str, float]:
         """
         Run evaluation games between the current (new) model and the
-        previously saved (old) model.  Keep the better-performing weights.
+        best model so far.  Keep the better-performing weights.
 
-        Returns a dict with ``new_placement`` and ``old_placement``.
+        Returns a dict with ``current_placement`` and ``best_placement``.
         """
         print(f"\nEVALUATE at step {self.training_step}")
 
-        eval_base = MuZeroAgent(
+        eval_current = MuZeroAgent(
             action_size=3,
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
             global_buffer=None,
-            weights=copy.deepcopy(self.base_agent.get_weights()),
+            weights=copy.deepcopy(self.current_model.get_weights()),
             config_obj=self.cfg,
         )
-        eval_old = MuZeroAgent(
+        eval_best = MuZeroAgent(
             action_size=3,
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
             global_buffer=None,
-            weights=copy.deepcopy(self.current_weights),
+            weights=copy.deepcopy(self.best_model.get_weights()),
             config_obj=self.cfg,
         )
         random_agent = RandomAgent("EvalRandom")
@@ -529,8 +538,8 @@ class TrainingOrchestrator:
         divine_agent = DivineAgent()
 
         eval_configs = [
-            (eval_base, 1),
-            (eval_old, 1),
+            (eval_current, 1),
+            (eval_best, 1),
             (random_agent, 4),
             (cultist_agent, 1),
             (divine_agent, 1),
@@ -545,56 +554,66 @@ class TrainingOrchestrator:
         eval_env_mgr = _ParallelEnvManager(self.cfg.evaluation_concurrent)
         results = await eval_env_mgr.run_fixed_games(eval_mgr, self.cfg.evaluation_games)
 
-        base_placements, old_placements = [], []
+        current_placements, best_placements = [], []
         for r in results:
             mapping = r.agent_mapping
             for pid, placement in r.placements.items():
                 at = mapping.get(pid)
-                if at == type(eval_base):
-                    base_placements.append(placement)
-                elif at == type(eval_old):
-                    old_placements.append(placement)
+                if at == type(eval_current):
+                    current_placements.append(placement)
+                elif at == type(eval_best):
+                    best_placements.append(placement)
 
-        base_mean = float(np.mean(base_placements)) if base_placements else 8.0
-        old_mean = float(np.mean(old_placements)) if old_placements else 8.0
+        current_mean = float(np.mean(current_placements)) if current_placements else 8.0
+        best_mean = float(np.mean(best_placements)) if best_placements else 8.0
 
         if self.summary_writer:
-            self.summary_writer.add_scalar("evaluation/new_model", base_mean, self.training_step)
-            self.summary_writer.add_scalar("evaluation/old_model", old_mean, self.training_step)
+            self.summary_writer.add_scalar("evaluation/current_model", current_mean, self.training_step)
+            self.summary_writer.add_scalar("evaluation/best_model", best_mean, self.training_step)
 
-        print(f"  New model placement: {base_mean:.2f}  |  Old model: {old_mean:.2f}")
+        print(f"  Current model placement: {current_mean:.2f}  |  Best model: {best_mean:.2f}")
 
-        if base_mean < old_mean:
-            print("  ✓ Model improved – updating weights & clearing buffers.")
-            self.current_weights = copy.deepcopy(self.base_agent.get_weights())
-            self.save_checkpoint()
+        if current_mean < best_mean:
+            print("  ✓ Model improved – updating best model & clearing buffers.")
+            self.best_model.model.load_state_dict(self.current_model.get_weights())
+            self.save_best_checkpoint()
             if self.global_buffer:
                 if hasattr(self.global_buffer, "clear_gameplay_buffer"):
                     self.global_buffer.clear_gameplay_buffer()
                 if hasattr(self.global_buffer, "clear_combat_buffer"):
                     self.global_buffer.clear_combat_buffer()
-            self.sync_weights()
 
-        return {"new_placement": base_mean, "old_placement": old_mean}
+        return {"current_placement": current_mean, "best_placement": best_mean}
 
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
 
-    def save_checkpoint(self) -> None:
+    def save_current_checkpoint(self) -> None:
+        """Save the current (actively-trained) model to disk."""
         os.makedirs("./checkpoint", exist_ok=True)
-        path = f"./checkpoint/checkpoint_{self.training_step}"
-        if self.base_agent is not None:
-            torch.save(self.base_agent.model.state_dict(), path)
-            print(f"Checkpoint saved at step {self.training_step}")
+        path = f"./checkpoint/current_{self.training_step}"
+        if self.current_model is not None:
+            torch.save(self.current_model.model.state_dict(), path)
+            print(f"Current checkpoint saved at step {self.training_step}")
+
+    def save_best_checkpoint(self) -> None:
+        """Save the best model to disk (only called when it improves)."""
+        os.makedirs("./checkpoint", exist_ok=True)
+        path = f"./checkpoint/best_{self.training_step}"
+        if self.best_model is not None:
+            torch.save(self.best_model.model.state_dict(), path)
+            print(f"Best checkpoint saved at step {self.training_step}")
 
     def load_checkpoint(self, step: int) -> bool:
-        path = f"./checkpoint/checkpoint_{step}"
-        if not os.path.isfile(path):
+        best_path = f"./checkpoint/best_{step}"
+        if not os.path.isfile(best_path):
             return False
-        state = torch.load(path)
-        if self.base_agent is not None:
-            self.base_agent.model.load_state_dict(state)
+        state = torch.load(best_path)
+        if self.best_model is not None:
+            self.best_model.model.load_state_dict(state)
+        if self.current_model is not None:
+            self.current_model.model.load_state_dict(state)
         self.training_step = step
         return True
 
