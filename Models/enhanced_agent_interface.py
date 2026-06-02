@@ -71,7 +71,7 @@ class BatchedInferenceRequest:
     rewards: List[float] = field(default_factory=list)
     terminated: List[bool] = field(default_factory=list)
     request_ids: List[str] = field(default_factory=list)
-    agent_type: type = object
+    agent_type: Any = object
 
 
 class BatchInferenceServer:
@@ -104,11 +104,11 @@ class BatchInferenceServer:
         self.batch_timeout_ms = batch_timeout_ms
         self.gpu_memory_fraction = gpu_memory_fraction
 
-        self.request_queues: Dict[type, Queue] = defaultdict(Queue)
-        self._processing_locks: Dict[type, asyncio.Lock] = defaultdict(asyncio.Lock)
-        self._processing_tasks: Dict[type, asyncio.Task] = {}
+        self.request_queues: Dict[Any, Queue] = defaultdict(Queue)
+        self._processing_locks: Dict[Any, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._processing_tasks: Dict[Any, asyncio.Task] = {}
 
-        self.agent_instances: Dict[type, Any] = {}
+        self.agent_instances: Dict[Any, Any] = {}
         self.executor = ThreadPoolExecutor(max_workers=4)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -119,14 +119,14 @@ class BatchInferenceServer:
 
     # ── public API ──────────────────────────────────────────────
 
-    def register_agent(self, agent_type: type, agent_instance: Any):
+    def register_agent(self, agent_type: Any, agent_instance: Any):
         self.agent_instances[agent_type] = agent_instance
 
-    def register_agent_instance(self, agent_type: type, agent_instance: Any):
+    def register_agent_instance(self, agent_type: Any, agent_instance: Any):
         self.agent_instances[agent_type] = agent_instance
 
     async def request_action(self,
-                             agent_type: type,
+                             agent_type: Any,
                              observation: np.ndarray,
                              mask: np.ndarray,
                              reward: float = 0.0,
@@ -155,7 +155,7 @@ class BatchInferenceServer:
         stats = {}
         for agent_type, times in self.inference_times.items():
             if times:
-                stats[agent_type.__name__] = {
+                stats[getattr(agent_type, 'agent_name', getattr(type(agent_type), '__name__', str(agent_type)))] = {
                     'avg_inference_time': np.mean(times),
                     'total_inferences': len(times),
                     'avg_batch_size': (np.mean(self.batch_sizes[agent_type])
@@ -172,7 +172,7 @@ class BatchInferenceServer:
 
     # ── batch lifecycle ─────────────────────────────────────────
 
-    async def _process_batch(self, agent_type: type):
+    async def _process_batch(self, agent_type: Any):
         async with self._processing_locks[agent_type]:
             # FIX: Loop until queue is empty to avoid stuck requests
             while True:
@@ -182,12 +182,12 @@ class BatchInferenceServer:
 
                 agent = self.agent_instances.get(agent_type)
                 if agent is None:
-                    raise RuntimeError(f"Unregistered agent type requested: {agent_type.__name__}")
+                    raise RuntimeError(f"Unregistered agent type requested: {getattr(agent_type, 'agent_name', getattr(type(agent_type), '__name__', str(agent_type)))}")
 
                 results = await self._run_inference(agent, requests)
                 self._distribute_results(requests, results)
 
-    async def _collect_batch(self, agent_type: type) -> List[InferenceRequest]:
+    async def _collect_batch(self, agent_type: Any) -> List[InferenceRequest]:
         requests: List[InferenceRequest] = []
         queue = self.request_queues[agent_type]
         start = time.time()
@@ -374,7 +374,7 @@ class EnhancedAgentManager:
     """
 
     def __init__(self, batch_processor: Optional[BatchInferenceServer] = None):
-        self.agents: Dict[type, Any] = {}
+        self.agents: Dict[Any, Any] = {}
         self.player_to_agent: Dict[str, type] = {}
         self.batch_processor = batch_processor or BatchInferenceServer()
 
@@ -382,15 +382,15 @@ class EnhancedAgentManager:
         self.batch_sizes = defaultdict(list)
 
     def register_agent(self, agent_instance: Any, player_ids: List[str]):
-        agent_type = type(agent_instance)
+        agent_type = agent_instance
         if agent_type not in self.agents:
             self.agents[agent_type] = agent_instance
             self.batch_processor.register_agent(agent_type, agent_instance)
         for pid in player_ids:
             self.player_to_agent[pid] = agent_type
-        print(f"Registered {len(player_ids)} players for agent {agent_type.__name__}")
+        print(f"Registered {len(player_ids)} players for agent {getattr(agent_type, 'agent_name', getattr(type(agent_type), '__name__', str(agent_type)))}")
 
-    def get_player_agent_mapping(self) -> Dict[str, type]:
+    def get_player_agent_mapping(self) -> Dict[str, Any]:
         return self.player_to_agent.copy()
 
     def setup_agents(self, agent_configs: List[Tuple[Any, int]]):
@@ -779,7 +779,7 @@ def create_enhanced_setup(agent_configs: Optional[List[Tuple[Any, int]]] = None,
 
     for agent_instance, count in agent_configs:
         if count > 0:
-            batch_processor.register_agent(type(agent_instance), agent_instance)
+            batch_processor.register_agent(agent_instance, agent_instance)
 
     agent_manager.setup_agents(agent_configs)
     return agent_manager, batch_processor

@@ -78,8 +78,8 @@ class TestBatchedInference:
         agent = RandomAgent("test_agent")
         mgr.register_agent(agent, ["p1", "p2"])
         mapping = mgr.get_player_agent_mapping()
-        assert mapping["p1"] == RandomAgent
-        assert mapping["p2"] == RandomAgent
+        assert mapping["p1"] == agent
+        assert mapping["p2"] == agent
 
     def test_batch_fallback_to_select_action(self):
         """When batch_select_action is absent, fallback to per-item select_action."""

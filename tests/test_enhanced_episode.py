@@ -75,7 +75,7 @@ async def test_enhanced_episode_with_mixed_agents():
     player_mapping = agent_manager.get_player_agent_mapping()
     print(f"Player to agent mapping:")
     for player_id, agent_type in player_mapping.items():
-        print(f"  {player_id} -> {agent_type.__name__}")
+        print(f"  {player_id} -> {getattr(agent_type, 'agent_name', type(agent_type).__name__)}")
     
     # Initialize tracking variables
     step_count = 0

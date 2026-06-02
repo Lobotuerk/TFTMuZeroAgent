@@ -560,9 +560,9 @@ class TrainingOrchestrator:
             mapping = r.agent_mapping
             for pid, placement in r.placements.items():
                 at = mapping.get(pid)
-                if at == type(eval_current):
+                if at is eval_current:
                     current_placements.append(placement)
-                elif at == type(eval_best):
+                elif at is eval_best:
                     best_placements.append(placement)
 
         current_mean = float(np.mean(current_placements)) if current_placements else 8.0
