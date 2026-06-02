@@ -30,7 +30,7 @@ from Models.global_buffer import GlobalBuffer
 from Models.action_conversion import action_3d_to_policy
 from Models.MuZero_torch_trainer import Trainer
 from Models.MuZero_torch_agent import MuZeroAgent
-from Models.Common_agents import CultistAgent, DivineAgent, RandomAgent
+from Models.Common_agents import CultistAgent, DivineAgent, RandomAgent, WarlordAgent
 from Models.enhanced_agent_interface import (
     create_enhanced_setup,
     create_custom_agent_setup,
@@ -536,13 +536,15 @@ class TrainingOrchestrator:
         random_agent = RandomAgent("EvalRandom")
         cultist_agent = CultistAgent()
         divine_agent = DivineAgent()
+        warlord_agent = WarlordAgent()
 
         eval_configs = [
             (eval_current, 1),
             (eval_best, 1),
-            (random_agent, 4),
+            (random_agent, 3),
             (cultist_agent, 1),
             (divine_agent, 1),
+            (warlord_agent, 1)
         ]
         eval_mgr, _ = create_custom_agent_setup(
             eval_configs,
