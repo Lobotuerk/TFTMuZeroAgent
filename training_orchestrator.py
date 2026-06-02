@@ -354,14 +354,14 @@ class TrainingOrchestrator:
                 self.best_model.model.load_state_dict(state)
                 self.current_model.model.load_state_dict(state)
 
-        # MuZero agents for *collection* – start with current model weights
+        # MuZero agents for *collection* – start with best model weights
         collection_agent = MuZeroAgent(
             action_size=3,
             action_limits=[7, 37, 10],
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
             global_buffer=self.global_buffer,
-            weights=copy.deepcopy(self.current_model.get_weights()),
+            weights=copy.deepcopy(self.best_model.get_weights()),
             config_obj=self.cfg,
         )
         self._training_agents = [collection_agent]
@@ -487,15 +487,15 @@ class TrainingOrchestrator:
 
     def sync_weights(self) -> None:
         """
-        Distribute the latest trained weights from the current model to the
-        active collection agents so they benefit from the new policy.
+        Distribute the latest trained weights from the best model to the
+        active collection agents so they generate data using the best policy.
         """
-        if not self.current_model:
+        if not self.best_model:
             return
-        new_weights = self.current_model.get_weights()
+        new_weights = self.best_model.get_weights()
         for agent in self._training_agents:
             agent.update_weights(new_weights)
-        print(f"SYNC: distributed weights to {len(self._training_agents)} agent(s)")
+        print(f"SYNC: distributed BEST weights to {len(self._training_agents)} agent(s)")
 
     # ------------------------------------------------------------------
     # 4️⃣  EVALUATE phase
@@ -573,6 +573,7 @@ class TrainingOrchestrator:
         if current_mean < best_mean:
             print("  ✓ Model improved – updating best model & clearing buffers.")
             self.best_model.model.load_state_dict(self.current_model.get_weights())
+            self.sync_weights()
             self.save_best_checkpoint()
             if self.global_buffer:
                 if hasattr(self.global_buffer, "clear_gameplay_buffer"):
