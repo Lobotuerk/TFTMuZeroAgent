@@ -61,10 +61,10 @@ class TestBatchedAgentRefactor(unittest.TestCase):
             player_ids=["p1", "p2"]
         )
         
-        self.assertEqual(len(gb.combat_experiences), 2)
+        self.assertEqual(len(gb.combat_buffer), 2)
         
         # Check results
-        results = [exp[1] for exp in gb.combat_experiences]
+        results = [exp[1] for exp in gb.combat_buffer]
         self.assertIn(1.0, results)
         self.assertIn(0.0, results)
 

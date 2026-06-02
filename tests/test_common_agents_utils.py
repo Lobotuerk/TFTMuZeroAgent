@@ -346,14 +346,14 @@ class TestCommonAgents(unittest.TestCase):
         # 2. Combat ends (turns resets to positive value)
         # Win scenario: health stays at 100
         agent.select_action(create_obs(10, 100))
-        self.assertEqual(len(gb.combat_experiences), 1)
-        self.assertEqual(gb.combat_experiences[0][1], 1.0)
+        self.assertEqual(len(gb.combat_buffer), 1)
+        self.assertEqual(gb.combat_buffer[0][1], 1.0)
         
         # 3. Another combat ends - Loss scenario
         agent.select_action(create_obs(0, 100)) # Reset for next combat
         agent.select_action(create_obs(10, 80)) # Health dropped
-        self.assertEqual(len(gb.combat_experiences), 2)
-        self.assertEqual(gb.combat_experiences[1][1], 0.0)
+        self.assertEqual(len(gb.combat_buffer), 2)
+        self.assertEqual(gb.combat_buffer[1][1], 0.0)
         
         print("✅ BaseAgent combat tracking test passed")
 
