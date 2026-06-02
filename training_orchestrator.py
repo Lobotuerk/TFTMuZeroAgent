@@ -458,6 +458,10 @@ class TrainingOrchestrator:
                 summary_writer=self.summary_writer,
             )
             self.training_step += 1
+
+            # Periodic saving of current model
+            if self.training_step % self.cfg.sync_steps == 0:
+                self.save_current_checkpoint()
     
             # Periodic evaluation
             if self.training_step % self.cfg.evaluation_interval == 0:
