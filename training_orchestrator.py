@@ -55,9 +55,9 @@ class TrainingConfig:
     concurrent_games: int = config.CONCURRENT_GAMES
     evaluation_games: int = config.EVALUATION_GAMES
     evaluation_concurrent: int = config.EVALUATION_CONCURRENT_GAMES
-    max_batch_size: int = 16
+    max_batch_size: int = config.BATCH_SIZE
     batch_timeout_ms: float = 5.0
-    gpu_memory_fraction: float = 0.7
+    gpu_memory_fraction: float = 0.8
     sync_steps: int = config.SYNC_STEPS
     results_path: str = config.RESULTS_PATH
 
