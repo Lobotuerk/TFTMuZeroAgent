@@ -42,6 +42,7 @@ from Models.enhanced_agent_interface import (
 from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
 
 import multiprocessing as mp
+import threading
 
 # Default multiprocessing context (fork on Linux 3.13-).
 # Subprocesses only run CPU-bound env logic and do not touch GPU tensors,
@@ -127,6 +128,150 @@ def _env_worker_main(env_id: int, conn):
         if msg[0] == 'stop':
             return
         # 'restart' → fall through to outer loop
+
+
+# ---------------------------------------------------------------------------
+# Thread worker – runs a game in a thread, bridges to the main event loop
+# ---------------------------------------------------------------------------
+
+def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
+                        agent_manager: 'EnhancedAgentManager',
+                        stop_event: threading.Event,
+                        pause_event: threading.Event,
+                        on_game_done_callback=None,
+                        games_to_play: Optional[int] = None):
+    """
+    Target function for an environment **thread**.
+
+    Runs a continuous game loop in a dedicated thread, bridging to the
+    main asyncio event loop via :func:`asyncio.run_coroutine_threadsafe`::
+
+        actions = asyncio.run_coroutine_threadsafe(
+            agent_manager.get_actions(...), loop
+        ).result()
+
+    This allows synchronous thread-based game workers to use the shared
+    async agent manager without pickling or pipe communication.
+
+    Parameters
+    ----------
+    env_id:
+        Rank/environment identifier.
+    loop:
+        The main asyncio event loop (obtained via ``get_event_loop()``).
+    agent_manager:
+        Shared async agent manager — all inference is scheduled on *loop*.
+    stop_event:
+        Set by the manager to request a clean shutdown.
+    pause_event:
+        Set by the manager to pause spawning new games.
+    on_game_done_callback:
+        Optional async callback invoked after each completed game.
+        Called via ``run_coroutine_threadsafe`` so it runs on the main loop.
+    games_to_play:
+        If given, the worker exits after this many games (fixed-run /
+        evaluation mode).  ``None`` means run forever (collection mode).
+    """
+    _root = os.path.dirname(os.path.abspath(__file__))
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+    from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
+
+    env = parallel_env(rank=env_id)
+    games_done = 0
+
+    while not stop_event.is_set():
+        if games_to_play is not None and games_done >= games_to_play:
+            break
+
+        # Respect pause — block here while the manager drains active games
+        while pause_event.is_set() and not stop_event.is_set():
+            time.sleep(0.1)
+        if stop_event.is_set():
+            break
+
+        observations = env.reset()[0]
+        terminated = {pid: False for pid in env.possible_agents}
+        rewards = {pid: 0.0 for pid in env.possible_agents}
+        scores = {pid: 0.0 for pid in env.possible_agents}
+        step_count = 0
+
+        while not all(terminated.values()):
+            if stop_event.is_set():
+                return
+
+            step_count += 1
+            float_rewards = {k: float(v) for k, v in rewards.items()}
+
+            future = asyncio.run_coroutine_threadsafe(
+                agent_manager.get_actions(
+                    observations, float_rewards, terminated,
+                    game_id=f"thread_env_{env_id}",
+                ),
+                loop,
+            )
+            try:
+                actions = future.result(timeout=30.0)
+            except Exception as e:
+                print(f"[ThreadEnv {env_id}] inference error: {e}")
+                return
+
+            processed = {}
+            for pid, action in actions.items():
+                if terminated.get(pid, True):
+                    processed[pid] = [0, 0, 0]
+                    continue
+                if isinstance(action, (list, np.ndarray)) and len(action) >= 3:
+                    processed[pid] = action[:3]
+                elif hasattr(action, "tolist"):
+                    lst = action.tolist()
+                    if isinstance(lst, list) and len(lst) >= 3:
+                        processed[pid] = lst[:3]
+                    else:
+                        processed[pid] = [0, 0, 0]
+                else:
+                    processed[pid] = [0, 0, 0]
+
+            observations, rewards, terminated, _, _ = env.step(processed)
+            for p in terminated:
+                if terminated[p]:
+                    scores[p] = rewards[p]
+
+            if step_count > 1000:
+                break
+
+        # ── game finished ─────────────────────────────────────────
+        future = asyncio.run_coroutine_threadsafe(
+            agent_manager.flush_all_buffers(
+                final_values=scores, game_id=f"thread_env_{env_id}",
+            ),
+            loop,
+        )
+        try:
+            future.result(timeout=10.0)
+        except Exception:
+            pass
+
+        if on_game_done_callback:
+            sorted_players = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            placements = {pid: i + 1 for i, (pid, _) in enumerate(sorted_players)}
+            result = GameResult(
+                game_id=f"thread_env_{env_id}_{games_done}",
+                placements=placements,
+                scores=scores,
+                duration=0.0,
+                agent_mapping=agent_manager.get_player_agent_mapping(),
+            )
+            future = asyncio.run_coroutine_threadsafe(
+                on_game_done_callback(result), loop,
+            )
+            try:
+                future.result(timeout=10.0)
+            except Exception:
+                pass
+
+        games_done += 1
 
 
 # ---------------------------------------------------------------------------
@@ -628,6 +773,158 @@ class _MultiProcessEnvManager:
                 pass
         self._processes.clear()
         self._tasks.clear()
+
+
+# ---------------------------------------------------------------------------
+# Thread-based environment manager (alternative to multiprocess)
+# ---------------------------------------------------------------------------
+
+class _ThreadEnvManager:
+    """
+    Manages N concurrent game workers running in **OS threads**, bridging
+    to the main asyncio event loop.
+
+    Each environment runs its game loop in a dedicated thread. When the
+    thread needs actions from the agent manager it uses ::
+
+        actions = asyncio.run_coroutine_threadsafe(
+            agent_manager.get_actions(...), loop
+        ).result()
+
+    so that all GPU-bound inference and experience storage stays on the
+    main (async) thread while the CPU-bound game logic runs in parallel.
+
+    This is a drop-in alternative to :class:`_MultiProcessEnvManager` for
+    environments where subprocess overhead is undesirable.  The public
+    interface intentionally mirrors ``_MultiProcessEnvManager``.
+    """
+
+    def __init__(self, num_workers: int, worker_fn=None):
+        self.num_workers = num_workers
+        self._worker_fn = worker_fn or _thread_worker_main
+        self._threads: Dict[int, threading.Thread] = {}
+        self._stop_event = threading.Event()
+        self._pause_event = threading.Event()
+        self.should_continue = True
+        self.should_spawn = True
+
+    # ── lifecycle ────────────────────────────────────────────────
+
+    def stop(self):
+        """Signal all threads to stop after the current step."""
+        self.should_continue = False
+        self._stop_event.set()
+
+    def pause(self):
+        """Prevent spawning new games; let running ones drain naturally."""
+        self.should_spawn = False
+        self._pause_event.set()
+
+    def resume(self):
+        """Allow spawning new games again."""
+        self.should_spawn = True
+        self._pause_event.clear()
+
+    async def wait_for_drain(self):
+        """Wait until all active thread workers have finished."""
+        while any(t.is_alive() for t in self._threads.values()):
+            await asyncio.sleep(0.5)
+
+    # ── launch helpers ───────────────────────────────────────────
+
+    def _launch(self, agent_manager: 'EnhancedAgentManager',
+                loop: asyncio.AbstractEventLoop,
+                on_game_done,
+                games_to_play: Optional[int] = None):
+        """Start *num_workers* threads, each running ``_worker_fn``."""
+        self._stop_event.clear()
+        self._pause_event.clear()
+        self._threads.clear()
+
+        for i in range(self.num_workers):
+            t = threading.Thread(
+                target=self._worker_fn,
+                args=(i, loop, agent_manager,
+                      self._stop_event, self._pause_event),
+                kwargs={
+                    "on_game_done_callback": on_game_done,
+                    "games_to_play": games_to_play,
+                },
+                daemon=True,
+            )
+            t.start()
+            self._threads[i] = t
+
+    # ── continuous execution (collection) ────────────────────────
+
+    async def run_continuously(self,
+                                agent_manager: 'EnhancedAgentManager',
+                                on_game_done=None) -> None:
+        """Run games back-to-back, spawning a new one as soon as one finishes."""
+        loop = asyncio.get_event_loop()
+        self._launch(agent_manager, loop, on_game_done)
+
+        try:
+            while self.should_continue:
+                if not any(t.is_alive() for t in self._threads.values()):
+                    break
+                await asyncio.sleep(0.5)
+        finally:
+            self._cleanup()
+
+    # ── fixed-run execution (evaluation) ─────────────────────────
+
+    async def run_fixed_games(self,
+                               agent_manager: 'EnhancedAgentManager',
+                               num_games: int) -> List[GameResult]:
+        """Run exactly *num_games* evaluation games and return their results."""
+        results: List[GameResult] = []
+        results_lock = asyncio.Lock()
+
+        async def _collect(result: GameResult):
+            async with results_lock:
+                results.append(result)
+
+        loop = asyncio.get_event_loop()
+        games_per_worker = num_games // self.num_workers
+        remainder = num_games % self.num_workers
+
+        self._stop_event.clear()
+        self._pause_event.clear()
+        self._threads.clear()
+
+        for i in range(self.num_workers):
+            count = games_per_worker + (1 if i < remainder else 0)
+            t = threading.Thread(
+                target=self._worker_fn,
+                args=(i, loop, agent_manager,
+                      self._stop_event, self._pause_event),
+                kwargs={
+                    "on_game_done_callback": _collect,
+                    "games_to_play": count,
+                },
+                daemon=True,
+            )
+            t.start()
+            self._threads[i] = t
+
+        try:
+            while any(t.is_alive() for t in self._threads.values()):
+                await asyncio.sleep(0.5)
+        finally:
+            self._cleanup()
+
+        return results
+
+    # ── cleanup ──────────────────────────────────────────────────
+
+    def _cleanup(self):
+        """Signal stop and join all threads."""
+        self._stop_event.set()
+        for t in self._threads.values():
+            if t.is_alive():
+                t.join(timeout=2.0)
+        self._threads.clear()
 
 
 # ---------------------------------------------------------------------------
