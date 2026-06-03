@@ -19,9 +19,9 @@ class TestTrainingConfig:
         assert cfg.concurrent_games == config.CONCURRENT_GAMES
         assert cfg.evaluation_games == config.EVALUATION_GAMES
         assert cfg.evaluation_concurrent == config.EVALUATION_CONCURRENT_GAMES
-        assert cfg.max_batch_size == 16
+        assert cfg.max_batch_size == config.BATCH_SIZE
         assert cfg.batch_timeout_ms == 5.0
-        assert cfg.gpu_memory_fraction == 0.7
+        assert cfg.gpu_memory_fraction == 0.8
         assert hasattr(cfg, 'sync_steps')
         assert hasattr(cfg, 'results_path')
         assert cfg.sync_steps == config.SYNC_STEPS
