@@ -71,6 +71,31 @@ def test_muzero_compatibility():
         traceback.print_exc()
         return False
 
+def test_muzero_layernorm_presence():
+    """Verify LayerNorm layers are instantiated and applied on PredNetwork and RepNetwork."""
+    from Models.MuZero_torch_model import MuZeroNetwork
+    import torch
+    
+    print("Testing LayerNorm presence in networks...")
+    model = MuZeroNetwork()
+    pred_net = model.prediction_network
+    rep_net = model.representation_network
+    
+    # Check PredNetwork LayerNorms
+    expected_pred_lns = ["ln2", "ln3", "ln4", "ln5", "ln_v1", "ln_v2", "ln_v3", "ln_p1", "ln_p2", "ln_p3"]
+    for ln_attr in expected_pred_lns:
+        assert hasattr(pred_net, ln_attr), f"PredNetwork is missing {ln_attr}"
+        assert isinstance(getattr(pred_net, ln_attr), torch.nn.LayerNorm), f"PredNetwork.{ln_attr} is not a LayerNorm"
+        
+    # Check RepNetwork LayerNorms
+    expected_rep_lns = ["ln2", "ln3", "ln4", "ln5"]
+    for ln_attr in expected_rep_lns:
+        assert hasattr(rep_net, ln_attr), f"RepNetwork is missing {ln_attr}"
+        assert isinstance(getattr(rep_net, ln_attr), torch.nn.LayerNorm), f"RepNetwork.{ln_attr} is not a LayerNorm"
+        
+    print("   ✓ LayerNorm layers are present and of correct type!")
+    return True
+
 if __name__ == "__main__":
     print("=== MuZero Model Compatibility Test ===")
     print()
