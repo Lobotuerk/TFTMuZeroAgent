@@ -1350,8 +1350,10 @@ class TrainingOrchestrator:
 
     @staticmethod
     def _create_env_manager(num_workers: int):
-        """Factory: returns _ThreadEnvManager when GIL is free, else _MultiProcessEnvManager."""
-        if config.IS_GIL_DISABLED or config.FORCE_THREADING_ENV_MANAGER:
+        """Factory: returns _MultiProcessEnvManager by default (process-level isolation
+        required by TFTSet4Gym's global state).  Only returns _ThreadEnvManager when
+        FORCE_THREADING_ENV_MANAGER is explicitly enabled."""
+        if config.FORCE_THREADING_ENV_MANAGER:
             return _ThreadEnvManager(num_workers)
         return _MultiProcessEnvManager(num_workers)
 

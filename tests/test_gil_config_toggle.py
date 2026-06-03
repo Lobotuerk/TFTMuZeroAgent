@@ -30,12 +30,12 @@ def test_create_env_manager_factory():
         assert isinstance(mgr, _MultiProcessEnvManager)
         assert not isinstance(mgr, _ThreadEnvManager)
 
-    # Scenario 2: GIL disabled (IS_GIL_DISABLED=True) and FORCE_THREADING=False -> Thread
+    # Scenario 2: GIL disabled (IS_GIL_DISABLED=True) and FORCE_THREADING=False -> MultiProcess
     with patch("config.IS_GIL_DISABLED", True), \
          patch("config.FORCE_THREADING_ENV_MANAGER", False):
         mgr = TrainingOrchestrator._create_env_manager(2)
-        assert isinstance(mgr, _ThreadEnvManager)
-        assert not isinstance(mgr, _MultiProcessEnvManager)
+        assert isinstance(mgr, _MultiProcessEnvManager)
+        assert not isinstance(mgr, _ThreadEnvManager)
 
     # Scenario 3: GIL active (IS_GIL_DISABLED=False) but FORCE_THREADING=True -> Thread
     with patch("config.IS_GIL_DISABLED", False), \
