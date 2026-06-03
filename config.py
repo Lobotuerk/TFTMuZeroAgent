@@ -38,8 +38,7 @@ NEEDS_2ND_DIM = [1, 2, 3, 4]
 
 # ACTION_DIM = 10
 ENCODER_NUM_STEPS = 601
-SELECTED_SAMPLES = True
-MAX_GRAD_NORM = 5
+MAX_GRAD_NORM = 5.0
 
 # Still used in MuZero_torch_agent.py
 N_HEAD_HIDDEN_LAYERS = 4
@@ -55,17 +54,12 @@ EVALUATION_GAMES = 10
 EVALUATION_CONCURRENT_GAMES = 10
 
 ### TRAINING ###
-BATCH_SIZE = 64
+BATCH_SIZE = 128
 INIT_LEARNING_RATE = 0.001
 LEARNING_RATE_DECAY = int(350e3)
 LR_DECAY_FUNCTION = 0.1
-WEIGHT_DECAY = 1e-5
-REWARD_LOSS_SCALING = 0
-POLICY_LOSS_SCALING = 1
 SYNC_STEPS = 100
-# Putting this here so that we don't scale the policy by a multiple of 5
-# Because we calculate the loss for each of the 5 dimensions.
-# I'll add a mathematical way of generating these numbers later.
+
 DEBUG = False
 CHECKPOINT_STEPS = 200
 REPLAY_BUFFER_SIZE = 10000
@@ -73,12 +67,5 @@ GAMEPLAY_BUFFER_PATH = './data/gameplay/'
 COMBAT_BUFFER_PATH = './data/combats/'
 RESULTS_PATH = './Checkpoints'
 
-#### TESTING ####
-RUN_UNIT_TEST = False
-RUN_PLAYER_TESTS = False
-RUN_MINION_TESTS = False
-RUN_DROP_TESTS = False
-RUN_MCTS_TESTS = False
-RUN_MAPPING_TESTS = False
 LOG_COMBAT = False
 LOGMESSAGES = True
