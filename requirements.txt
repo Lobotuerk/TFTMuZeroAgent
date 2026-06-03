@@ -1,27 +1,12 @@
 --index-url https://download.pytorch.org/whl/cu130
 torch==2.12.0+cu130
-torchvision==0.27.0+cu130
-torchaudio==2.11.0+cu130
 numpy==2.4.4
-pandas==3.0.3
-dm-tree==0.1.10
-tabulate==0.10.0
-scikit-image==0.26.0
-scikit-learn==1.8.0
-ray==2.55.1
 gymnasium==1.2.3
 pettingzoo==1.26.1
-cython==3.2.5
-scipy==1.17.1
 pytest-asyncio==1.4.0
 tensorboard==2.20.0
-tensorboardX==2.6.5
 pybind11==3.0.4
 psutil==7.2.2
 pytest-timeout==2.4.0
-matplotlib==3.10.9
-pyyaml==6.0.3
-requests==2.34.2
-tqdm==4.67.1
 setuptools
 pytest
