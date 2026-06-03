@@ -380,15 +380,15 @@ class PredNetwork(torch.nn.Module):
         x = self.dense6(x)
 
         policy = self.relu(self.policy_dense1(x)) + x
-        policy = self.relu(self.policy_dense2(x)) + policy
-        policy = self.relu(self.policy_dense3(x)) + policy
+        policy = self.relu(self.policy_dense2(policy)) + policy
+        policy = self.relu(self.policy_dense3(policy)) + policy
         # policy = self.softmax(self.sigmoid(self.policy_dense4(x)))
-        policy = self.policy_dense4(x)
+        policy = self.policy_dense4(policy)
 
         value = self.relu(self.value_dense1(x)) + x
-        value = self.relu(self.value_dense2(x)) + value
-        value = self.relu(self.value_dense3(x)) + value
-        value = self.relu(self.value_dense4(x))
+        value = self.relu(self.value_dense2(value)) + value
+        value = self.relu(self.value_dense3(value)) + value
+        value = self.value_dense4(value)
 
         return policy, value
 

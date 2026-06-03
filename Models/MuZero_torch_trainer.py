@@ -38,6 +38,7 @@ class Trainer(object):
         loss = loss.mean()
 
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=5.0)
 
         self.optimizer.step()
         self.scheduler.step()
