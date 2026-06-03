@@ -18,7 +18,7 @@ async def test_non_blocking_training_loop():
          patch('training_orchestrator.GlobalBuffer') as MockBuffer, \
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
          patch('training_orchestrator.create_custom_agent_setup') as MockSetup, \
-         patch('training_orchestrator._ParallelEnvManager') as MockEnvMgr, \
+         patch('training_orchestrator._MultiProcessEnvManager') as MockEnvMgr, \
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
         
@@ -83,7 +83,7 @@ async def test_run_non_blocking():
          patch('training_orchestrator.GlobalBuffer') as MockBuffer, \
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
          patch('training_orchestrator.create_custom_agent_setup') as MockSetup, \
-         patch('training_orchestrator._ParallelEnvManager') as MockEnvMgr, \
+         patch('training_orchestrator._MultiProcessEnvManager') as MockEnvMgr, \
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
         

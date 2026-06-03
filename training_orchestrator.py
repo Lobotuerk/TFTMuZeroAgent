@@ -4,13 +4,13 @@ Training Orchestrator for TFT MuZero Agent
 Drives the RL lifecycle: Collect -> Train -> Sync -> Evaluate
 
 Explicit lifecycle phases:
-  1. COLLECT: Run games in parallel via ParallelEnvironmentManager,
-     gather experience into the GlobalBuffer
-  2. TRAIN:   Sample from the buffer, update the model via Trainer
-  3. SYNC:    Distribute the updated weights to the active collection
-     agents so they immediately benefit from the new policy
-  4. EVALUATE:Periodically pit the new model against the old one;
-     keep the best performing weights
+   1. COLLECT: Run games in parallel via ParallelEnvironmentManager,
+      gather experience into the GlobalBuffer
+   2. TRAIN:   Sample from the buffer, update the model via Trainer
+   3. SYNC:    Distribute the updated weights to the active collection
+      agents so they immediately benefit from the new policy
+   4. EVALUATE:Periodically pit the new model against the old one;
+      keep the best performing weights
 """
 
 import asyncio
@@ -18,6 +18,7 @@ import time
 import copy
 import datetime
 import os
+import sys
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any, Callable
 from dataclasses import dataclass
@@ -39,6 +40,93 @@ from Models.enhanced_agent_interface import (
     EnhancedAgentManager,
 )
 from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
+
+import multiprocessing as mp
+
+# Default multiprocessing context (fork on Linux 3.13-).
+# Subprocesses only run CPU-bound env logic and do not touch GPU tensors,
+# so fork is safe and avoids re-import overhead.
+MP_CONTEXT = mp
+
+
+# ---------------------------------------------------------------------------
+# Subprocess target – runs a game in its own process (bypasses GIL)
+# ---------------------------------------------------------------------------
+
+def _env_worker_main(env_id: int, conn):
+    """
+    Target function for an environment subprocess.
+
+    Runs a continuous game loop in this subprocess, sending inference
+    requests to the main process via *conn* and receiving actions back.
+    Uses :func:`conn.poll` so the loop can be interrupted cleanly.
+
+    Protocol (tuples over ``multiprocessing.Connection``):
+
+    * env → main: ``('infer', observations, rewards, terminated)``
+    * main → env: ``('actions', actions_dict)``
+    * env → main: ``('done', scores_dict)``
+    * main → env: ``('restart', None)`` or ``('stop', None)``
+    """
+    # Ensure the project root is on sys.path in the subprocess
+    _root = os.path.dirname(os.path.abspath(__file__))
+    if _root not in sys.path:
+        sys.path.insert(0, _root)
+
+    from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
+
+    env = parallel_env(rank=env_id)
+
+    while True:
+        observations = env.reset()[0]
+        terminated = {pid: False for pid in env.possible_agents}
+        rewards = {pid: 0.0 for pid in env.possible_agents}
+        scores = {pid: 0.0 for pid in env.possible_agents}
+        step_count = 0
+
+        while not all(terminated.values()):
+            float_rewards = {k: float(v) for k, v in rewards.items()}
+
+            conn.send(('infer', observations, float_rewards, terminated))
+
+            msg = conn.recv()
+            if msg[0] == 'stop':
+                return
+
+            actions = msg[1]
+
+            # --- process actions (mirrors _GameWorker.run_game) ----------
+            processed = {}
+            for pid, action in actions.items():
+                if terminated.get(pid, True):
+                    processed[pid] = [0, 0, 0]
+                    continue
+                if isinstance(action, (list, np.ndarray)) and len(action) >= 3:
+                    processed[pid] = action[:3]
+                elif hasattr(action, "tolist"):
+                    lst = action.tolist()
+                    if isinstance(lst, list) and len(lst) >= 3:
+                        processed[pid] = lst[:3]
+                    else:
+                        processed[pid] = [0, 0, 0]
+                else:
+                    processed[pid] = [0, 0, 0]
+
+            observations, rewards, terminated, _, _ = env.step(processed)
+            for p in terminated:
+                if terminated[p]:
+                    scores[p] = rewards[p]
+
+            step_count += 1
+            if step_count > 1000:
+                break
+
+        conn.send(('done', scores))
+
+        msg = conn.recv()
+        if msg[0] == 'stop':
+            return
+        # 'restart' → fall through to outer loop
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +361,276 @@ class _ParallelEnvManager:
 
 
 # ---------------------------------------------------------------------------
+# Multi-process environment manager (bypasses GIL)
+# ---------------------------------------------------------------------------
+
+class _MultiProcessEnvManager:
+    """
+    Manages N concurrent game workers running in **separate OS processes**
+    to bypass the Python GIL.
+
+    Each environment runs its game loop (``env.step`` / ``env.reset``) in a
+    dedicated subprocess.  Inference requests are forwarded to the main
+    process where the GPU-resident model lives; batched GPU inference and
+    experience storage happen in the main (async) process while the
+    subprocesses are free to execute the CPU-bound game logic in parallel.
+
+    API intentionally mirrors :class:`_ParallelEnvManager` so that
+    :class:`TrainingOrchestrator` can swap implementations with minimal
+    changes.
+    """
+
+    def __init__(self, num_workers: int, worker_fn=None):
+        self.num_workers = num_workers
+        self._worker_fn = worker_fn or _env_worker_main
+        self._processes: Dict[int, Tuple[mp.Process, mp.connection.Connection]] = {}
+        self._tasks: Dict[int, asyncio.Task] = {}
+        self.should_continue = True
+        self.should_spawn = True
+
+    # ── lifecycle ────────────────────────────────────────────────
+
+    def stop(self):
+        self.should_continue = False
+
+    def pause(self):
+        """Prevent spawning new games; let running ones drain naturally."""
+        self.should_spawn = False
+
+    def resume(self):
+        """Allow spawning new games again."""
+        self.should_spawn = True
+
+    async def wait_for_drain(self):
+        """Wait until all active game tasks have finished."""
+        if self._tasks:
+            await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+
+    # ── start workers ────────────────────────────────────────────
+
+    def _start_workers(self):
+        """Launch all subprocesses and create async handlers for each."""
+        for i in range(self.num_workers):
+            parent_conn, child_conn = MP_CONTEXT.Pipe(duplex=True)
+            proc = MP_CONTEXT.Process(
+                target=self._worker_fn,
+                args=(i, child_conn),
+                daemon=True,
+            )
+            proc.start()
+            child_conn.close()  # parent does not need the child's end
+            self._processes[i] = (proc, parent_conn)
+
+    # ── continuous execution (collection) ────────────────────────
+
+    async def run_continuously(self,
+                               agent_manager: EnhancedAgentManager,
+                               on_game_done: Optional[Callable] = None) -> None:
+        """Run games back-to-back, spawning a new one as soon as one finishes."""
+        self._start_workers()
+        self._tasks.clear()
+
+        env_tasks = []
+        for env_id, (proc, conn) in self._processes.items():
+            t = asyncio.create_task(
+                self._handle_env(env_id, conn, agent_manager, on_game_done)
+            )
+            self._tasks[env_id] = t
+            env_tasks.append(t)
+
+        try:
+            await asyncio.gather(*env_tasks)
+        except Exception:
+            raise
+        finally:
+            self._cleanup()
+
+    # ── fixed-run execution (evaluation) ─────────────────────────
+
+    async def run_fixed_games(self,
+                              agent_manager: EnhancedAgentManager,
+                              num_games: int) -> List[GameResult]:
+        """Run exactly *num_games* evaluation games and return their results."""
+        self._start_workers()
+        self._tasks.clear()
+
+        games_per_worker = num_games // self.num_workers
+        remainder = num_games % self.num_workers
+        results: List[GameResult] = []
+        results_lock = asyncio.Lock()
+
+        async def _eval_handler(result: GameResult):
+            async with results_lock:
+                results.append(result)
+
+        env_tasks = []
+        for env_id, (proc, conn) in self._processes.items():
+            count = games_per_worker + (1 if env_id < remainder else 0)
+            t = asyncio.create_task(
+                self._handle_env_fixed(
+                    env_id, conn, agent_manager, count, _eval_handler
+                )
+            )
+            self._tasks[env_id] = t
+            env_tasks.append(t)
+
+        try:
+            await asyncio.gather(*env_tasks)
+        except Exception:
+            raise
+        finally:
+            self._cleanup()
+
+        return results
+
+    # ── per-env async handlers ───────────────────────────────────
+
+    async def _handle_env(self,
+                          env_id: int,
+                          conn: mp.connection.Connection,
+                          agent_manager: EnhancedAgentManager,
+                          on_game_done: Optional[Callable] = None) -> None:
+        """Continuously handle messages from *env_id* (collection mode)."""
+        loop = asyncio.get_event_loop()
+
+        while self.should_continue:
+            try:
+                # poll with timeout so we can check should_continue regularly
+                has_data = await loop.run_in_executor(
+                    None, lambda: conn.poll(0.5)
+                )
+                if not has_data:
+                    if not self.should_continue:
+                        break
+                    continue
+                if not self.should_continue:
+                    conn.send(('stop', None))
+                    break
+
+                msg = conn.recv()
+            except (EOFError, BrokenPipeError, OSError):
+                break
+
+            if msg[0] == 'infer':
+                _, observations, rewards, terminated = msg
+                try:
+                    actions = await agent_manager.get_actions(
+                        observations, rewards, terminated,
+                        game_id=f"env_{env_id}",
+                    )
+                    conn.send(('actions', actions))
+                except Exception as e:
+                    print(f"[MPEnv {env_id}] inference error: {e}")
+                    conn.send(('stop', None))
+                    break
+
+            elif msg[0] == 'done':
+                _, scores = msg
+                # flush agent buffers for this finished game
+                try:
+                    await agent_manager.flush_all_buffers(
+                        final_values=scores, game_id=f"env_{env_id}",
+                    )
+                    if on_game_done:
+                        result = GameResult(
+                            game_id=f"env_{env_id}_game",
+                            placements={},
+                            scores=scores,
+                            duration=0.0,
+                            agent_mapping=agent_manager.get_player_agent_mapping(),
+                        )
+                        await on_game_done(result)
+                except Exception as e:
+                    print(f"[MPEnv {env_id}] flush error: {e}")
+
+                if self.should_continue and self.should_spawn:
+                    conn.send(('restart', None))
+                else:
+                    conn.send(('stop', None))
+                    break
+
+    async def _handle_env_fixed(self,
+                                env_id: int,
+                                conn: mp.connection.Connection,
+                                agent_manager: EnhancedAgentManager,
+                                num_games: int,
+                                on_game_done: Callable) -> None:
+        """Handle exactly *num_games* games from *env_id* (eval mode)."""
+        loop = asyncio.get_event_loop()
+        games_done = 0
+
+        while games_done < num_games:
+            try:
+                has_data = await loop.run_in_executor(
+                    None, lambda: conn.poll(0.5)
+                )
+                if not has_data:
+                    continue
+                msg = conn.recv()
+            except (EOFError, BrokenPipeError, OSError):
+                break
+
+            if msg[0] == 'infer':
+                _, observations, rewards, terminated = msg
+                try:
+                    actions = await agent_manager.get_actions(
+                        observations, rewards, terminated,
+                        game_id=f"eval_env_{env_id}_{games_done}",
+                    )
+                    conn.send(('actions', actions))
+                except Exception:
+                    conn.send(('stop', None))
+                    break
+
+            elif msg[0] == 'done':
+                _, scores = msg
+                try:
+                    await agent_manager.flush_all_buffers(
+                        final_values=scores,
+                        game_id=f"eval_env_{env_id}_{games_done}",
+                    )
+                    sorted_players = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+                    placements = {pid: i + 1 for i, (pid, _) in enumerate(sorted_players)}
+                    result = GameResult(
+                        game_id=f"eval_env_{env_id}_{games_done}",
+                        placements=placements,
+                        scores=scores,
+                        duration=0.0,
+                        agent_mapping=agent_manager.get_player_agent_mapping(),
+                    )
+                    await on_game_done(result)
+                except Exception:
+                    pass
+
+                games_done += 1
+                if games_done < num_games:
+                    conn.send(('restart', None))
+                else:
+                    conn.send(('stop', None))
+                    break
+
+    # ── cleanup ──────────────────────────────────────────────────
+
+    def _cleanup(self):
+        """Terminate all subprocesses and close connections."""
+        for env_id, (proc, conn) in self._processes.items():
+            try:
+                conn.close()
+            except Exception:
+                pass
+            try:
+                proc.terminate()
+                proc.join(timeout=2)
+                if proc.is_alive():
+                    proc.kill()
+                    proc.join(timeout=1)
+            except Exception:
+                pass
+        self._processes.clear()
+        self._tasks.clear()
+
+
+# ---------------------------------------------------------------------------
 # TrainingOrchestrator
 # ---------------------------------------------------------------------------
 
@@ -302,7 +660,7 @@ class TrainingOrchestrator:
         self.trainer: Optional[Trainer] = None
         self.global_buffer: Optional[GlobalBuffer] = None
         self.agent_manager: Optional[EnhancedAgentManager] = None
-        self.env_manager: Optional[_ParallelEnvManager] = None
+        self.env_manager: Optional[_MultiProcessEnvManager] = None
         self.summary_writer: Optional[SummaryWriter] = None
 
         # Training state
@@ -383,7 +741,7 @@ class TrainingOrchestrator:
         )
 
         # --- parallel env manager -----------------------------------------
-        self.env_manager = _ParallelEnvManager(self.cfg.concurrent_games)
+        self.env_manager = _MultiProcessEnvManager(self.cfg.concurrent_games)
 
         print(f"TrainingOrchestrator setup complete:")
         print(f"  Concurrent games : {self.cfg.concurrent_games}")
@@ -552,7 +910,7 @@ class TrainingOrchestrator:
             gpu_memory_fraction=self.cfg.gpu_memory_fraction,
         )
 
-        eval_env_mgr = _ParallelEnvManager(self.cfg.evaluation_concurrent)
+        eval_env_mgr = _MultiProcessEnvManager(self.cfg.evaluation_concurrent)
         results = await eval_env_mgr.run_fixed_games(eval_mgr, self.cfg.evaluation_games)
 
         current_placements, best_placements = [], []
@@ -683,14 +1041,14 @@ class TrainingOrchestrator:
         """
         if self.agent_manager is None:
             self.setup()
-        mgr = _ParallelEnvManager(min(self.cfg.concurrent_games, num_episodes))
+        mgr = _MultiProcessEnvManager(min(self.cfg.concurrent_games, num_episodes))
         return await mgr.run_fixed_games(self.agent_manager, num_episodes)
 
     async def run_evaluation(self, num_games: int) -> List[GameResult]:
         """Run a standalone evaluation session."""
         if self.agent_manager is None:
             self.setup()
-        mgr = _ParallelEnvManager(self.cfg.evaluation_concurrent)
+        mgr = _MultiProcessEnvManager(self.cfg.evaluation_concurrent)
         return await mgr.run_fixed_games(self.agent_manager, num_games)
 
     def cleanup(self):
@@ -718,7 +1076,7 @@ async def quick_evaluation(num_games: int = 8, concurrent: int = 2) -> List[Game
     )
     orch = TrainingOrchestrator(cfg)
     orch.setup()
-    mgr = _ParallelEnvManager(concurrent)
+    mgr = _MultiProcessEnvManager(concurrent)
     results = await mgr.run_fixed_games(orch.agent_manager, num_games)
 
     agent_stats: Dict[str, List[int]] = defaultdict(list)
