@@ -1350,9 +1350,9 @@ class TrainingOrchestrator:
 
     @staticmethod
     def _create_env_manager(num_workers: int):
-        """Factory: returns _ParallelEnvManager when GIL is free, else _MultiProcessEnvManager."""
+        """Factory: returns _ThreadEnvManager when GIL is free, else _MultiProcessEnvManager."""
         if config.IS_GIL_DISABLED or config.FORCE_THREADING_ENV_MANAGER:
-            return _ParallelEnvManager(num_workers)
+            return _ThreadEnvManager(num_workers)
         return _MultiProcessEnvManager(num_workers)
 
     def cleanup(self):

@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config
 from training_orchestrator import (
     TrainingOrchestrator,
-    _ParallelEnvManager,
+    _ThreadEnvManager,
     _MultiProcessEnvManager,
 )
 
@@ -28,25 +28,25 @@ def test_create_env_manager_factory():
          patch("config.FORCE_THREADING_ENV_MANAGER", False):
         mgr = TrainingOrchestrator._create_env_manager(2)
         assert isinstance(mgr, _MultiProcessEnvManager)
-        assert not isinstance(mgr, _ParallelEnvManager)
+        assert not isinstance(mgr, _ThreadEnvManager)
 
-    # Scenario 2: GIL disabled (IS_GIL_DISABLED=True) and FORCE_THREADING=False -> Parallel (Threads)
+    # Scenario 2: GIL disabled (IS_GIL_DISABLED=True) and FORCE_THREADING=False -> Thread
     with patch("config.IS_GIL_DISABLED", True), \
          patch("config.FORCE_THREADING_ENV_MANAGER", False):
         mgr = TrainingOrchestrator._create_env_manager(2)
-        assert isinstance(mgr, _ParallelEnvManager)
+        assert isinstance(mgr, _ThreadEnvManager)
         assert not isinstance(mgr, _MultiProcessEnvManager)
 
-    # Scenario 3: GIL active (IS_GIL_DISABLED=False) but FORCE_THREADING=True -> Parallel (Threads)
+    # Scenario 3: GIL active (IS_GIL_DISABLED=False) but FORCE_THREADING=True -> Thread
     with patch("config.IS_GIL_DISABLED", False), \
          patch("config.FORCE_THREADING_ENV_MANAGER", True):
         mgr = TrainingOrchestrator._create_env_manager(2)
-        assert isinstance(mgr, _ParallelEnvManager)
+        assert isinstance(mgr, _ThreadEnvManager)
         assert not isinstance(mgr, _MultiProcessEnvManager)
 
-    # Scenario 4: Both True -> Parallel (Threads)
+    # Scenario 4: Both True -> Thread
     with patch("config.IS_GIL_DISABLED", True), \
          patch("config.FORCE_THREADING_ENV_MANAGER", True):
         mgr = TrainingOrchestrator._create_env_manager(2)
-        assert isinstance(mgr, _ParallelEnvManager)
+        assert isinstance(mgr, _ThreadEnvManager)
         assert not isinstance(mgr, _MultiProcessEnvManager)
