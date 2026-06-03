@@ -342,14 +342,24 @@ class PredNetwork(torch.nn.Module):
         self.dense6 = torch.nn.Linear(layer_size, layer_size)
         self.dense7 = torch.nn.Linear(layer_size, layer_size)
         self.dense8 = torch.nn.Linear(layer_size, layer_size)
+        self.ln2 = torch.nn.LayerNorm(layer_size)
+        self.ln3 = torch.nn.LayerNorm(layer_size)
+        self.ln4 = torch.nn.LayerNorm(layer_size)
+        self.ln5 = torch.nn.LayerNorm(layer_size)
         self.value_dense1 = torch.nn.Linear(layer_size, layer_size)
         self.value_dense2 = torch.nn.Linear(layer_size, layer_size)
         self.value_dense3 = torch.nn.Linear(layer_size, layer_size)
         self.value_dense4 = torch.nn.Linear(layer_size, 1)
+        self.ln_v1 = torch.nn.LayerNorm(layer_size)
+        self.ln_v2 = torch.nn.LayerNorm(layer_size)
+        self.ln_v3 = torch.nn.LayerNorm(layer_size)
         self.policy_dense1 = torch.nn.Linear(layer_size, layer_size)
         self.policy_dense2 = torch.nn.Linear(layer_size, layer_size)
         self.policy_dense3 = torch.nn.Linear(layer_size, layer_size)
         self.policy_dense4 = torch.nn.Linear(layer_size, config.ACTION_CONCAT_SIZE)  # 3 action dims * 37 max actions per dim
+        self.ln_p1 = torch.nn.LayerNorm(layer_size)
+        self.ln_p2 = torch.nn.LayerNorm(layer_size)
+        self.ln_p3 = torch.nn.LayerNorm(layer_size)
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -373,21 +383,21 @@ class PredNetwork(torch.nn.Module):
         
         # x = torch.squeeze(x)
         x = self.relu(self.dense1(x))
-        x = self.relu(self.dense2(x)) + x
-        x = self.relu(self.dense3(x)) + x
-        x = self.relu(self.dense4(x)) + x
-        x = self.relu(self.dense5(x)) + x
+        x = self.relu(self.ln2(self.dense2(x))) + x
+        x = self.relu(self.ln3(self.dense3(x))) + x
+        x = self.relu(self.ln4(self.dense4(x))) + x
+        x = self.relu(self.ln5(self.dense5(x))) + x
         x = self.dense6(x)
 
-        policy = self.relu(self.policy_dense1(x)) + x
-        policy = self.relu(self.policy_dense2(policy)) + policy
-        policy = self.relu(self.policy_dense3(policy)) + policy
+        policy = self.relu(self.ln_p1(self.policy_dense1(x))) + x
+        policy = self.relu(self.ln_p2(self.policy_dense2(policy))) + policy
+        policy = self.relu(self.ln_p3(self.policy_dense3(policy))) + policy
         # policy = self.softmax(self.sigmoid(self.policy_dense4(x)))
         policy = self.policy_dense4(policy)
 
-        value = self.relu(self.value_dense1(x)) + x
-        value = self.relu(self.value_dense2(value)) + value
-        value = self.relu(self.value_dense3(value)) + value
+        value = self.relu(self.ln_v1(self.value_dense1(x))) + x
+        value = self.relu(self.ln_v2(self.value_dense2(value))) + value
+        value = self.relu(self.ln_v3(self.value_dense3(value))) + value
         value = self.value_dense4(value)
 
         return policy, value
@@ -412,6 +422,10 @@ class RepNetwork(torch.nn.Module):
         self.dense4 = torch.nn.Linear(hidden, hidden)
         self.dense5 = torch.nn.Linear(hidden, hidden)
         self.dense6 = torch.nn.Linear(hidden, hidden)
+        self.ln2 = torch.nn.LayerNorm(hidden)
+        self.ln3 = torch.nn.LayerNorm(hidden)
+        self.ln4 = torch.nn.LayerNorm(hidden)
+        self.ln5 = torch.nn.LayerNorm(hidden)
 
     def forward(self, x):
         # x = torch.squeeze(x, dim=2)
@@ -423,10 +437,10 @@ class RepNetwork(torch.nn.Module):
 
         # x = torch.squeeze(x)
         x = self.relu(self.dense1(x))
-        x = self.relu(self.dense2(x)) + x
-        x = self.relu(self.dense3(x)) + x
-        x = self.relu(self.dense4(x)) + x
-        x = self.relu(self.dense5(x)) + x
+        x = self.relu(self.ln2(self.dense2(x))) + x
+        x = self.relu(self.ln3(self.dense3(x))) + x
+        x = self.relu(self.ln4(self.dense4(x))) + x
+        x = self.relu(self.ln5(self.dense5(x))) + x
         x = self.dense6(x)
 
         return x
