@@ -9,9 +9,21 @@ the TrainingOrchestrator with the explicit RL lifecycle:
 
 import asyncio
 import argparse
+import os
+import subprocess
 import sys
 import time
 from typing import Optional
+
+# Auto-initialize git submodules if they haven't been cloned yet.
+# The TFTSet4Gym submodule must be populated before any code tries to
+# import from it.  This is a no-op when the submodule is already present.
+_tft_submodule = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TFTSet4Gym", "TFTSet4Gym")
+if not os.path.isdir(_tft_submodule):
+    subprocess.check_call(
+        ["git", "submodule", "update", "--init", "--recursive", "--depth", "1"],
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+    )
 
 import config
 from training_orchestrator import (
