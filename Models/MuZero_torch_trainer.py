@@ -104,7 +104,7 @@ class Trainer(object):
 
             policy_logits_flat = policy_logits.view(policy_logits.shape[0], -1)
             
-            target_policy_normalized = torch.nn.functional.softmax(target_policy[:, tstep], dim=-1)
+            target_policy_normalized = target_policy[:, tstep]
             policy_log_probs = torch.nn.functional.log_softmax(policy_logits_flat, dim=-1)
             policy_loss += kl_loss_fn(policy_log_probs, target_policy_normalized)
 
