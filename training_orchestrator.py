@@ -957,7 +957,7 @@ class TrainingOrchestrator:
         self.trainer: Optional[Trainer] = None
         self.global_buffer: Optional[GlobalBuffer] = None
         self.agent_manager: Optional[EnhancedAgentManager] = None
-        self.env_manager: Optional[_MultiProcessEnvManager] = None
+        self.env_manager: Any = None
         self.summary_writer: Optional[SummaryWriter] = None
 
         # Training state
@@ -1038,7 +1038,7 @@ class TrainingOrchestrator:
         )
 
         # --- parallel env manager -----------------------------------------
-        self.env_manager = _MultiProcessEnvManager(self.cfg.concurrent_games)
+        self.env_manager = self._create_env_manager(self.cfg.concurrent_games)
 
         print(f"TrainingOrchestrator setup complete:")
         print(f"  Concurrent games : {self.cfg.concurrent_games}")
@@ -1207,7 +1207,7 @@ class TrainingOrchestrator:
             gpu_memory_fraction=self.cfg.gpu_memory_fraction,
         )
 
-        eval_env_mgr = _MultiProcessEnvManager(self.cfg.evaluation_concurrent)
+        eval_env_mgr = self._create_env_manager(self.cfg.evaluation_concurrent)
         results = await eval_env_mgr.run_fixed_games(eval_mgr, self.cfg.evaluation_games)
 
         current_placements, best_placements = [], []
@@ -1338,15 +1338,22 @@ class TrainingOrchestrator:
         """
         if self.agent_manager is None:
             self.setup()
-        mgr = _MultiProcessEnvManager(min(self.cfg.concurrent_games, num_episodes))
+        mgr = self._create_env_manager(min(self.cfg.concurrent_games, num_episodes))
         return await mgr.run_fixed_games(self.agent_manager, num_episodes)
 
     async def run_evaluation(self, num_games: int) -> List[GameResult]:
         """Run a standalone evaluation session."""
         if self.agent_manager is None:
             self.setup()
-        mgr = _MultiProcessEnvManager(self.cfg.evaluation_concurrent)
+        mgr = self._create_env_manager(self.cfg.evaluation_concurrent)
         return await mgr.run_fixed_games(self.agent_manager, num_games)
+
+    @staticmethod
+    def _create_env_manager(num_workers: int):
+        """Factory: returns _ParallelEnvManager when GIL is free, else _MultiProcessEnvManager."""
+        if config.IS_GIL_DISABLED or config.FORCE_THREADING_ENV_MANAGER:
+            return _ParallelEnvManager(num_workers)
+        return _MultiProcessEnvManager(num_workers)
 
     def cleanup(self):
         """Release resources (writer, etc.)."""
@@ -1373,7 +1380,7 @@ async def quick_evaluation(num_games: int = 8, concurrent: int = 2) -> List[Game
     )
     orch = TrainingOrchestrator(cfg)
     orch.setup()
-    mgr = _MultiProcessEnvManager(concurrent)
+    mgr = TrainingOrchestrator._create_env_manager(concurrent)
     results = await mgr.run_fixed_games(orch.agent_manager, num_games)
 
     agent_stats: Dict[str, List[int]] = defaultdict(list)
