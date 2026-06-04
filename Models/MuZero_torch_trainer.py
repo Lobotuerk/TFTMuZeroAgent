@@ -2,6 +2,7 @@ import config
 import collections
 import torch
 import numpy as np
+from Models.MuZero_torch_model import NUM_CLASSES
 
 Prediction = collections.namedtuple(
     'Prediction',
@@ -146,8 +147,13 @@ class Trainer(object):
             # from shape [batch] to shape [batch, 1 ,1 ,1]
             torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
             
-            # Compute board loss for combat data
-            combat_board_loss = torch.sum(torch.abs(board_distribution - torch_obs) * torch_results, dim=[1,2,3])
+            # Convert binary champion targets to class indices (0-57 for champions, 58 for empty)
+            target_classes = torch.argmax(torch_obs, dim=1)
+            empty_mask = torch_obs.sum(dim=1) < 0.5
+            target_classes = torch.where(empty_mask, torch.tensor(NUM_CLASSES - 1, device=device), target_classes)
+            board_loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
+            loss_per_hex = board_loss_fn(board_distribution, target_classes)
+            combat_board_loss = torch.sum(loss_per_hex * torch_results.squeeze(-1), dim=[1, 2])
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 

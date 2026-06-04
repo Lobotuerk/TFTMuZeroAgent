@@ -259,7 +259,7 @@ def test_champion_name_mapping():
 
 
 def test_integration_with_board_generator():
-    from TFTSet4Gym.tft_set4_gym.models.board_generator import BoardGenerator
+    from Models.MuZero_torch_model import BoardGenerator
 
     bg = BoardGenerator()
     atm = ActionTranslationModule()
