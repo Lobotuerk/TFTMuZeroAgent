@@ -174,6 +174,22 @@ class TestBlockingBatchInferenceQueue:
     def test_shutdown_does_not_raise(self, queue):
         queue.shutdown()
 
+    def test_parallel_batch_select_action(self):
+        from Models.MuZero_torch_agent import MuZeroAgent
+        agent = MuZeroAgent()
+        agent.simulations = 2
+        agent.mcts.mcts_max_seconds = 1
+        
+        obs_list = [np.zeros(config.OBSERVATION_SIZE) for _ in range(4)]
+        masks = [np.ones(54, dtype=bool) for _ in range(4)]
+        
+        # Call batch action selection with 4 concurrent items
+        results = agent.batch_select_action(obs_list, masks)
+        
+        assert len(results) == 4
+        for res in results:
+            assert len(res) == 3
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

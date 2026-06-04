@@ -212,7 +212,7 @@ class TFTState(MCTS_StateBase):
                     input_obs = torch.tensor(observation, dtype=torch.float32).to(device)
                 
                 # Handle batching
-                if input_obs.ndim == 1 or input_obs.ndim == 2:
+                if input_obs.ndim == 1:
                     input_obs = input_obs.unsqueeze(0)
                 elif is_raw_observation and input_obs.ndim == 3:
                     input_obs = input_obs.unsqueeze(0)

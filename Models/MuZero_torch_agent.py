@@ -124,8 +124,9 @@ class MuZeroAgent(BaseAgent):
                     'value': network_outputs['value'][i].cpu().numpy(),
                 })
 
-        results = []
-        for i in range(batch_size):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def run_mcts_item(i):
             obs = observations[i]
             mask = masks[i] if i < len(masks) else np.ones(54, dtype=bool)
             pc = precomputed_list[i]
@@ -136,7 +137,10 @@ class MuZeroAgent(BaseAgent):
             if 'value' in pc:
                 v = pc['value']
                 value = float(v.item() if hasattr(v, 'item') else v)
-            results.append((env_move, action_vector, value))
+            return env_move, action_vector, value
+
+        with ThreadPoolExecutor(max_workers=batch_size) as executor:
+            results = list(executor.map(run_mcts_item, range(batch_size)))
 
         return results
 
