@@ -83,7 +83,11 @@ class TFTMove(MCTS_MoveBase):
                 self.target_1 == other.target_1 and
                 self.target_2 == other.target_2 and
                 self.index == other.index and
-                self.player_id == other.player_id)
+                self.player_id == other.player_id and
+                self.shop_index == other.shop_index and
+                self.board_index == other.board_index and
+                self.from_index == other.from_index and
+                self.to_index == other.to_index)
     
     def sprint(self) -> str:
         """String representation of the move for PyMCTS."""
