@@ -161,6 +161,16 @@ class TestBlockingBatchInferenceQueue:
         assert torch.allclose(result["hidden_state"], hs + 1)
         q.shutdown()
 
+    def test_predict_with_numpy_ndarray_hidden_state(self):
+        net = MockNetwork()
+        q = BlockingBatchInferenceQueue(net, batch_size=2, timeout_seconds=0.05)
+        hs = np.random.randn(config.HIDDEN_STATE_SIZE).astype(np.float32)
+        act = make_action()
+        result = q.predict(hs, act)
+        assert "hidden_state" in result
+        assert isinstance(result["hidden_state"], torch.Tensor)
+        q.shutdown()
+
     def test_shutdown_does_not_raise(self, queue):
         queue.shutdown()
 

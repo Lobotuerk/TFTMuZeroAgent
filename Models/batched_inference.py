@@ -73,7 +73,13 @@ class BlockingBatchInferenceQueue:
             return
         if device is None:
             device = next(self.network.parameters()).device
-        h_states = torch.stack([req.hidden_state for req in requests]).to(device)
+        h_list = []
+        for req in requests:
+            hs = req.hidden_state
+            if not isinstance(hs, torch.Tensor):
+                hs = torch.tensor(hs, dtype=torch.float32)
+            h_list.append(hs)
+        h_states = torch.stack(h_list).to(device)
         actions_np = np.array([req.action for req in requests])
         actions = torch.tensor(actions_np, dtype=torch.float32).to(device)
         with torch.no_grad():
