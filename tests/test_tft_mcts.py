@@ -263,7 +263,6 @@ class TestTFTMCTSIntegration:
         
         print("✅ PyMCTS interface compatibility confirmed")
 
-    @pytest.mark.skip(reason="pymcts.MCTS_agent currently causes a segmentation fault")
     def test_full_agent_integration(self):
         """Test MCTS agent creation with TFT state."""
         if _MCTS_MOVE_BASE is object:
