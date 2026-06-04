@@ -41,6 +41,8 @@ from Models.enhanced_agent_interface import (
 )
 from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
 
+from utils.profiling import EnvironmentBenchmark, MetricsCollector
+
 import multiprocessing as mp
 import threading
 
@@ -315,9 +317,10 @@ class _GameWorker:
     Runs a single game asynchronously without Ray overhead.
     """
 
-    def __init__(self, worker_id: int):
+    def __init__(self, worker_id: int, metrics_collector: Optional[MetricsCollector] = None):
         self.worker_id = worker_id
         self.games_completed = 0
+        self.metrics_collector = metrics_collector
 
     async def run_game(self,
                        agent_manager: EnhancedAgentManager,
@@ -338,10 +341,13 @@ class _GameWorker:
                 step_count += 1
                 float_rewards = {k: float(v) for k, v in rewards.items()}
 
+                t0 = time.perf_counter()
                 actions_task = agent_manager.get_actions(
                     observations, float_rewards, terminated, game_id=game_id
                 )
                 actions = await asyncio.wait_for(actions_task, timeout=30.0)
+                if self.metrics_collector:
+                    self.metrics_collector.record("worker_get_actions", time.perf_counter() - t0)
 
                 processed = {}
                 for pid, action in actions.items():
@@ -360,7 +366,10 @@ class _GameWorker:
                         raise ValueError(f"Invalid action format from agent {pid}: {action}")
                 actions = processed
 
+                t0 = time.perf_counter()
                 observations, rewards, terminated, _, _ = env.step(actions)
+                if self.metrics_collector:
+                    self.metrics_collector.record("worker_env_step", time.perf_counter() - t0)
                 for p in terminated:
                     if terminated[p]:
                         scores[p] = rewards[p]
@@ -405,12 +414,14 @@ class _ParallelEnvManager:
     Supports continuous execution (auto-restart) and fixed-run evaluation.
     """
 
-    def __init__(self, num_workers: int):
+    def __init__(self, num_workers: int,
+                 metrics_collector: Optional[MetricsCollector] = None):
         self.num_workers = num_workers
-        self.workers = [_GameWorker(i) for i in range(num_workers)]
+        self.workers = [_GameWorker(i, metrics_collector=metrics_collector) for i in range(num_workers)]
         self.active_tasks: Dict[asyncio.Task, int] = {}
         self.should_continue = True
         self.should_spawn = True
+        self.metrics_collector = metrics_collector
 
     def stop(self):
         self.should_continue = False
@@ -525,13 +536,15 @@ class _MultiProcessEnvManager:
     changes.
     """
 
-    def __init__(self, num_workers: int, worker_fn=None):
+    def __init__(self, num_workers: int, worker_fn=None,
+                 metrics_collector: Optional[MetricsCollector] = None):
         self.num_workers = num_workers
         self._worker_fn = worker_fn or _env_worker_main
         self._processes: Dict[int, Tuple[mp.Process, mp.connection.Connection]] = {}
         self._tasks: Dict[int, asyncio.Task] = {}
         self.should_continue = True
         self.should_spawn = True
+        self.metrics_collector = metrics_collector
 
     # ── lifecycle ────────────────────────────────────────────────
 
@@ -659,10 +672,13 @@ class _MultiProcessEnvManager:
             if msg[0] == 'infer':
                 _, observations, rewards, terminated = msg
                 try:
+                    t0 = time.perf_counter()
                     actions = await agent_manager.get_actions(
                         observations, rewards, terminated,
                         game_id=f"env_{env_id}",
                     )
+                    if self.metrics_collector:
+                        self.metrics_collector.record("mp_inference_wait", time.perf_counter() - t0)
                     conn.send(('actions', actions))
                 except Exception as e:
                     print(f"[MPEnv {env_id}] inference error: {e}")
@@ -671,11 +687,13 @@ class _MultiProcessEnvManager:
 
             elif msg[0] == 'done':
                 _, scores = msg
-                # flush agent buffers for this finished game
                 try:
+                    t0 = time.perf_counter()
                     await agent_manager.flush_all_buffers(
                         final_values=scores, game_id=f"env_{env_id}",
                     )
+                    if self.metrics_collector:
+                        self.metrics_collector.record("mp_flush_buffers", time.perf_counter() - t0)
                     if on_game_done:
                         result = GameResult(
                             game_id=f"env_{env_id}_game",
@@ -799,7 +817,8 @@ class _ThreadEnvManager:
     interface intentionally mirrors ``_MultiProcessEnvManager``.
     """
 
-    def __init__(self, num_workers: int, worker_fn=None):
+    def __init__(self, num_workers: int, worker_fn=None,
+                 metrics_collector: Optional[MetricsCollector] = None):
         self.num_workers = num_workers
         self._worker_fn = worker_fn or _thread_worker_main
         self._threads: Dict[int, threading.Thread] = {}
@@ -807,6 +826,7 @@ class _ThreadEnvManager:
         self._pause_event = threading.Event()
         self.should_continue = True
         self.should_spawn = True
+        self.metrics_collector = metrics_collector
 
     # ── lifecycle ────────────────────────────────────────────────
 
@@ -970,6 +990,12 @@ class TrainingOrchestrator:
         self.current_model: Optional[MuZeroAgent] = None
         self._training_agents: List[MuZeroAgent] = []
 
+        # Profiling
+        self.metrics_collector = MetricsCollector(window_size=2000)
+        self.benchmark: Optional[EnvironmentBenchmark] = None
+        self._last_benchmark_step: int = 0
+        self._last_metric_log_step: int = 0
+
     # ------------------------------------------------------------------
     # Setup
     # ------------------------------------------------------------------
@@ -1035,16 +1061,51 @@ class TrainingOrchestrator:
             max_batch_size=self.cfg.max_batch_size,
             batch_timeout_ms=self.cfg.batch_timeout_ms,
             gpu_memory_fraction=self.cfg.gpu_memory_fraction,
+            metrics_collector=self.metrics_collector,
         )
 
         # --- parallel env manager -----------------------------------------
-        self.env_manager = self._create_env_manager(self.cfg.concurrent_games)
+        self.env_manager = self._create_env_manager(self.cfg.concurrent_games,
+                                                     metrics_collector=self.metrics_collector)
+
+        # --- benchmark ----------------------------------------------------
+        self.benchmark = EnvironmentBenchmark(parallel_env)
+        self._run_benchmark()
 
         print(f"TrainingOrchestrator setup complete:")
         print(f"  Concurrent games : {self.cfg.concurrent_games}")
         print(f"  Batch size       : {self.cfg.max_batch_size}")
         print(f"  Training step    : {self.training_step}")
         print(f"  GPU available    : {torch.cuda.is_available()}")
+
+    def _run_benchmark(self, num_steps: int = 200):
+        if self.benchmark is None:
+            return
+        try:
+            results = self.benchmark.run(num_steps=num_steps)
+            s = results.summary()
+            print(f"[Benchmark] env step: avg={s['step_time_avg_ms']:.2f}ms "
+                  f"median={s['step_time_median_ms']:.2f}ms "
+                  f"min={s['step_time_min_ms']:.2f}ms max={s['step_time_max_ms']:.2f}ms "
+                  f"reset={s['reset_time_ms']:.2f}ms steps={s['num_steps']}")
+            if self.summary_writer:
+                for key, val in s.items():
+                    self.summary_writer.add_scalar(f"benchmark/{key}", val, self.training_step)
+        except Exception as e:
+            print(f"[Benchmark] error: {e}")
+
+    def _log_metrics(self):
+        stats = self.metrics_collector.all_stats()
+        if not stats:
+            return
+        print("[MetricsCollector] === Performance Metrics ===")
+        for name, s in stats.items():
+            line = (f"  {name}: mean={s['mean_ms']:.2f}ms median={s['median_ms']:.2f}ms "
+                    f"min={s['min_ms']:.2f}ms max={s['max_ms']:.2f}ms count={s['count']}")
+            print(line)
+            if self.summary_writer and self.training_step > 0:
+                for key in ('mean_ms', 'median_ms', 'min_ms', 'max_ms'):
+                    self.summary_writer.add_scalar(f"metrics/{name}_{key}", s[key], self.training_step)
 
     def _build_logger(self) -> SummaryWriter:
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -1124,6 +1185,16 @@ class TrainingOrchestrator:
                 await self.env_manager.wait_for_drain()
                 await self.evaluate()
                 self.env_manager.resume()
+
+            # Periodic benchmarking (every 200 steps)
+            if self.training_step - self._last_benchmark_step >= 200:
+                self._last_benchmark_step = self.training_step
+                self._run_benchmark(num_steps=100)
+
+            # Periodic metrics logging (every 100 steps)
+            if self.training_step - self._last_metric_log_step >= 100:
+                self._last_metric_log_step = self.training_step
+                self._log_metrics()
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -1327,7 +1398,7 @@ class TrainingOrchestrator:
         """
         if self.agent_manager is None:
             self.setup()
-        worker = _GameWorker(0)
+        worker = _GameWorker(0, metrics_collector=self.metrics_collector)
         return await worker.run_game(self.agent_manager, return_placements=True)
 
     async def run_parallel_demo(self, num_episodes: int = 5) -> List[GameResult]:
@@ -1338,24 +1409,27 @@ class TrainingOrchestrator:
         """
         if self.agent_manager is None:
             self.setup()
-        mgr = self._create_env_manager(min(self.cfg.concurrent_games, num_episodes))
+        mgr = self._create_env_manager(min(self.cfg.concurrent_games, num_episodes),
+                                        metrics_collector=self.metrics_collector)
         return await mgr.run_fixed_games(self.agent_manager, num_episodes)
 
     async def run_evaluation(self, num_games: int) -> List[GameResult]:
         """Run a standalone evaluation session."""
         if self.agent_manager is None:
             self.setup()
-        mgr = self._create_env_manager(self.cfg.evaluation_concurrent)
+        mgr = self._create_env_manager(self.cfg.evaluation_concurrent,
+                                        metrics_collector=self.metrics_collector)
         return await mgr.run_fixed_games(self.agent_manager, num_games)
 
     @staticmethod
-    def _create_env_manager(num_workers: int):
+    def _create_env_manager(num_workers: int,
+                            metrics_collector: Optional[MetricsCollector] = None):
         """Factory: returns _MultiProcessEnvManager by default (process-level isolation
         required by TFTSet4Gym's global state).  Only returns _ThreadEnvManager when
         FORCE_THREADING_ENV_MANAGER is explicitly enabled."""
         if config.FORCE_THREADING_ENV_MANAGER:
-            return _ThreadEnvManager(num_workers)
-        return _MultiProcessEnvManager(num_workers)
+            return _ThreadEnvManager(num_workers, metrics_collector=metrics_collector)
+        return _MultiProcessEnvManager(num_workers, metrics_collector=metrics_collector)
 
     def cleanup(self):
         """Release resources (writer, etc.)."""
