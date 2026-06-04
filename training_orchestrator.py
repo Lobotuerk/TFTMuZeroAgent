@@ -21,7 +21,7 @@ import os
 import sys
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import defaultdict
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -139,7 +139,8 @@ def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
                         stop_event: threading.Event,
                         pause_event: threading.Event,
                         on_game_done_callback=None,
-                        games_to_play: Optional[int] = None):
+                        games_to_play: Optional[int] = None,
+                        profiling: Optional['ProfilingTracker'] = None):
     """
     Target function for an environment **thread**.
 
@@ -204,6 +205,7 @@ def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
             step_count += 1
             float_rewards = {k: float(v) for k, v in rewards.items()}
 
+            t0 = time.time()
             future = asyncio.run_coroutine_threadsafe(
                 agent_manager.get_actions(
                     observations, float_rewards, terminated,
@@ -216,6 +218,8 @@ def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
             except Exception as e:
                 print(f"[ThreadEnv {env_id}] inference error: {e}")
                 return
+            if profiling:
+                profiling.record_inference(time.time() - t0)
 
             processed = {}
             for pid, action in actions.items():
@@ -233,7 +237,10 @@ def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
                 else:
                     processed[pid] = [0, 0, 0]
 
+            t0 = time.time()
             observations, rewards, terminated, _, _ = env.step(processed)
+            if profiling:
+                profiling.record_env_step(time.time() - t0)
             for p in terminated:
                 if terminated[p]:
                     scores[p] = rewards[p]
@@ -305,6 +312,56 @@ class GameResult:
     agent_mapping: Dict[str, type]
 
 
+@dataclass
+class ProfilingTracker:
+    """Thread-safe accumulator for runtime performance metrics."""
+    env_step_times: List[float] = field(default_factory=list)
+    inference_wait_times: List[float] = field(default_factory=list)
+    train_step_times: List[float] = field(default_factory=list)
+    idle_times: List[float] = field(default_factory=list)
+    _lock: Any = field(default_factory=threading.Lock)
+
+    def record_inference(self, duration: float):
+        with self._lock:
+            self.inference_wait_times.append(duration)
+
+    def record_env_step(self, duration: float):
+        with self._lock:
+            self.env_step_times.append(duration)
+
+    def record_train_step(self, duration: float):
+        with self._lock:
+            self.train_step_times.append(duration)
+
+    def record_idle(self, duration: float):
+        with self._lock:
+            self.idle_times.append(duration)
+
+    def summary(self) -> Dict[str, float]:
+        total_inference = sum(self.inference_wait_times)
+        total_env_step = sum(self.env_step_times)
+        total_train = sum(self.train_step_times)
+        total_idle = sum(self.idle_times)
+        total = total_inference + total_env_step + total_train + total_idle
+        return {
+            "total_time": total,
+            "env_step_time": total_env_step,
+            "inference_wait_time": total_inference,
+            "train_time": total_train,
+            "idle_time": total_idle,
+            "env_step_pct": (total_env_step / total * 100) if total > 0 else 0.0,
+            "inference_pct": (total_inference / total * 100) if total > 0 else 0.0,
+            "train_pct": (total_train / total * 100) if total > 0 else 0.0,
+            "idle_pct": (total_idle / total * 100) if total > 0 else 0.0,
+            "env_step_count": len(self.env_step_times),
+            "inference_count": len(self.inference_wait_times),
+            "train_step_count": len(self.train_step_times),
+            "avg_env_step": (total_env_step / len(self.env_step_times)) if self.env_step_times else 0.0,
+            "avg_inference_wait": (total_inference / len(self.inference_wait_times)) if self.inference_wait_times else 0.0,
+            "avg_train_step": (total_train / len(self.train_step_times)) if self.train_step_times else 0.0,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Game worker – runs one async game
 # ---------------------------------------------------------------------------
@@ -315,9 +372,10 @@ class _GameWorker:
     Runs a single game asynchronously without Ray overhead.
     """
 
-    def __init__(self, worker_id: int):
+    def __init__(self, worker_id: int, profiling: Optional[ProfilingTracker] = None):
         self.worker_id = worker_id
         self.games_completed = 0
+        self.profiling = profiling
 
     async def run_game(self,
                        agent_manager: EnhancedAgentManager,
@@ -338,10 +396,13 @@ class _GameWorker:
                 step_count += 1
                 float_rewards = {k: float(v) for k, v in rewards.items()}
 
+                t0 = time.time()
                 actions_task = agent_manager.get_actions(
                     observations, float_rewards, terminated, game_id=game_id
                 )
                 actions = await asyncio.wait_for(actions_task, timeout=30.0)
+                if self.profiling:
+                    self.profiling.record_inference(time.time() - t0)
 
                 processed = {}
                 for pid, action in actions.items():
@@ -360,7 +421,10 @@ class _GameWorker:
                         raise ValueError(f"Invalid action format from agent {pid}: {action}")
                 actions = processed
 
+                t0 = time.time()
                 observations, rewards, terminated, _, _ = env.step(actions)
+                if self.profiling:
+                    self.profiling.record_env_step(time.time() - t0)
                 for p in terminated:
                     if terminated[p]:
                         scores[p] = rewards[p]
@@ -405,9 +469,10 @@ class _ParallelEnvManager:
     Supports continuous execution (auto-restart) and fixed-run evaluation.
     """
 
-    def __init__(self, num_workers: int):
+    def __init__(self, num_workers: int, profiling: Optional[ProfilingTracker] = None):
         self.num_workers = num_workers
-        self.workers = [_GameWorker(i) for i in range(num_workers)]
+        self.profiling = profiling
+        self.workers = [_GameWorker(i, profiling=profiling) for i in range(num_workers)]
         self.active_tasks: Dict[asyncio.Task, int] = {}
         self.should_continue = True
         self.should_spawn = True
@@ -807,6 +872,7 @@ class _ThreadEnvManager:
         self._pause_event = threading.Event()
         self.should_continue = True
         self.should_spawn = True
+        self.profiling: Optional[ProfilingTracker] = None
 
     # ── lifecycle ────────────────────────────────────────────────
 
@@ -842,14 +908,17 @@ class _ThreadEnvManager:
         self._threads.clear()
 
         for i in range(self.num_workers):
+            kwargs = {
+                "on_game_done_callback": on_game_done,
+                "games_to_play": games_to_play,
+            }
+            if self.profiling is not None:
+                kwargs["profiling"] = self.profiling
             t = threading.Thread(
                 target=self._worker_fn,
                 args=(i, loop, agent_manager,
                       self._stop_event, self._pause_event),
-                kwargs={
-                    "on_game_done_callback": on_game_done,
-                    "games_to_play": games_to_play,
-                },
+                kwargs=kwargs,
                 daemon=True,
             )
             t.start()
@@ -895,14 +964,17 @@ class _ThreadEnvManager:
 
         for i in range(self.num_workers):
             count = games_per_worker + (1 if i < remainder else 0)
+            kwargs = {
+                "on_game_done_callback": _collect,
+                "games_to_play": count,
+            }
+            if self.profiling is not None:
+                kwargs["profiling"] = self.profiling
             t = threading.Thread(
                 target=self._worker_fn,
                 args=(i, loop, agent_manager,
                       self._stop_event, self._pause_event),
-                kwargs={
-                    "on_game_done_callback": _collect,
-                    "games_to_play": count,
-                },
+                kwargs=kwargs,
                 daemon=True,
             )
             t.start()
@@ -952,6 +1024,8 @@ class TrainingOrchestrator:
 
     def __init__(self, training_config: Optional[TrainingConfig] = None):
         self.cfg = training_config or TrainingConfig()
+
+        self.profiling = ProfilingTracker()
 
         # Components (created in setup)
         self.trainer: Optional[Trainer] = None
@@ -1038,7 +1112,7 @@ class TrainingOrchestrator:
         )
 
         # --- parallel env manager -----------------------------------------
-        self.env_manager = self._create_env_manager(self.cfg.concurrent_games)
+        self.env_manager = self._create_env_manager(self.cfg.concurrent_games, profiling=self.profiling)
 
         print(f"TrainingOrchestrator setup complete:")
         print(f"  Concurrent games : {self.cfg.concurrent_games}")
@@ -1083,10 +1157,13 @@ class TrainingOrchestrator:
         print("TRAIN phase started – background training loop active.")
         while self.training_active:
             if self.global_buffer and self.global_buffer.available_gameplay_batch():
+                t0 = time.time()
                 await self._train_step()
+                self.profiling.record_train_step(time.time() - t0)
             else:
-                # Wait for more experience to be collected
+                t0 = time.time()
                 await asyncio.sleep(0.5)
+                self.profiling.record_idle(time.time() - t0)
 
     # ------------------------------------------------------------------
     # 2️⃣  TRAIN phase
@@ -1207,7 +1284,7 @@ class TrainingOrchestrator:
             gpu_memory_fraction=self.cfg.gpu_memory_fraction,
         )
 
-        eval_env_mgr = self._create_env_manager(self.cfg.evaluation_concurrent)
+        eval_env_mgr = self._create_env_manager(self.cfg.evaluation_concurrent, profiling=self.profiling)
         results = await eval_env_mgr.run_fixed_games(eval_mgr, self.cfg.evaluation_games)
 
         current_placements, best_placements = [], []
@@ -1327,7 +1404,7 @@ class TrainingOrchestrator:
         """
         if self.agent_manager is None:
             self.setup()
-        worker = _GameWorker(0)
+        worker = _GameWorker(0, profiling=self.profiling)
         return await worker.run_game(self.agent_manager, return_placements=True)
 
     async def run_parallel_demo(self, num_episodes: int = 5) -> List[GameResult]:
@@ -1338,30 +1415,78 @@ class TrainingOrchestrator:
         """
         if self.agent_manager is None:
             self.setup()
-        mgr = self._create_env_manager(min(self.cfg.concurrent_games, num_episodes))
+        mgr = self._create_env_manager(min(self.cfg.concurrent_games, num_episodes),
+                                       profiling=self.profiling)
         return await mgr.run_fixed_games(self.agent_manager, num_episodes)
 
     async def run_evaluation(self, num_games: int) -> List[GameResult]:
         """Run a standalone evaluation session."""
         if self.agent_manager is None:
             self.setup()
-        mgr = self._create_env_manager(self.cfg.evaluation_concurrent)
+        mgr = self._create_env_manager(self.cfg.evaluation_concurrent,
+                                       profiling=self.profiling)
         return await mgr.run_fixed_games(self.agent_manager, num_games)
 
     @staticmethod
-    def _create_env_manager(num_workers: int):
+    def _create_env_manager(num_workers: int, profiling: Optional[ProfilingTracker] = None):
         """Factory: returns _MultiProcessEnvManager by default (process-level isolation
         required by TFTSet4Gym's global state).  Only returns _ThreadEnvManager when
-        FORCE_THREADING_ENV_MANAGER is explicitly enabled."""
+        FORCE_THREADING_ENV_MANAGER is explicitly enabled.
+        
+        When *profiling* is provided the returned manager will record per-step
+        timings for environment stepping and inference wait."""
         if config.FORCE_THREADING_ENV_MANAGER:
-            return _ThreadEnvManager(num_workers)
-        return _MultiProcessEnvManager(num_workers)
+            mgr = _ThreadEnvManager(num_workers)
+            mgr.profiling = profiling
+            return mgr
+        mgr = _MultiProcessEnvManager(num_workers)
+        mgr._profiling = profiling
+        return mgr
 
     def cleanup(self):
         """Release resources (writer, etc.)."""
         if self.summary_writer:
             self.summary_writer.close()
         self.training_active = False
+
+    def print_profiling_summary(self) -> Dict[str, float]:
+        """Print a detailed performance breakdown and return the summary dict."""
+        s = self.profiling.summary()
+        print("\n" + "=" * 60)
+        print("PERFORMANCE BENCHMARK SUMMARY")
+        print("=" * 60)
+        print(f"  {'Metric':<35} {'Total (s)':>12} {'Count':>8} {'Avg (ms)':>10}")
+        print("  " + "-" * 65)
+        if s["inference_count"] > 0:
+            print(f"  {'Inference wait time':<35} {s['inference_wait_time']:>12.3f} {s['inference_count']:>8} {s['avg_inference_wait']*1000:>10.2f}")
+        if s["env_step_count"] > 0:
+            print(f"  {'Environment stepping time':<35} {s['env_step_time']:>12.3f} {s['env_step_count']:>8} {s['avg_env_step']*1000:>10.2f}")
+        print(f"  {'Training step time':<35} {s['train_time']:>12.3f} {s['train_step_count']:>8} {s['avg_train_step']*1000:>10.2f}")
+        print(f"  {'Idle time':<35} {s['idle_time']:>12.3f} {'':>8} {'':>10}")
+        print("  " + "-" * 65)
+        print(f"  {'TOTAL':<35} {s['total_time']:>12.3f} {'':>8} {'':>10}")
+        print()
+        print(f"  {'Category':<35} {'Percentage':>12}")
+        print("  " + "-" * 47)
+        if s["inference_count"] > 0:
+            print(f"  {'Inference wait':<35} {s['inference_pct']:>11.1f}%")
+        if s["env_step_count"] > 0:
+            print(f"  {'Environment stepping':<35} {s['env_step_pct']:>11.1f}%")
+        print(f"  {'Training':<35} {s['train_pct']:>11.1f}%")
+        print(f"  {'Idle':<35} {s['idle_pct']:>11.1f}%")
+        print("=" * 60)
+
+        # Also include agent-level inference stats from the batch processor if available
+        if self.agent_manager is not None:
+            agent_stats = self.agent_manager.get_performance_stats()
+            if agent_stats:
+                print(f"\n  Agent-level inference stats:")
+                for name, st in agent_stats.items():
+                    print(f"    {name:<30} avg={st.get('avg_inference_time', 0)*1000:.2f}ms  "
+                          f"batches={st.get('total_inferences', 0)}  "
+                          f"avg_batch={st.get('avg_batch_size', 0):.1f}")
+
+        return s
 
 
 # ---------------------------------------------------------------------------

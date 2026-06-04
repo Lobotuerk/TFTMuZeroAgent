@@ -78,6 +78,27 @@ The primary entry point is `main.py`, which supports several modes of operation:
   python main.py --mode debug --debug_single_episode
   ```
 
+### Benchmarking
+A standalone benchmark script is provided to profile the training pipeline's performance:
+
+```bash
+python benchmark_training.py
+```
+
+This runs the `TrainingOrchestrator` for 100 training steps with 18 concurrent games and 10 evaluation games, then outputs a detailed performance breakdown:
+
+- **Environment stepping time**: time spent executing game logic in the simulation
+- **Inference wait time**: time spent waiting for batched GPU inference
+- **Training time**: time spent updating model weights
+- **Idle time**: time waiting for sufficient experience to be collected
+
+Advanced options:
+```bash
+python benchmark_training.py --steps 200 --concurrent 8 --eval-games 5
+```
+
+Run `python benchmark_training.py --help` for all options.
+
 ### Configuration
 Hyperparameters, training settings, and environment constants are located in `config.py`. Key settings include:
 - `CONCURRENT_GAMES`: Number of games to run in parallel.
