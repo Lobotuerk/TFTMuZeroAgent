@@ -27,6 +27,7 @@ from Models.Common_agents import extract_field_from_observation
 
 
 from Models.tft_mcts import TFTMove, TFTState
+from Models.batched_inference import BlockingBatchInferenceQueue
 
 class EnhancedMCTS:
     """
@@ -62,6 +63,14 @@ class EnhancedMCTS:
         for _ in range(queue_size):
             self.obs_queue.append(np.zeros(config.OBSERVATION_SIZE))
         
+        # Batch inference queue for GPU-efficient batched recurrent_inference
+        threshold = getattr(config, 'BATCHED_INFERENCE_THRESHOLD', 64)
+        self.batch_queue = BlockingBatchInferenceQueue(
+            network=network,
+            batch_size=threshold,
+            timeout_seconds=0.005,
+        )
+
         # Performance tracking
         self.stats = {
             'total_generations': 0,
@@ -98,8 +107,9 @@ class EnhancedMCTS:
         actions = []
         target_policies = []
         
-        # Create TFT state
-        tft_state = TFTState(np.array(list(self.obs_queue)), mask, self.network, precomputed=precomputed)
+        # Create TFT state with batch queue for batched GPU inference
+        tft_state = TFTState(np.array(list(self.obs_queue)), mask, self.network,
+                            precomputed=precomputed, batch_queue=self.batch_queue)
 
         self.mcts_agent = pymcts.MCTS_agent(
             pymcts.SerializedPythonState(tft_state), 
@@ -108,7 +118,9 @@ class EnhancedMCTS:
         )
         
         # Generate move using PyMCTS
-        best_move = self.mcts_agent.genmove(None)        
+        best_move = self.mcts_agent.genmove(None)
+        # Flush any remaining items in the batch queue
+        self.batch_queue.flush()
         self.stats['total_generations'] += 1
 
         return best_move.to_env_action(), best_move.to_numpy()

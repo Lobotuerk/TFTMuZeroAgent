@@ -128,6 +128,7 @@ class TFTState(MCTS_StateBase):
                  network=None, is_raw_observation: bool = True,
                  precomputed: Optional[Dict[str, Any]] = None,
                  current_player: str = "player_0", round_num: int = 1,
+                 batch_queue=None,
                  **kwargs):
         if PYMCTS_AVAILABLE:
             super().__init__()
@@ -138,6 +139,7 @@ class TFTState(MCTS_StateBase):
         self.is_raw_observation = is_raw_observation
         self.current_player = current_player
         self.round_num = round_num
+        self.batch_queue = batch_queue
         
         # MCTS Values
         self.hidden_state = None
@@ -270,6 +272,18 @@ class TFTState(MCTS_StateBase):
     def next_state(self, move: TFTMove) -> 'TFTState':
         """Apply a move to get the next game state."""
         if self.network is not None:
+            if self.batch_queue is not None:
+                res = self.batch_queue.predict(self.hidden_state, move.to_numpy())
+                new_hidden = res["hidden_state"]
+                precomputed = {
+                    "hidden_state": new_hidden,
+                    "policy": res["policy_logits"],
+                    "value": res["value"],
+                }
+                return TFTState(new_hidden, self.mask, self.network, is_raw_observation=False,
+                               precomputed=precomputed, current_player=self.current_player,
+                               round_num=self.round_num, batch_queue=self.batch_queue)
+
             with torch.no_grad():
                 device = next(self.network.parameters()).device
                 # hidden_state is already a tensor on GPU
@@ -291,7 +305,7 @@ class TFTState(MCTS_StateBase):
                 
                 return TFTState(new_hidden, self.mask, self.network, is_raw_observation=False, 
                                precomputed=precomputed, current_player=self.current_player, 
-                               round_num=self.round_num)
+                               round_num=self.round_num, batch_queue=self.batch_queue)
         
         # Basic state transition for prototype
         return TFTState(self.observation, self.mask, None, is_raw_observation=True,
@@ -322,7 +336,8 @@ class TFTState(MCTS_StateBase):
             network=self.network,
             is_raw_observation=False,
             current_player=self.current_player,
-            round_num=self.round_num
+            round_num=self.round_num,
+            batch_queue=self.batch_queue
         )
 
     def get_action_probabilities(self, moves: Optional[List[TFTMove]] = None) -> List[float]:
