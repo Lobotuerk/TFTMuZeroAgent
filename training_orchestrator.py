@@ -216,7 +216,7 @@ def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
                 loop,
             )
             try:
-                actions = future.result(timeout=30.0)
+                actions = future.result(timeout=120.0)
             except Exception as e:
                 print(f"[ThreadEnv {env_id}] inference error: {e}")
                 return
