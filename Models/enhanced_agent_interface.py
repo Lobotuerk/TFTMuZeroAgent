@@ -52,6 +52,8 @@ except (ImportError, ValueError):
 
 import config
 
+from utils.profiling import MetricsCollector
+
 
 @dataclass
 class InferenceRequest:
@@ -99,7 +101,8 @@ class BatchInferenceServer:
     def __init__(self,
                  max_batch_size: int = 32,
                  batch_timeout_ms: float = 10.0,
-                 gpu_memory_fraction: float = 0.8):
+                 gpu_memory_fraction: float = 0.8,
+                 metrics_collector: Optional[MetricsCollector] = None):
         self.max_batch_size = max_batch_size
         self.batch_timeout_ms = batch_timeout_ms
         self.gpu_memory_fraction = gpu_memory_fraction
@@ -116,6 +119,7 @@ class BatchInferenceServer:
 
         self.inference_times = defaultdict(list)
         self.batch_sizes = defaultdict(list)
+        self.metrics_collector = metrics_collector
 
     # ── public API ──────────────────────────────────────────────
 
@@ -191,11 +195,13 @@ class BatchInferenceServer:
         requests: List[InferenceRequest] = []
         queue = self.request_queues[agent_type]
         start = time.time()
+        first_received = None
 
         while len(requests) < self.max_batch_size:
             try:
-                # Use non-blocking get to avoid blocking event loop
                 req = queue.get_nowait()
+                if first_received is None:
+                    first_received = time.perf_counter()
                 requests.append(req)
                 if (time.time() - start) * 1000 > self.batch_timeout_ms:
                     break
@@ -205,8 +211,11 @@ class BatchInferenceServer:
                 elapsed_ms = (time.time() - start) * 1000
                 if elapsed_ms > min(10.0, self.batch_timeout_ms):
                     break
-                # FIX: Use async sleep to avoid blocking event loop
                 await asyncio.sleep(0.001)
+
+        if self.metrics_collector and first_received is not None:
+            wait_time = time.perf_counter() - first_received
+            self.metrics_collector.record("inference_queue_wait", wait_time)
 
         return requests
 
@@ -222,15 +231,21 @@ class BatchInferenceServer:
     async def _run_inference(self,
                              agent: Any,
                              requests: List[InferenceRequest]) -> List[Any]:
-        start_time = time.time()
+        start_time = time.perf_counter()
 
         loop = asyncio.get_event_loop()
+        submit_time = time.perf_counter()
         result = await loop.run_in_executor(
             self.executor, self._infer_sync, agent, requests
         )
+        thread_wait = time.perf_counter() - submit_time
 
         self.inference_times[type(agent)].append(time.time() - start_time)
         self.batch_sizes[type(agent)].append(len(requests))
+
+        if self.metrics_collector:
+            self.metrics_collector.record("gpu_inference_total", time.perf_counter() - start_time)
+            self.metrics_collector.record("thread_pool_wait", thread_wait)
 
         n = len(self.inference_times[type(agent)])
         if n % 100 == 0:
@@ -272,8 +287,19 @@ class BatchInferenceServer:
 
         # ── Path 1: true GPU batched forward pass ──────────────
         if can_batch_gpu and batch_tensor.numel() > 0:
+            gpu_start = time.perf_counter()
             with torch.no_grad():
                 net_out = model.initial_inference(batch_tensor)
+
+            sync_start = time.perf_counter()
+            if self.device.type == 'cuda':
+                torch.cuda.synchronize()
+            gpu_time = sync_start - gpu_start
+            sync_time = time.perf_counter() - sync_start
+
+            if self.metrics_collector:
+                self.metrics_collector.record("gpu_forward_pass", gpu_time)
+                self.metrics_collector.record("gpu_sync", sync_time)
 
             # Handle both dict and (dict, directive, board) returns from model
             if isinstance(net_out, tuple):
@@ -373,10 +399,12 @@ class EnhancedAgentManager:
     to the BatchInferenceServer.
     """
 
-    def __init__(self, batch_processor: Optional[BatchInferenceServer] = None):
+    def __init__(self, batch_processor: Optional[BatchInferenceServer] = None,
+                 metrics_collector: Optional[MetricsCollector] = None):
         self.agents: Dict[Any, Any] = {}
         self.player_to_agent: Dict[str, type] = {}
-        self.batch_processor = batch_processor or BatchInferenceServer()
+        self.batch_processor = batch_processor or BatchInferenceServer(metrics_collector=metrics_collector)
+        self.metrics_collector = metrics_collector
 
         self.inference_times = defaultdict(list)
         self.batch_sizes = defaultdict(list)
@@ -412,6 +440,7 @@ class EnhancedAgentManager:
                           rewards: Dict[str, float],
                           terminated: Dict[str, bool],
                           game_id: str = "") -> Dict[str, Any]:
+        t0 = time.perf_counter()
         tasks = []
         player_ids = []
         for player_id, obs in observations.items():
@@ -431,8 +460,10 @@ class EnhancedAgentManager:
             tasks.append(task)
             player_ids.append(player_id)
 
-        # Use asyncio.gather to submit all requests concurrently, enabling batching
         results = await asyncio.gather(*tasks)
+
+        if self.metrics_collector:
+            self.metrics_collector.record("get_actions_total", time.perf_counter() - t0)
 
         return {pid: result for pid, result in zip(player_ids, results)}
 
@@ -471,9 +502,11 @@ class AsyncGameEnvironment:
     delegating action selection to the agent manager.
     """
 
-    def __init__(self, env_factory, agent_manager: EnhancedAgentManager):
+    def __init__(self, env_factory, agent_manager: EnhancedAgentManager,
+                 metrics_collector: Optional[MetricsCollector] = None):
         self.env_factory = env_factory
         self.agent_manager = agent_manager
+        self.metrics_collector = metrics_collector
 
     async def run_game(self, game_id: str) -> Dict[str, Any]:
         env = self.env_factory()
@@ -487,7 +520,10 @@ class AsyncGameEnvironment:
             actions = await self.agent_manager.get_actions(
                 observations, rewards, terminated, game_id=game_id
             )
+            t0 = time.perf_counter()
             observations, rewards, terminated, _, info = env.step(actions)
+            if self.metrics_collector:
+                self.metrics_collector.record("env_step", time.perf_counter() - t0)
             for player in terminated:
                 if terminated[player]:
                     scores[player] = rewards[player]
@@ -524,7 +560,8 @@ class EnvironmentPool:
                  agent_manager: EnhancedAgentManager,
                  global_buffer: Optional[Any] = None,
                  num_environments: Optional[int] = None,
-                 max_concurrent_games: Optional[int] = None):
+                 max_concurrent_games: Optional[int] = None,
+                 metrics_collector: Optional[MetricsCollector] = None):
         """
         Args:
             env_factory: Callable that returns a new environment instance
@@ -538,6 +575,7 @@ class EnvironmentPool:
         self.global_buffer = global_buffer
         self.num_environments = num_environments or config.CONCURRENT_GAMES
         self.max_concurrent_games = max_concurrent_games or self.num_environments
+        self.metrics_collector = metrics_collector
 
         self._environments: List[AsyncGameEnvironment] = []
         self._semaphore = asyncio.Semaphore(self.max_concurrent_games)
@@ -556,7 +594,8 @@ class EnvironmentPool:
         self._shutdown_event.clear()
         self._environments = []
         for i in range(self.num_environments):
-            env = AsyncGameEnvironment(self.env_factory, self.agent_manager)
+            env = AsyncGameEnvironment(self.env_factory, self.agent_manager,
+                                       metrics_collector=self.metrics_collector)
             self._environments.append(env)
         self._active_games = 0
         self._total_games_completed = 0
@@ -763,7 +802,8 @@ class EnvironmentPool:
 def create_enhanced_setup(agent_configs: Optional[List[Tuple[Any, int]]] = None,
                           max_batch_size: Optional[int] = None,
                           batch_timeout_ms: float = 5.0,
-                          gpu_memory_fraction: float = 0.7):
+                          gpu_memory_fraction: float = 0.7,
+                          metrics_collector: Optional[MetricsCollector] = None):
     if max_batch_size is None:
         max_batch_size = config.NUM_PLAYERS
 
@@ -771,8 +811,9 @@ def create_enhanced_setup(agent_configs: Optional[List[Tuple[Any, int]]] = None,
         max_batch_size=max_batch_size,
         batch_timeout_ms=batch_timeout_ms,
         gpu_memory_fraction=gpu_memory_fraction,
+        metrics_collector=metrics_collector,
     )
-    agent_manager = EnhancedAgentManager(batch_processor)
+    agent_manager = EnhancedAgentManager(batch_processor, metrics_collector=metrics_collector)
 
     if agent_configs is None:
         agent_configs = _create_default_agent_configs()
