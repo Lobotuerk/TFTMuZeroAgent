@@ -38,7 +38,7 @@ The project is structured around a central **Training Orchestrator** that drives
    ```
 
 2. **Setup the environment**:
-   It is highly recommended to use the provided Conda environment to ensure compatibility with Python 3.8 and all dependencies.
+   It is highly recommended to use the provided Conda environment to ensure compatibility with Python 3.13 and all dependencies. The `env.yml` includes the `python-freethreading` build, which disables the GIL for improved multi-threaded performance.
    ```bash
    conda env create -f env.yml
    conda activate TFT
@@ -51,38 +51,40 @@ The project is structured around a central **Training Orchestrator** that drives
    cd ..
    ```
 
-### Running the System
-To run the system, you need to ensure that the project root and its submodules are in your `PYTHONPATH`.
+### Running the System (Free-Threading)
+Always run the project via the `run_tft.sh` wrapper script. It activates the `TFT` conda environment (with the free-threaded Python build) and sets up `PYTHONPATH` automatically.
 
 ```bash
-export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/MonteCarloTreeSearch:$(pwd)/TFTSet4Gym
+./run_tft.sh python main.py --mode training --run_name "my_experiment"
 ```
 
 The primary entry point is `main.py`, which supports several modes of operation:
 
 - **Training**: Run the full RL lifecycle.
   ```bash
-  python main.py --mode training --run_name "my_experiment"
+  ./run_tft.sh python main.py --mode training --run_name "my_experiment"
   ```
 - **Evaluation**: Pit the agent against baselines.
   ```bash
-  python main.py --mode evaluation --eval_games 10
+  ./run_tft.sh python main.py --mode eval --eval_games 10
   ```
 - **Demo**: Run parallel games without training to observe agent behavior.
   ```bash
-  python main.py --mode demo --demo_episodes 5
+  ./run_tft.sh python main.py --mode demo --demo_episodes 5
   ```
 - **Debug**: Test neural network architecture or run a single debug episode.
   ```bash
-  python main.py --mode debug --debug_network
-  python main.py --mode debug --debug_single_episode
+  ./run_tft.sh python main.py --mode debug --debug_network
+  ./run_tft.sh python main.py --mode debug --debug_single_episode
   ```
+
+Running `python main.py` or `python benchmark_training.py` directly will trigger a fail-fast error if `FORCE_THREADING_ENV_MANAGER` is `True` but the GIL is still enabled.
 
 ### Benchmarking
 A standalone benchmark script is provided to profile the training pipeline's performance:
 
 ```bash
-python benchmark_training.py
+./run_tft.sh python benchmark_training.py
 ```
 
 This runs the `TrainingOrchestrator` for 100 training steps with 18 concurrent games and 10 evaluation games, then outputs a detailed performance breakdown:
@@ -94,7 +96,7 @@ This runs the `TrainingOrchestrator` for 100 training steps with 18 concurrent g
 
 Advanced options:
 ```bash
-python benchmark_training.py --steps 200 --concurrent 8 --eval-games 5
+./run_tft.sh python benchmark_training.py --steps 200 --concurrent 8 --eval-games 5
 ```
 
 Run `python benchmark_training.py --help` for all options.
