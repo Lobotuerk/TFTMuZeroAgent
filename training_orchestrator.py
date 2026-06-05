@@ -95,7 +95,10 @@ def _env_worker_main(env_id: int, conn):
 
             conn.send(('infer', observations, float_rewards, terminated))
 
-            msg = conn.recv()
+            try:
+                msg = conn.recv()
+            except (EOFError, BrokenPipeError, OSError):
+                return
             if msg[0] == 'stop':
                 return
 
@@ -150,12 +153,18 @@ def _env_worker_main(env_id: int, conn):
 
         conn.send(('done', scores, round_durations))
 
-        msg = conn.recv()
+        try:
+            msg = conn.recv()
+        except (EOFError, BrokenPipeError, OSError):
+            return
         if msg[0] == 'stop':
             return
         elif msg[0] == 'pause':
             while True:
-                msg2 = conn.recv()
+                try:
+                    msg2 = conn.recv()
+                except (EOFError, BrokenPipeError, OSError):
+                    return
                 if msg2[0] == 'restart':
                     break
                 elif msg2[0] == 'stop':
