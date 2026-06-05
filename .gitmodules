@@ -1,0 +1,6 @@
+[submodule "MonteCarloTreeSearch"]
+	path = MonteCarloTreeSearch
+	url = https://github.com/Lobotuerk/MonteCarloTreeSearch
+[submodule "TFTSet4Gym"]
+	path = TFTSet4Gym
+	url = https://github.com/Lobotuerk/TFTSet4Gym
