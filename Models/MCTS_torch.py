@@ -5,6 +5,7 @@ import torch
 from typing import Dict, List, Tuple, Optional, Any, Union
 import sys
 import os
+import threading
 from collections import deque
 
 # Add MonteCarloTreeSearch build directory to path
@@ -27,6 +28,7 @@ from Models.Common_agents import extract_field_from_observation
 
 
 from Models.tft_mcts import TFTMove, TFTState
+from Models.batched_inference import BlockingBatchInferenceQueue
 
 class EnhancedMCTS:
     """
@@ -46,22 +48,23 @@ class EnhancedMCTS:
         self.action_size = action_size
         self.action_limits = action_limits
         self.policy_size = policy_size
-        self.num_simulations = 0
         
-        # PyMCTS agents for each player
-        self.mcts_agent = None
+        # Thread safety setup
+        self._local = threading.local()
+        self._stats_lock = threading.Lock()
+        
+        # PyMCTS agents configuration
         self.mcts_max_iterations = 100
         self.mcts_max_seconds = 10
 
-        # Use config if queue_size is not provided
-        if queue_size is None:
-            queue_size = getattr(config, 'OBSERVATION_TIME_STEPS', 1)
-            
-        self.obs_queue = deque(maxlen=queue_size)
-        # Fill queue with empty observations
-        for _ in range(queue_size):
-            self.obs_queue.append(np.zeros(config.OBSERVATION_SIZE))
-        
+        # Batch inference queue for GPU-efficient batched recurrent_inference
+        threshold = getattr(config, 'BATCHED_INFERENCE_THRESHOLD', 64)
+        self.batch_queue = BlockingBatchInferenceQueue(
+            network=network,
+            batch_size=threshold,
+            timeout_seconds=0.005,
+        )
+
         # Performance tracking
         self.stats = {
             'total_generations': 0,
@@ -70,6 +73,19 @@ class EnhancedMCTS:
             'average_depth': 0
         }
     
+    def _get_local_state(self):
+        """Ensure thread-local variables are initialized."""
+        if not hasattr(self._local, 'obs_queue'):
+            queue_size = getattr(config, 'OBSERVATION_TIME_STEPS', 1)
+            self._local.obs_queue = deque(maxlen=queue_size)
+            for _ in range(queue_size):
+                self._local.obs_queue.append(np.zeros(config.OBSERVATION_SIZE))
+        if not hasattr(self._local, 'mcts_agent'):
+            self._local.mcts_agent = None
+        if not hasattr(self._local, 'num_simulations'):
+            self._local.num_simulations = 0
+        return self._local
+
     def generate_action(self, n_simulations: int, observation: np.ndarray, 
                        mask: np.ndarray,
                        precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
@@ -85,31 +101,38 @@ class EnhancedMCTS:
         Returns:
             Tuple of (actions, target_policies)
         """
-        self.obs_queue.append(observation)
-        self.num_simulations = n_simulations
+        state = self._get_local_state()
+        state.obs_queue.append(observation)
+        state.num_simulations = n_simulations
         return self._generate_action_pymcts(observation, mask, precomputed=precomputed)
     
     def _generate_action_pymcts(self, observation: np.ndarray, 
                                mask: np.ndarray,
                                precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
         """Generate actions using PyMCTS integration"""
-        self.stats['pymcts_generations'] += 1
+        state = self._get_local_state()
+        with self._stats_lock:
+            self.stats['pymcts_generations'] += 1
 
         actions = []
         target_policies = []
         
-        # Create TFT state
-        tft_state = TFTState(np.array(list(self.obs_queue)), mask, self.network, precomputed=precomputed)
+        # Create TFT state with batch queue for batched GPU inference
+        tft_state = TFTState(np.array(list(state.obs_queue)), mask, self.network,
+                            precomputed=precomputed, batch_queue=self.batch_queue)
 
-        self.mcts_agent = pymcts.MCTS_agent(
+        state.mcts_agent = pymcts.MCTS_agent(
             pymcts.SerializedPythonState(tft_state), 
-            max_iter=self.num_simulations,
+            max_iter=state.num_simulations,
             max_seconds=self.mcts_max_seconds
         )
         
         # Generate move using PyMCTS
-        best_move = self.mcts_agent.genmove(None)        
-        self.stats['total_generations'] += 1
+        best_move = state.mcts_agent.genmove(None)
+        # Flush any remaining items in the batch queue
+        self.batch_queue.flush()
+        with self._stats_lock:
+            self.stats['total_generations'] += 1
 
         return best_move.to_env_action(), best_move.to_numpy()
     
@@ -124,20 +147,26 @@ class EnhancedMCTS:
     
     def fill_metadata(self) -> Dict[str, str]:
         """Fill metadata for tracking"""
+        with self._stats_lock:
+            total_g = self.stats['total_generations']
+            pymcts_g = self.stats['pymcts_generations']
         metadata = {
             'network_id': str(self.network.training_steps() if hasattr(self.network, 'training_steps') else 0),
             'pymcts_available': 'True',
-            'total_generations': str(self.stats['total_generations']),
-            'pymcts_generations': str(self.stats['pymcts_generations'])
+            'total_generations': str(total_g),
+            'pymcts_generations': str(pymcts_g)
         }
         return metadata
     
     def get_stats(self) -> Dict[str, Any]:
         """Get performance statistics"""
+        state = self._get_local_state()
+        with self._stats_lock:
+            stats_copy = self.stats.copy()
         return {
-            **self.stats,
+            **stats_copy,
             'pymcts_available': True,
-            'active_agents': self.mcts_agent is not None,
+            'active_agents': state.mcts_agent is not None,
             'max_depth_search': self.max_depth_search,
             'runs': self.runs,
             'num_actions': self.num_actions
@@ -145,13 +174,15 @@ class EnhancedMCTS:
     
     def reset_agents(self):
         """Reset all MCTS agents"""
-        self.mcts_agent = None
-        self.stats = {
-            'total_generations': 0,
-            'pymcts_generations': 0,
-            'average_actions_per_state': 0,
-            'average_depth': 0
-        }
+        state = self._get_local_state()
+        state.mcts_agent = None
+        with self._stats_lock:
+            self.stats = {
+                'total_generations': 0,
+                'pymcts_generations': 0,
+                'average_actions_per_state': 0,
+                'average_depth': 0
+            }
 
 # Factory function for easy creation
 def create_enhanced_mcts(sample_size: int, action_size: int, action_limits: List[int],

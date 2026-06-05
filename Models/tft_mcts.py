@@ -83,7 +83,11 @@ class TFTMove(MCTS_MoveBase):
                 self.target_1 == other.target_1 and
                 self.target_2 == other.target_2 and
                 self.index == other.index and
-                self.player_id == other.player_id)
+                self.player_id == other.player_id and
+                self.shop_index == other.shop_index and
+                self.board_index == other.board_index and
+                self.from_index == other.from_index and
+                self.to_index == other.to_index)
     
     def sprint(self) -> str:
         """String representation of the move for PyMCTS."""
@@ -124,6 +128,7 @@ class TFTState(MCTS_StateBase):
                  network=None, is_raw_observation: bool = True,
                  precomputed: Optional[Dict[str, Any]] = None,
                  current_player: str = "player_0", round_num: int = 1,
+                 batch_queue=None,
                  **kwargs):
         if PYMCTS_AVAILABLE:
             super().__init__()
@@ -134,6 +139,7 @@ class TFTState(MCTS_StateBase):
         self.is_raw_observation = is_raw_observation
         self.current_player = current_player
         self.round_num = round_num
+        self.batch_queue = batch_queue
         
         # MCTS Values
         self.hidden_state = None
@@ -206,7 +212,7 @@ class TFTState(MCTS_StateBase):
                     input_obs = torch.tensor(observation, dtype=torch.float32).to(device)
                 
                 # Handle batching
-                if input_obs.ndim == 1 or input_obs.ndim == 2:
+                if input_obs.ndim == 1:
                     input_obs = input_obs.unsqueeze(0)
                 elif is_raw_observation and input_obs.ndim == 3:
                     input_obs = input_obs.unsqueeze(0)
@@ -266,6 +272,18 @@ class TFTState(MCTS_StateBase):
     def next_state(self, move: TFTMove) -> 'TFTState':
         """Apply a move to get the next game state."""
         if self.network is not None:
+            if self.batch_queue is not None:
+                res = self.batch_queue.predict(self.hidden_state, move.to_numpy())
+                new_hidden = res["hidden_state"]
+                precomputed = {
+                    "hidden_state": new_hidden,
+                    "policy": res["policy_logits"],
+                    "value": res["value"],
+                }
+                return TFTState(new_hidden, self.mask, self.network, is_raw_observation=False,
+                               precomputed=precomputed, current_player=self.current_player,
+                               round_num=self.round_num, batch_queue=self.batch_queue)
+
             with torch.no_grad():
                 device = next(self.network.parameters()).device
                 # hidden_state is already a tensor on GPU
@@ -287,7 +305,7 @@ class TFTState(MCTS_StateBase):
                 
                 return TFTState(new_hidden, self.mask, self.network, is_raw_observation=False, 
                                precomputed=precomputed, current_player=self.current_player, 
-                               round_num=self.round_num)
+                               round_num=self.round_num, batch_queue=self.batch_queue)
         
         # Basic state transition for prototype
         return TFTState(self.observation, self.mask, None, is_raw_observation=True,
@@ -318,7 +336,8 @@ class TFTState(MCTS_StateBase):
             network=self.network,
             is_raw_observation=False,
             current_player=self.current_player,
-            round_num=self.round_num
+            round_num=self.round_num,
+            batch_queue=self.batch_queue
         )
 
     def get_action_probabilities(self, moves: Optional[List[TFTMove]] = None) -> List[float]:

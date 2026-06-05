@@ -86,6 +86,9 @@ def _env_worker_main(env_id: int, conn):
         rewards = {pid: 0.0 for pid in env.possible_agents}
         scores = {pid: 0.0 for pid in env.possible_agents}
         step_count = 0
+        round_start_time = time.time()
+        last_round = None
+        round_durations = []
 
         while not all(terminated.values()):
             float_rewards = {k: float(v) for k, v in rewards.items()}
@@ -115,7 +118,24 @@ def _env_worker_main(env_id: int, conn):
                 else:
                     processed[pid] = [0, 0, 0]
 
-            observations, rewards, terminated, _, _ = env.step(processed)
+            observations, rewards, terminated, _, infos = env.step(processed)
+
+            # Track round progression
+            try:
+                game_round_obj = getattr(env, 'game_round', None)
+                if game_round_obj is not None:
+                    current_round = getattr(game_round_obj, 'current_round', None)
+                    if current_round is not None:
+                        if last_round is None:
+                            last_round = current_round
+                            round_start_time = time.time()
+                        elif current_round != last_round:
+                            round_durations.append(time.time() - round_start_time)
+                            last_round = current_round
+                            round_start_time = time.time()
+            except Exception:
+                pass
+
             for p in terminated:
                 if terminated[p]:
                     scores[p] = rewards[p]
@@ -124,7 +144,11 @@ def _env_worker_main(env_id: int, conn):
             if step_count > 1000:
                 break
 
-        conn.send(('done', scores))
+        # Record the last round's duration at the end of the game
+        if last_round is not None:
+            round_durations.append(time.time() - round_start_time)
+
+        conn.send(('done', scores, round_durations))
 
         msg = conn.recv()
         if msg[0] == 'stop':
@@ -194,6 +218,10 @@ def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
         if stop_event.is_set():
             break
 
+        game_start_time = time.time()
+        round_start_time = time.time()
+        last_round = None
+
         observations = env.reset()[0]
         terminated = {pid: False for pid in env.possible_agents}
         rewards = {pid: 0.0 for pid in env.possible_agents}
@@ -240,15 +268,45 @@ def _thread_worker_main(env_id: int, loop: asyncio.AbstractEventLoop,
                     processed[pid] = [0, 0, 0]
 
             t0 = time.time()
-            observations, rewards, terminated, _, _ = env.step(processed)
+            observations, rewards, terminated, _, infos = env.step(processed)
             if profiling:
                 profiling.record_env_step(time.time() - t0)
+
+            # Track round progression
+            try:
+                game_round_obj = getattr(env, 'game_round', None)
+                if game_round_obj is not None:
+                    current_round = getattr(game_round_obj, 'current_round', None)
+                    if current_round is not None:
+                        if last_round is None:
+                            last_round = current_round
+                            round_start_time = time.time()
+                        elif current_round != last_round:
+                            round_duration = time.time() - round_start_time
+                            if profiling:
+                                profiling.record_round(round_duration)
+                            last_round = current_round
+                            round_start_time = time.time()
+            except Exception:
+                pass
+
             for p in terminated:
                 if terminated[p]:
                     scores[p] = rewards[p]
 
             if step_count > 1000:
                 break
+
+        # Record the last round's duration at the end of the game
+        if last_round is not None:
+            round_duration = time.time() - round_start_time
+            if profiling:
+                profiling.record_round(round_duration)
+
+        # Record total game duration
+        game_duration = time.time() - game_start_time
+        if profiling:
+            profiling.record_game(game_duration)
 
         # ── game finished ─────────────────────────────────────────
         future = asyncio.run_coroutine_threadsafe(
@@ -321,6 +379,8 @@ class ProfilingTracker:
     inference_wait_times: List[float] = field(default_factory=list)
     train_step_times: List[float] = field(default_factory=list)
     idle_times: List[float] = field(default_factory=list)
+    round_times: List[float] = field(default_factory=list)
+    game_times: List[float] = field(default_factory=list)
     _lock: Any = field(default_factory=threading.Lock)
 
     def record_inference(self, duration: float):
@@ -338,6 +398,14 @@ class ProfilingTracker:
     def record_idle(self, duration: float):
         with self._lock:
             self.idle_times.append(duration)
+
+    def record_round(self, duration: float):
+        with self._lock:
+            self.round_times.append(duration)
+
+    def record_game(self, duration: float):
+        with self._lock:
+            self.game_times.append(duration)
 
     def summary(self) -> Dict[str, float]:
         total_inference = sum(self.inference_wait_times)
@@ -358,9 +426,13 @@ class ProfilingTracker:
             "env_step_count": len(self.env_step_times),
             "inference_count": len(self.inference_wait_times),
             "train_step_count": len(self.train_step_times),
+            "round_count": len(self.round_times),
+            "game_count": len(self.game_times),
             "avg_env_step": (total_env_step / len(self.env_step_times)) if self.env_step_times else 0.0,
             "avg_inference_wait": (total_inference / len(self.inference_wait_times)) if self.inference_wait_times else 0.0,
             "avg_train_step": (total_train / len(self.train_step_times)) if self.train_step_times else 0.0,
+            "avg_round_time": (sum(self.round_times) / len(self.round_times)) if self.round_times else 0.0,
+            "avg_game_time": (sum(self.game_times) / len(self.game_times)) if self.game_times else 0.0,
         }
 
 
@@ -387,6 +459,8 @@ class _GameWorker:
         try:
             game_id = f"worker_{self.worker_id}_game_{self.games_completed}"
             start_time = time.time()
+            round_start_time = time.time()
+            last_round = None
 
             env = parallel_env(rank=self.worker_id)
             observations = env.reset()[0]
@@ -429,17 +503,42 @@ class _GameWorker:
 
                 t0_prof = time.time()
                 t0_metrics = time.perf_counter()
-                observations, rewards, terminated, _, _ = env.step(actions)
+                observations, rewards, terminated, _, infos = env.step(actions)
                 if self.profiling:
                     self.profiling.record_env_step(time.time() - t0_prof)
                 if self.metrics_collector:
                     self.metrics_collector.record("worker_env_step", time.perf_counter() - t0_metrics)
+
+                # Track round progression
+                try:
+                    game_round_obj = getattr(env, 'game_round', None)
+                    if game_round_obj is not None:
+                        current_round = getattr(game_round_obj, 'current_round', None)
+                        if current_round is not None:
+                            if last_round is None:
+                                last_round = current_round
+                                round_start_time = time.time()
+                            elif current_round != last_round:
+                                round_duration = time.time() - round_start_time
+                                if self.profiling:
+                                    self.profiling.record_round(round_duration)
+                                last_round = current_round
+                                round_start_time = time.time()
+                except Exception:
+                    pass
+
                 for p in terminated:
                     if terminated[p]:
                         scores[p] = rewards[p]
 
                 if step_count > 1000:
                     break
+
+            # Record the last round's duration at the end of the game
+            if last_round is not None:
+                round_duration = time.time() - round_start_time
+                if self.profiling:
+                    self.profiling.record_round(round_duration)
 
             placements = {}
             if return_placements:
@@ -454,6 +553,10 @@ class _GameWorker:
             
             duration = time.time() - start_time
             self.games_completed += 1
+
+            # Record total game duration
+            if self.profiling:
+                self.profiling.record_game(duration)
 
             return GameResult(
                 game_id=game_id,
@@ -717,6 +820,7 @@ class _MultiProcessEnvManager:
                           on_game_done: Optional[Callable] = None) -> None:
         """Continuously handle messages from *env_id* (collection mode)."""
         loop = asyncio.get_event_loop()
+        game_start_time = time.time()
 
         while self.should_continue:
             try:
@@ -753,7 +857,16 @@ class _MultiProcessEnvManager:
                     break
 
             elif msg[0] == 'done':
-                _, scores = msg
+                scores = msg[1]
+                round_durations = msg[2] if len(msg) > 2 else []
+                game_duration = time.time() - game_start_time
+
+                profiling = getattr(self, '_profiling', None)
+                if profiling:
+                    profiling.record_game(game_duration)
+                    for rd in round_durations:
+                        profiling.record_round(rd)
+
                 try:
                     t0 = time.perf_counter()
                     await agent_manager.flush_all_buffers(
@@ -766,7 +879,7 @@ class _MultiProcessEnvManager:
                             game_id=f"env_{env_id}_game",
                             placements={},
                             scores=scores,
-                            duration=0.0,
+                            duration=game_duration,
                             agent_mapping=agent_manager.get_player_agent_mapping(),
                         )
                         await on_game_done(result)
@@ -774,6 +887,7 @@ class _MultiProcessEnvManager:
                     print(f"[MPEnv {env_id}] flush error: {e}")
 
                 if self.should_continue and self.should_spawn:
+                    game_start_time = time.time()
                     conn.send(('restart', None))
                 else:
                     conn.send(('stop', None))
@@ -788,6 +902,7 @@ class _MultiProcessEnvManager:
         """Handle exactly *num_games* games from *env_id* (eval mode)."""
         loop = asyncio.get_event_loop()
         games_done = 0
+        game_start_time = time.time()
 
         while games_done < num_games:
             try:
@@ -813,7 +928,16 @@ class _MultiProcessEnvManager:
                     break
 
             elif msg[0] == 'done':
-                _, scores = msg
+                scores = msg[1]
+                round_durations = msg[2] if len(msg) > 2 else []
+                game_duration = time.time() - game_start_time
+
+                profiling = getattr(self, '_profiling', None)
+                if profiling:
+                    profiling.record_game(game_duration)
+                    for rd in round_durations:
+                        profiling.record_round(rd)
+
                 try:
                     await agent_manager.flush_all_buffers(
                         final_values=scores,
@@ -825,7 +949,7 @@ class _MultiProcessEnvManager:
                         game_id=f"eval_env_{env_id}_{games_done}",
                         placements=placements,
                         scores=scores,
-                        duration=0.0,
+                        duration=game_duration,
                         agent_mapping=agent_manager.get_player_agent_mapping(),
                     )
                     await on_game_done(result)
@@ -834,6 +958,7 @@ class _MultiProcessEnvManager:
 
                 games_done += 1
                 if games_done < num_games:
+                    game_start_time = time.time()
                     conn.send(('restart', None))
                 else:
                     conn.send(('stop', None))
@@ -1551,6 +1676,10 @@ class TrainingOrchestrator:
             print(f"  {'Environment stepping time':<35} {s['env_step_time']:>12.3f} {s['env_step_count']:>8} {s['avg_env_step']*1000:>10.2f}")
         print(f"  {'Training step time':<35} {s['train_time']:>12.3f} {s['train_step_count']:>8} {s['avg_train_step']*1000:>10.2f}")
         print(f"  {'Idle time':<35} {s['idle_time']:>12.3f} {'':>8} {'':>10}")
+        if s.get("round_count", 0) > 0:
+            print(f"  {'Round time':<35} {'':>12} {s['round_count']:>8} {s['avg_round_time']*1000:>10.2f}")
+        if s.get("game_count", 0) > 0:
+            print(f"  {'Game time':<35} {'':>12} {s['game_count']:>8} {s['avg_game_time']*1000:>10.2f}")
         print("  " + "-" * 65)
         print(f"  {'TOTAL':<35} {s['total_time']:>12.3f} {'':>8} {'':>10}")
         print()

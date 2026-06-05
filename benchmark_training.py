@@ -1,15 +1,14 @@
 """
-Standalone benchmark script for the training pipeline.
+Standalone benchmark script for the collection process (environment stepping and inference).
 
-Runs the TrainingOrchestrator for a fixed number of training steps with
+Runs the environment collection process for a fixed number of games with
 configurable concurrency and outputs a detailed performance breakdown
-comparing environment stepping time, inference wait time, training time,
-and idle time.
+focusing specifically on how much a round takes and how much a whole game takes.
 
 Usage:
     python benchmark_training.py                          # defaults
-    python benchmark_training.py --steps 50               # fewer steps
-    python benchmark_training.py --concurrent 8 --eval 5  # custom concurrency
+    python benchmark_training.py --games 2               # number of games
+    python benchmark_training.py --concurrent 8           # custom concurrency
 """
 
 import asyncio
@@ -27,10 +26,10 @@ def build_config(args) -> TrainingConfig:
     return TrainingConfig(
         starting_train_step=0,
         concurrent_games=args.concurrent,
-        evaluation_games=args.eval_games,
-        evaluation_concurrent=args.eval_concurrent,
+        evaluation_games=0,
+        evaluation_concurrent=0,
         max_batch_size=config.BATCH_SIZE,
-        sync_steps=args.sync_steps,
+        sync_steps=999999,
         save_interval=999999,
         evaluation_interval=999999,
     )
@@ -41,15 +40,22 @@ async def run_benchmark(args):
     orch = TrainingOrchestrator(cfg)
     orch.setup()
 
-    print(f"\nStarting benchmark: {args.steps} training steps, "
-          f"{cfg.concurrent_games} concurrent games, "
-          f"{cfg.evaluation_games} evaluation games")
+    # Determine number of games to run, allowing fallback from deprecated --steps
+    num_games = args.games
+    if args.steps is not None and args.games == 2:
+        # If --steps was explicitly passed, map it to games for backward compatibility
+        num_games = max(1, args.steps // 50)
+        print(f"[Warning] --steps parameter is deprecated for collection benchmark. Mapping steps ({args.steps}) to games ({num_games}).")
+
+    print(f"\nStarting Collection Benchmark: {num_games} games, "
+          f"{cfg.concurrent_games} concurrent games")
     print(f"Environment manager: "
           f"{'ThreadEnvManager' if config.FORCE_THREADING_ENV_MANAGER else 'MultiProcessEnvManager'}")
     print("-" * 60)
 
     try:
-        await orch.run(max_steps=args.steps)
+        # Run games in parallel without training loop
+        await orch.run_parallel_demo(num_episodes=num_games)
     except KeyboardInterrupt:
         print("\nBenchmark interrupted")
     finally:
@@ -57,18 +63,25 @@ async def run_benchmark(args):
 
     orch.print_profiling_summary()
 
-    total_env = orch.profiling.summary()["env_step_time"]
-    total_inf = orch.profiling.summary()["inference_wait_time"]
-    total_train = orch.profiling.summary()["train_time"]
-    total_idle = orch.profiling.summary()["idle_time"]
-    grand = total_env + total_inf + total_train + total_idle
+    summary = orch.profiling.summary()
+    total_env = summary["env_step_time"]
+    total_inf = summary["inference_wait_time"]
+    avg_round = summary.get("avg_round_time", 0.0)
+    avg_game = summary.get("avg_game_time", 0.0)
+    round_count = summary.get("round_count", 0)
+    game_count = summary.get("game_count", 0)
 
-    print(f"\n  Environment stepping : {total_env:.2f}s  ({total_env/grand*100:.1f}%)")
-    print(f"  Inference wait       : {total_inf:.2f}s  ({total_inf/grand*100:.1f}%)")
-    print(f"  Training             : {total_train:.2f}s  ({total_train/grand*100:.1f}%)")
-    print(f"  Idle                 : {total_idle:.2f}s  ({total_idle/grand*100:.1f}%)")
+    print("\n" + "=" * 60)
+    print("COLLECTION PROCESS BENCHMARK RESULTS")
+    print("=" * 60)
+    print(f"  Rounds benchmarked : {round_count}")
+    print(f"  Average round time : {avg_round:.3f}s ({avg_round*1000:.1f} ms)")
+    print(f"  Games benchmarked  : {game_count}")
+    print(f"  Average game time  : {avg_game:.3f}s")
     print(f"  ───────────────────────────────────────────")
-    print(f"  Total wall time      : {grand:.2f}s")
+    print(f"  Environment step   : {total_env:.2f}s")
+    print(f"  Inference wait     : {total_inf:.2f}s")
+    print("=" * 60)
 
     return True
 
@@ -82,23 +95,25 @@ def _check_gil():
 def main():
     _check_gil()
     parser = argparse.ArgumentParser(
-        description="Benchmark the TFT MuZero training pipeline",
+        description="Benchmark the TFT MuZero collection process (environment and inference)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--steps", type=int, default=100,
-                        help="Number of training steps to run (default: 100)")
+    parser.add_argument("--games", type=int, default=2,
+                        help="Number of games to run (default: 2)")
+    parser.add_argument("--steps", type=int, default=None,
+                        help="Deprecated: Number of training steps (fallback compatibility mapped to games)")
     parser.add_argument("--concurrent", type=int, default=config.CONCURRENT_GAMES,
                         help=f"Number of concurrent games (default: {config.CONCURRENT_GAMES})")
-    parser.add_argument("--eval-games", type=int, default=config.EVALUATION_GAMES,
-                        help=f"Number of evaluation games (default: {config.EVALUATION_GAMES})")
-    parser.add_argument("--eval-concurrent", type=int, default=config.EVALUATION_CONCURRENT_GAMES,
-                        help=f"Concurrent evaluation games (default: {config.EVALUATION_CONCURRENT_GAMES})")
-    parser.add_argument("--sync-steps", type=int, default=config.SYNC_STEPS,
-                        help=f"Sync interval in steps (default: {config.SYNC_STEPS})")
+    parser.add_argument("--eval-games", type=int, default=0,
+                        help="Unused (deprecated)")
+    parser.add_argument("--eval-concurrent", type=int, default=0,
+                        help="Unused (deprecated)")
+    parser.add_argument("--sync-steps", type=int, default=0,
+                        help="Unused (deprecated)")
 
     args = parser.parse_args()
     print("=" * 60)
-    print("TFT MuZero Agent – Training Benchmark")
+    print("TFT MuZero Agent – Collection Benchmark")
     print("=" * 60)
 
     try:

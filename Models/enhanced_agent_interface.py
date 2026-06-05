@@ -240,7 +240,7 @@ class BatchInferenceServer:
         )
         thread_wait = time.perf_counter() - submit_time
 
-        self.inference_times[type(agent)].append(time.time() - start_time)
+        self.inference_times[type(agent)].append(time.perf_counter() - start_time)
         self.batch_sizes[type(agent)].append(len(requests))
 
         if self.metrics_collector:

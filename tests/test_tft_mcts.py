@@ -89,8 +89,8 @@ class TestTFTState:
         tft_state = TFTState(observations=observations, current_player=first_player)
         
         assert tft_state.current_player == first_player
-        assert tft_state.observations is not None
-        assert len(tft_state.observations) == len(observations)
+        assert tft_state.observation is not None
+        assert len(tft_state.observation) == len(observations)
 
     def test_state_actions_to_try(self):
         """Test that the state can generate valid moves."""
@@ -108,7 +108,7 @@ class TestTFTState:
         
         # Should include basic actions like reroll, level, buy
         action_types = [move.action_type for move in moves]
-        assert "reroll" in action_types or "level" in action_types
+        assert 4 in action_types or 5 in action_types
 
     def test_state_next_state(self):
         """Test that we can apply a move to get the next state."""
@@ -263,7 +263,6 @@ class TestTFTMCTSIntegration:
         
         print("✅ PyMCTS interface compatibility confirmed")
 
-    @pytest.mark.skip(reason="pymcts.MCTS_agent currently causes a segmentation fault")
     def test_full_agent_integration(self):
         """Test MCTS agent creation with TFT state."""
         if _MCTS_MOVE_BASE is object:
