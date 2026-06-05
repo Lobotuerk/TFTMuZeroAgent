@@ -107,7 +107,7 @@ class BatchInferenceServer:
         self.batch_timeout_ms = batch_timeout_ms
         self.gpu_memory_fraction = gpu_memory_fraction
 
-        self.request_queues: Dict[Any, Queue] = defaultdict(Queue)
+        self.request_queues: Dict[Any, asyncio.Queue] = defaultdict(asyncio.Queue)
         self._processing_locks: Dict[Any, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._processing_tasks: Dict[Any, asyncio.Task] = {}
 
@@ -127,7 +127,7 @@ class BatchInferenceServer:
         self.agent_instances[agent_type] = agent_instance
 
     def register_agent_instance(self, agent_type: Any, agent_instance: Any):
-        self.agent_instances[agent_type] = agent_instance
+        self.register_agent(agent_type, agent_instance)
 
     async def request_action(self,
                              agent_type: Any,
@@ -145,8 +145,9 @@ class BatchInferenceServer:
             timestamp=time.time(),
             future=asyncio.Future(),
         )
-        self.request_queues[agent_type].put(request)
+        self.request_queues[agent_type].put_nowait(request)
 
+        # Ensure task is running (e.g. if it crashed)
         if (agent_type not in self._processing_tasks
                 or self._processing_tasks[agent_type].done()):
             self._processing_tasks[agent_type] = asyncio.create_task(
@@ -178,10 +179,10 @@ class BatchInferenceServer:
 
     async def _process_batch(self, agent_type: Any):
         async with self._processing_locks[agent_type]:
-            # FIX: Loop until queue is empty to avoid stuck requests
             while True:
                 requests = await self._collect_batch(agent_type)
                 if not requests:
+                    # Should only happen on cancellation
                     break
 
                 agent = self.agent_instances.get(agent_type)
@@ -194,26 +195,29 @@ class BatchInferenceServer:
     async def _collect_batch(self, agent_type: Any) -> List[InferenceRequest]:
         requests: List[InferenceRequest] = []
         queue = self.request_queues[agent_type]
-        start = time.time()
-        first_received = None
-
+        
+        try:
+            # Wait indefinitely for the first item
+            req = await queue.get()
+            requests.append(req)
+            first_received = time.perf_counter()
+        except asyncio.CancelledError:
+            return requests
+            
+        start = time.perf_counter()
+        # Collect more items until max_batch_size or batch_timeout_ms
         while len(requests) < self.max_batch_size:
             try:
-                req = queue.get_nowait()
-                if first_received is None:
-                    first_received = time.perf_counter()
+                # Wait with timeout for subsequent items
+                timeout = max(0.0, (self.batch_timeout_ms / 1000.0) - (time.perf_counter() - start))
+                if timeout <= 0:
+                    break
+                req = await asyncio.wait_for(queue.get(), timeout=timeout)
                 requests.append(req)
-                if (time.time() - start) * 1000 > self.batch_timeout_ms:
-                    break
-            except Empty:
-                if requests:
-                    break
-                elapsed_ms = (time.time() - start) * 1000
-                if elapsed_ms > min(10.0, self.batch_timeout_ms):
-                    break
-                await asyncio.sleep(0.001)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                break
 
-        if self.metrics_collector and first_received is not None:
+        if self.metrics_collector and len(requests) > 0:
             wait_time = time.perf_counter() - first_received
             self.metrics_collector.record("inference_queue_wait", wait_time)
 

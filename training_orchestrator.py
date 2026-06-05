@@ -824,10 +824,13 @@ class _MultiProcessEnvManager:
 
         while self.should_continue:
             try:
-                # poll with timeout so we can check should_continue regularly
-                has_data = await loop.run_in_executor(
-                    None, lambda: conn.poll(0.5)
-                )
+                # Use non-blocking poll and asyncio.sleep to avoid executor starvation
+                if not conn.poll():
+                    await asyncio.sleep(0.005)
+                    has_data = False
+                else:
+                    has_data = True
+                
                 if not has_data:
                     if not self.should_continue:
                         break
@@ -906,9 +909,13 @@ class _MultiProcessEnvManager:
 
         while games_done < num_games:
             try:
-                has_data = await loop.run_in_executor(
-                    None, lambda: conn.poll(0.5)
-                )
+                # Use non-blocking poll and asyncio.sleep to avoid executor starvation
+                if not conn.poll():
+                    await asyncio.sleep(0.005)
+                    has_data = False
+                else:
+                    has_data = True
+
                 if not has_data:
                     continue
                 msg = conn.recv()
@@ -1352,6 +1359,7 @@ class TrainingOrchestrator:
                 t0 = time.time()
                 await self._train_step()
                 self.profiling.record_train_step(time.time() - t0)
+                await asyncio.sleep(0.01)  # Yield to prevent starvation
             else:
                 t0 = time.time()
                 await asyncio.sleep(0.5)
