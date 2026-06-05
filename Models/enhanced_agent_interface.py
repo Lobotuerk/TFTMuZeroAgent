@@ -112,7 +112,9 @@ class BatchInferenceServer:
         self._processing_tasks: Dict[Any, asyncio.Task] = {}
 
         self.agent_instances: Dict[Any, Any] = {}
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        # Use single-threaded executor (max_workers=1) to serialize all GPU operations
+        # and prevent deadlocks between the GIL and PyTorch's CUDA Caching Allocator mutex.
+        self.executor = ThreadPoolExecutor(max_workers=1)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._setup_gpu()

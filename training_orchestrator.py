@@ -1370,9 +1370,22 @@ class TrainingOrchestrator:
                 if cb is not None:
                     combat_batch = cb
     
+            # Run the training step in the shared single-threaded GPU executor if available
+            # to serialize training and inference GPU operations and prevent deadlocks.
+            executor = None
+            if (self.agent_manager is not None 
+                    and hasattr(self.agent_manager, "batch_processor")
+                    and self.agent_manager.batch_processor is not None
+                    and hasattr(self.agent_manager.batch_processor, "executor")):
+                from concurrent.futures import Executor
+                from unittest.mock import Mock, MagicMock
+                exec_obj = self.agent_manager.batch_processor.executor
+                if isinstance(exec_obj, Executor) and not isinstance(exec_obj, (Mock, MagicMock)):
+                    executor = exec_obj
+
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
-                None,
+                executor,
                 self.trainer.train_network,
                 batch,
                 combat_batch,
