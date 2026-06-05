@@ -48,8 +48,8 @@ import threading
 
 # Default multiprocessing context (fork on Linux 3.13-).
 # Subprocesses only run CPU-bound env logic and do not touch GPU tensors,
-# so fork is safe and avoids re-import overhead.
-MP_CONTEXT = mp
+# however, fork can cause deadlocks if PyTorch threads are active. Use spawn.
+MP_CONTEXT = mp.get_context('spawn')
 
 
 # ---------------------------------------------------------------------------

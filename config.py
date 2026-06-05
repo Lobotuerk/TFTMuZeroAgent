@@ -6,7 +6,7 @@ import numpy as np
 IS_GIL_DISABLED: bool = not getattr(sys, '_is_gil_enabled', lambda: True)()
 """True when running on a free-threaded (no-GIL) Python build."""
 
-FORCE_THREADING_ENV_MANAGER: bool = True
+FORCE_THREADING_ENV_MANAGER: bool = False
 """Set to True to prefer thread-based env managers even when GIL is active."""
 
 #### MODEL SET UP ####
