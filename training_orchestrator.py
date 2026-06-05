@@ -819,21 +819,15 @@ class _MultiProcessEnvManager:
                           agent_manager: EnhancedAgentManager,
                           on_game_done: Optional[Callable] = None) -> None:
         """Continuously handle messages from *env_id* (collection mode)."""
-        loop = asyncio.get_event_loop()
         game_start_time = time.time()
 
         while self.should_continue:
             try:
-                # Use non-blocking poll and asyncio.sleep to avoid executor starvation
-                if not conn.poll():
-                    await asyncio.sleep(0.005)
-                    has_data = False
-                else:
-                    has_data = True
-                
+                has_data = conn.poll()
                 if not has_data:
                     if not self.should_continue:
                         break
+                    await asyncio.sleep(0.005)
                     continue
                 if not self.should_continue:
                     conn.send(('stop', None))
@@ -903,20 +897,14 @@ class _MultiProcessEnvManager:
                                 num_games: int,
                                 on_game_done: Callable) -> None:
         """Handle exactly *num_games* games from *env_id* (eval mode)."""
-        loop = asyncio.get_event_loop()
         games_done = 0
         game_start_time = time.time()
 
         while games_done < num_games:
             try:
-                # Use non-blocking poll and asyncio.sleep to avoid executor starvation
-                if not conn.poll():
-                    await asyncio.sleep(0.005)
-                    has_data = False
-                else:
-                    has_data = True
-
+                has_data = conn.poll()
                 if not has_data:
+                    await asyncio.sleep(0.005)
                     continue
                 msg = conn.recv()
             except (EOFError, BrokenPipeError, OSError):
@@ -1359,7 +1347,7 @@ class TrainingOrchestrator:
                 t0 = time.time()
                 await self._train_step()
                 self.profiling.record_train_step(time.time() - t0)
-                await asyncio.sleep(0.01)  # Yield to prevent starvation
+                await asyncio.sleep(0.01)
             else:
                 t0 = time.time()
                 await asyncio.sleep(0.5)
