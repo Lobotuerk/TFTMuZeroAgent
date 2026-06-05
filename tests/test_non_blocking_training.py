@@ -11,7 +11,7 @@ import config
 
 @pytest.mark.asyncio
 async def test_non_blocking_training_loop():
-    """Verify that training occurs in the background and is decoupled from games."""
+    """Verify that training occurs in a sequential Collect -> Train loop."""
     
     with patch('training_orchestrator.Trainer') as MockTrainer, \
          patch('training_orchestrator.GlobalBuffer') as MockBuffer, \
@@ -24,8 +24,7 @@ async def test_non_blocking_training_loop():
         
         # Setup mocks
         mock_buffer = MockBuffer.return_value
-        # Simulate availability. Note: checked in both _training_loop and _train_step
-        availability = [True] * 10
+        availability = [True, True, True, True, False]
         def get_availability(*args, **kwargs):
             if availability:
                 return availability.pop(0)
@@ -39,15 +38,17 @@ async def test_non_blocking_training_loop():
         mock_env_mgr = MockEnvMgr.return_value
         MockMPEnvMgr.return_value = mock_env_mgr
         
-        # run_continuously will simulate game completions
-        async def mock_run_continuously(agent_mgr, on_game_done):
-            # Simulate 2 games finishing
-            await on_game_done(GameResult("game_1", {}, {}, 0.1, {}))
-            await asyncio.sleep(0.1)
-            await on_game_done(GameResult("game_2", {}, {}, 0.1, {}))
-            await asyncio.sleep(0.2)
+        first_call = True
+        async def mock_run_fixed_games(agent_mgr, concurrent_games):
+            nonlocal first_call
+            if first_call:
+                first_call = False
+                return [GameResult("game_1", {}, {}, 0.1, {}), GameResult("game_2", {}, {}, 0.1, {})]
+            else:
+                orch.training_active = False
+                return []
 
-        mock_env_mgr.run_continuously = mock_run_continuously
+        mock_env_mgr.run_fixed_games = mock_run_fixed_games
         
         MockSetup.return_value = (MagicMock(), MagicMock())
         
@@ -58,29 +59,21 @@ async def test_non_blocking_training_loop():
         orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1, sync_steps=1))
         orch.setup()
         
-        try:
-            # Run collect which now starts the background training task
-            # We'll use a timeout to ensure it doesn't run forever if something is wrong
-            await asyncio.wait_for(orch.collect(), timeout=2.0)
-            
-        except asyncio.TimeoutError:
-            pass
-        finally:
-            orch.training_active = False
+        # Run collect which executes the sequential Collect -> Train loop
+        await orch.collect()
 
         # Verify games were counted
         assert orch.games_completed == 2
         
-        # Verify training steps occurred
-        # mock_buffer.available_gameplay_batch was called and returned True twice
-        assert orch.training_step >= 2
-        assert mock_trainer.train_network.call_count >= 2
+        # Verify training steps occurred (availability has 4 Trues before False)
+        assert orch.training_step == 2
+        assert mock_trainer.train_network.call_count == 2
         
         print(f"Verified collect: {orch.games_completed} games, {orch.training_step} training steps.")
 
 @pytest.mark.asyncio
 async def test_run_non_blocking():
-    """Verify the run method also uses the background training loop."""
+    """Verify the run method also uses the sequential Collect -> Train loop."""
     with patch('training_orchestrator.Trainer') as MockTrainer, \
          patch('training_orchestrator.GlobalBuffer') as MockBuffer, \
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
@@ -91,7 +84,12 @@ async def test_run_non_blocking():
          patch('training_orchestrator.torch.save') as mock_torch_save:
         
         mock_buffer = MockBuffer.return_value
-        mock_buffer.available_gameplay_batch.side_effect = [True] * 20 + [False] * 100
+        availability = [True, True, True, True, False]
+        def get_availability(*args, **kwargs):
+            if availability:
+                return availability.pop(0)
+            return False
+        mock_buffer.available_gameplay_batch.side_effect = get_availability
         mock_buffer.read_gameplay_batch.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock())
         mock_buffer.available_combat_batch.return_value = False
         
@@ -99,33 +97,26 @@ async def test_run_non_blocking():
         mock_env_mgr = MockEnvMgr.return_value
         MockMPEnvMgr.return_value = mock_env_mgr
         
-        async def mock_run_continuously(agent_mgr, on_game_done):
-            # Run until stopped
-            while True:
-                await on_game_done(GameResult("game", {}, {}, 0, {}))
-                await asyncio.sleep(0.01)
+        first_call = True
+        async def mock_run_fixed_games(agent_mgr, concurrent_games):
+            nonlocal first_call
+            if first_call:
+                first_call = False
+                return [GameResult("game_1", {}, {}, 0.1, {}), GameResult("game_2", {}, {}, 0.1, {})]
+            else:
+                orch.training_active = False
+                return []
 
-        mock_env_mgr.run_continuously = mock_run_continuously
+        mock_env_mgr.run_fixed_games = mock_run_fixed_games
         MockSetup.return_value = (MagicMock(), MagicMock())
         MockAgent.return_value.get_weights.return_value = {}
 
         orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1, sync_steps=5))
         orch.setup()
         
-        # Start run and cancel after some time
-        run_task = asyncio.create_task(orch.run(max_steps=10))
+        # Start run (which should run one iteration of collect and train, then stop because of mock)
+        await orch.run(max_steps=10)
         
-        await asyncio.sleep(0.5)
-        orch.training_active = False # Stop the loop
-        
-        try:
-            await asyncio.wait_for(run_task, timeout=1.0)
-        except asyncio.TimeoutError:
-            pass
-        
-        assert orch.training_step > 0
-        assert orch.games_completed > 0
+        assert orch.training_step == 2
+        assert orch.games_completed == 2
         print(f"Verified run: {orch.games_completed} games, {orch.training_step} training steps.")
-
-if __name__ == "__main__":
-    asyncio.run(test_non_blocking_training_loop())
