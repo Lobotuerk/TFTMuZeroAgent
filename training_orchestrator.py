@@ -819,18 +819,15 @@ class _MultiProcessEnvManager:
                           agent_manager: EnhancedAgentManager,
                           on_game_done: Optional[Callable] = None) -> None:
         """Continuously handle messages from *env_id* (collection mode)."""
-        loop = asyncio.get_event_loop()
         game_start_time = time.time()
 
         while self.should_continue:
             try:
-                # poll with timeout so we can check should_continue regularly
-                has_data = await loop.run_in_executor(
-                    None, lambda: conn.poll(0.5)
-                )
+                has_data = conn.poll()
                 if not has_data:
                     if not self.should_continue:
                         break
+                    await asyncio.sleep(0.005)
                     continue
                 if not self.should_continue:
                     conn.send(('stop', None))
@@ -900,16 +897,14 @@ class _MultiProcessEnvManager:
                                 num_games: int,
                                 on_game_done: Callable) -> None:
         """Handle exactly *num_games* games from *env_id* (eval mode)."""
-        loop = asyncio.get_event_loop()
         games_done = 0
         game_start_time = time.time()
 
         while games_done < num_games:
             try:
-                has_data = await loop.run_in_executor(
-                    None, lambda: conn.poll(0.5)
-                )
+                has_data = conn.poll()
                 if not has_data:
+                    await asyncio.sleep(0.005)
                     continue
                 msg = conn.recv()
             except (EOFError, BrokenPipeError, OSError):
