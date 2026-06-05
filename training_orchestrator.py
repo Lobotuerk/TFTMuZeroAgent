@@ -1318,23 +1318,31 @@ class TrainingOrchestrator:
 
     async def collect(self) -> None:
         """
-        Start the continuous game-collection loop.
-        This runs forever (or until :meth:`stop_training` is called).
-        Training runs in a separate background task.
+        Start the sequential Collect -> Train loop.
+        Runs until :meth:`stop_training` is called.
         """
         self.training_active = True
-        print("COLLECT phase started – running continuous games...")
+        print("COLLECT phase started – sequential Collect -> Train loop active.")
 
-        async def _on_game_done(result: GameResult):
-            self.games_completed += 1
+        while self.training_active:
+            results = await self.env_manager.run_fixed_games(
+                self.agent_manager, self.cfg.concurrent_games
+            )
+            self.games_completed += len(results)
 
-        train_task = asyncio.create_task(self._training_loop())
+            if not self.training_active:
+                break
 
-        try:
-            await self.env_manager.run_continuously(self.agent_manager, _on_game_done)
-        finally:
-            self.training_active = False
-            await train_task
+            trained = False
+            while self.training_active and self.global_buffer.available_gameplay_batch():
+                t0 = time.time()
+                await self._train_step()
+                self.profiling.record_train_step(time.time() - t0)
+                await asyncio.sleep(0.01)
+                trained = True
+
+            if not trained:
+                await asyncio.sleep(1.0)
 
     async def _training_loop(self) -> None:
         """
@@ -1571,27 +1579,39 @@ class TrainingOrchestrator:
         """
         Full training loop orchestrating all lifecycle phases.
 
-        COLLECT runs in the background; TRAIN is triggered whenever the
-        buffer has data; SYNC follows weight improvement; EVALUATE runs
-        periodically.
+        Sequential Collect -> Train loop:
+        1. Collect data by running concurrent games.
+        2. Train on the collected data.
+        3. Repeat.
         """
         if self.env_manager is None:
             self.setup()
 
         self.training_active = True
 
-        async def _internal_callback(result: GameResult):
-            self.games_completed += 1
-
-        collect_task = asyncio.create_task(
-            self.env_manager.run_continuously(self.agent_manager, _internal_callback)
-        )
-        train_task = asyncio.create_task(self._training_loop())
-
         last_logged_step = -1
         try:
             while self.training_active and self.training_step < max_steps:
-                await asyncio.sleep(1.0)
+                results = await self.env_manager.run_fixed_games(
+                    self.agent_manager, self.cfg.concurrent_games
+                )
+                self.games_completed += len(results)
+
+                if not self.training_active or self.training_step >= max_steps:
+                    break
+
+                trained = False
+                while (self.training_active and self.training_step < max_steps
+                       and self.global_buffer.available_gameplay_batch()):
+                    t0 = time.time()
+                    await self._train_step()
+                    self.profiling.record_train_step(time.time() - t0)
+                    await asyncio.sleep(0.01)
+                    trained = True
+
+                if not trained:
+                    await asyncio.sleep(1.0)
+
                 if self.training_step % 100 == 0 and self.training_step > 0 and self.training_step != last_logged_step:
                     print(f"  step={self.training_step}  games={self.games_completed}")
                     last_logged_step = self.training_step
@@ -1599,8 +1619,6 @@ class TrainingOrchestrator:
             pass
         finally:
             self.training_active = False
-            self.env_manager.stop()
-            await asyncio.gather(collect_task, train_task, return_exceptions=True)
             if self.summary_writer:
                 self.summary_writer.close()
 
