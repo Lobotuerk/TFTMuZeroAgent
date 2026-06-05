@@ -48,6 +48,22 @@ async def run_benchmark(args):
           f"{'ThreadEnvManager' if config.FORCE_THREADING_ENV_MANAGER else 'MultiProcessEnvManager'}")
     print("-" * 60)
 
+    import numpy as np
+    # Pre-populate global buffer to bypass the sequential environment data-collection lag
+    if orch.global_buffer is not None and type(orch.global_buffer).__name__ != 'MagicMock':
+        print("Pre-populating global buffer with synthetic experiences for training benchmark...")
+        synthetic_experiences = []
+        for _ in range(config.BATCH_SIZE * 4):
+            synthetic_experiences.append([
+                np.zeros(config.OBSERVATION_SIZE),
+                [np.zeros(3, dtype=np.int32) for _ in range(config.UNROLL_STEPS - 1)],
+                [0.0] * config.UNROLL_STEPS,
+                [0.0] * config.UNROLL_STEPS,
+                [np.zeros(config.ACTION_CONCAT_SIZE) for _ in range(config.UNROLL_STEPS)],
+            ])
+        orch.global_buffer.store_episode(synthetic_experiences)
+        print(f"Global buffer size: {orch.global_buffer.get_gameplay_buffer_size()} experiences.")
+
     try:
         await orch.run(max_steps=args.steps)
     except KeyboardInterrupt:

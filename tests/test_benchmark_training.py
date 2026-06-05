@@ -143,3 +143,24 @@ class TestProfilingTracker:
         s = pt.summary()
         assert s['inference_count'] == 4 * n
         assert s['env_step_count'] == 4 * n
+
+
+def test_prepopulate_buffer_logic():
+    """Verify that synthetic experiences can be stored in the GlobalBuffer."""
+    import numpy as np
+    import config
+    from Models.global_buffer import GlobalBuffer
+    from Models.action_conversion import action_3d_to_policy
+
+    buf = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
+    synthetic_experiences = []
+    for _ in range(config.BATCH_SIZE * 4):
+        synthetic_experiences.append([
+            np.zeros(config.OBSERVATION_SIZE),
+            [np.zeros(3, dtype=np.int32) for _ in range(config.UNROLL_STEPS - 1)],
+            [0.0] * config.UNROLL_STEPS,
+            [0.0] * config.UNROLL_STEPS,
+            [np.zeros(config.ACTION_CONCAT_SIZE) for _ in range(config.UNROLL_STEPS)],
+        ])
+    buf.store_episode(synthetic_experiences)
+    assert buf.get_gameplay_buffer_size() == config.BATCH_SIZE * 4
