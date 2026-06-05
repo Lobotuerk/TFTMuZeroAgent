@@ -1347,6 +1347,7 @@ class TrainingOrchestrator:
                 t0 = time.time()
                 await self._train_step()
                 self.profiling.record_train_step(time.time() - t0)
+                await asyncio.sleep(0.01)
             else:
                 t0 = time.time()
                 await asyncio.sleep(0.5)
