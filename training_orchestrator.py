@@ -1249,12 +1249,15 @@ class TrainingOrchestrator:
                 if cb is not None:
                     combat_batch = cb
     
-            self.trainer.train_network(
-                batch=batch,
-                combats=combat_batch,
-                agent=self.current_model.model,
-                train_step=self.training_step,
-                summary_writer=self.summary_writer,
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                self.trainer.train_network,
+                batch,
+                combat_batch,
+                self.current_model.model,
+                self.training_step,
+                self.summary_writer,
             )
             self.training_step += 1
 
