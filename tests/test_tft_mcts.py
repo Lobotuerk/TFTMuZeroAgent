@@ -58,9 +58,9 @@ class TestTFTMove:
 
     def test_move_equality(self):
         """Test that move equality works correctly."""
-        move1 = TFTMove(action_type="buy", shop_index=0, player_id="player_0")
-        move2 = TFTMove(action_type="buy", shop_index=0, player_id="player_0")
-        move3 = TFTMove(action_type="buy", shop_index=1, player_id="player_0")
+        move1 = TFTMove(action_type="buy", target_1=0, player_id="player_0")
+        move2 = TFTMove(action_type="buy", target_1=0, player_id="player_0")
+        move3 = TFTMove(action_type="buy", target_1=1, player_id="player_0")
         
         assert move1 == move2
         assert move1 != move3
@@ -89,8 +89,8 @@ class TestTFTState:
         tft_state = TFTState(observations=observations, current_player=first_player)
         
         assert tft_state.current_player == first_player
-        assert tft_state.observations is not None
-        assert len(tft_state.observations) == len(observations)
+        assert tft_state.observation is not None
+        assert len(tft_state.observation) == len(observations)
 
     def test_state_actions_to_try(self):
         """Test that the state can generate valid moves."""
@@ -108,7 +108,7 @@ class TestTFTState:
         
         # Should include basic actions like reroll, level, buy
         action_types = [move.action_type for move in moves]
-        assert "reroll" in action_types or "level" in action_types
+        assert 4 in action_types or 5 in action_types
 
     def test_state_next_state(self):
         """Test that we can apply a move to get the next state."""

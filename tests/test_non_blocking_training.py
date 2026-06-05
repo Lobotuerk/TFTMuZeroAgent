@@ -1,4 +1,3 @@
-
 import asyncio
 import pytest
 from unittest.mock import MagicMock, patch
@@ -19,6 +18,7 @@ async def test_non_blocking_training_loop():
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
          patch('training_orchestrator.create_custom_agent_setup') as MockSetup, \
          patch('training_orchestrator._ThreadEnvManager') as MockEnvMgr, \
+         patch('training_orchestrator._MultiProcessEnvManager') as MockMPEnvMgr, \
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
         
@@ -37,6 +37,8 @@ async def test_non_blocking_training_loop():
         mock_trainer = MockTrainer.return_value
         
         mock_env_mgr = MockEnvMgr.return_value
+        MockMPEnvMgr.return_value = mock_env_mgr
+        
         # run_continuously will simulate game completions
         async def mock_run_continuously(agent_mgr, on_game_done):
             # Simulate 2 games finishing
@@ -84,6 +86,7 @@ async def test_run_non_blocking():
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
          patch('training_orchestrator.create_custom_agent_setup') as MockSetup, \
          patch('training_orchestrator._ThreadEnvManager') as MockEnvMgr, \
+         patch('training_orchestrator._MultiProcessEnvManager') as MockMPEnvMgr, \
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
         
@@ -94,6 +97,7 @@ async def test_run_non_blocking():
         
         mock_trainer = MockTrainer.return_value
         mock_env_mgr = MockEnvMgr.return_value
+        MockMPEnvMgr.return_value = mock_env_mgr
         
         async def mock_run_continuously(agent_mgr, on_game_done):
             # Run until stopped

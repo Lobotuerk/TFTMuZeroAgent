@@ -51,6 +51,7 @@ async def test_benchmark_runs_without_error():
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
          patch('training_orchestrator.create_custom_agent_setup') as MockSetup, \
          patch('training_orchestrator._ThreadEnvManager') as MockEnvMgr, \
+         patch('training_orchestrator._MultiProcessEnvManager') as MockMPEnvMgr, \
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
 
@@ -62,6 +63,7 @@ async def test_benchmark_runs_without_error():
         mock_buffer.available_combat_batch.return_value = False
         mock_trainer = MockTrainer.return_value
         mock_env_mgr = MockEnvMgr.return_value
+        MockMPEnvMgr.return_value = mock_env_mgr
 
         async def mock_run_continuously(agent_mgr, on_game_done):
             for _ in range(5):
