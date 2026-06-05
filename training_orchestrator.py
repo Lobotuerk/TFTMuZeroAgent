@@ -724,11 +724,15 @@ class _MultiProcessEnvManager:
         self._started = False
         self.metrics_collector = metrics_collector
 
+        self._game_barrier_counter = mp.Value('i', 0)
+        self._game_barrier_event = mp.Event()
+
     # ── lifecycle ────────────────────────────────────────────────
 
     def stop(self):
         """Signal all workers to stop and release subprocess resources."""
         self.should_continue = False
+        self._game_barrier_event.set()
         self._cleanup()
 
     def pause(self):
@@ -906,6 +910,17 @@ class _MultiProcessEnvManager:
                     print(f"[MPEnv {env_id}] flush error: {e}")
 
                 if self.should_continue and self.should_spawn:
+                    with self._game_barrier_counter.get_lock():
+                        self._game_barrier_counter.value += 1
+                        if self._game_barrier_counter.value >= self.num_workers:
+                            self._game_barrier_counter.value = 0
+                            self._game_barrier_event.set()
+                    while not self._game_barrier_event.is_set():
+                        if not self.should_continue:
+                            conn.send(('stop', None))
+                            return
+                        await asyncio.sleep(0.005)
+                    self._game_barrier_event.clear()
                     game_start_time = time.time()
                     conn.send(('restart', None))
                 else:
