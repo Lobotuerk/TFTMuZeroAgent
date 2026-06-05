@@ -47,7 +47,7 @@ The project is structured around a central **Training Orchestrator** that drives
 3. **Build the C++ MCTS extensions**:
    ```bash
    cd MonteCarloTreeSearch
-   python setup.py build_ext --inplace
+   python3.13t setup.py build_ext --inplace
    cd ..
    ```
 

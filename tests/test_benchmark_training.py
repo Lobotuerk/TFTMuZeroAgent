@@ -20,27 +20,25 @@ class TestBenchmarkScriptImports:
 
     def test_build_config_defaults(self):
         class Args:
-            steps = 100
+            games = 2
+            steps = None
             concurrent = 18
-            eval_games = 10
-            eval_concurrent = 10
-            sync_steps = 100
+
         cfg = benchmark_training.build_config(Args())
         assert cfg.concurrent_games == 18
-        assert cfg.evaluation_games == 10
-        assert cfg.evaluation_concurrent == 10
+        assert cfg.evaluation_games == 0
+        assert cfg.evaluation_concurrent == 0
 
     def test_build_config_custom(self):
         class Args:
-            steps = 50
+            games = 5
+            steps = None
             concurrent = 4
-            eval_games = 5
-            eval_concurrent = 2
-            sync_steps = 25
+
         cfg = benchmark_training.build_config(Args())
         assert cfg.concurrent_games == 4
-        assert cfg.evaluation_games == 5
-        assert cfg.evaluation_concurrent == 2
+        assert cfg.evaluation_games == 0
+        assert cfg.evaluation_concurrent == 0
 
 
 @pytest.mark.asyncio
@@ -55,31 +53,20 @@ async def test_benchmark_runs_without_error():
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
 
-        mock_buffer = MockBuffer.return_value
-        mock_buffer.available_gameplay_batch.side_effect = [True] * 150 + [False] * 100
-        mock_buffer.read_gameplay_batch.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(), MagicMock()
-        )
-        mock_buffer.available_combat_batch.return_value = False
-        mock_trainer = MockTrainer.return_value
         mock_env_mgr = MockEnvMgr.return_value
         MockMPEnvMgr.return_value = mock_env_mgr
 
-        async def mock_run_continuously(agent_mgr, on_game_done):
-            for _ in range(5):
-                await on_game_done(MagicMock())
-                await asyncio.sleep(0.01)
+        async def mock_run_fixed_games(agent_mgr, num_games):
+            return []
 
-        mock_env_mgr.run_continuously = mock_run_continuously
+        mock_env_mgr.run_fixed_games = mock_run_fixed_games
         MockSetup.return_value = (MagicMock(), MagicMock())
         MockAgent.return_value.get_weights.return_value = {}
 
         class Args:
-            steps = 10
+            games = 2
+            steps = None
             concurrent = 4
-            eval_games = 2
-            eval_concurrent = 2
-            sync_steps = 5
 
         success = await benchmark_training.run_benchmark(Args())
         assert success is True
@@ -94,15 +81,22 @@ class TestProfilingTracker:
         pt.record_env_step(0.4)
         pt.record_train_step(0.1)
         pt.record_idle(0.8)
+        pt.record_round(1.5)
+        pt.record_round(2.5)
+        pt.record_game(45.0)
 
         s = pt.summary()
         assert s['inference_count'] == 2
         assert s['env_step_count'] == 2
         assert s['train_step_count'] == 1
+        assert s['round_count'] == 2
+        assert s['game_count'] == 1
         assert abs(s['inference_wait_time'] - 0.8) < 1e-6
         assert abs(s['env_step_time'] - 0.6) < 1e-6
         assert abs(s['train_time'] - 0.1) < 1e-6
         assert abs(s['idle_time'] - 0.8) < 1e-6
+        assert abs(s['avg_round_time'] - 2.0) < 1e-6
+        assert abs(s['avg_game_time'] - 45.0) < 1e-6
         assert s['total_time'] > 0
 
     def test_empty_tracker(self):
@@ -134,6 +128,8 @@ class TestProfilingTracker:
             for _ in range(n):
                 pt.record_inference(0.01)
                 pt.record_env_step(0.02)
+                pt.record_round(0.05)
+                pt.record_game(1.0)
 
         for _ in range(4):
             t = threading.Thread(target=worker)
@@ -145,3 +141,26 @@ class TestProfilingTracker:
         s = pt.summary()
         assert s['inference_count'] == 4 * n
         assert s['env_step_count'] == 4 * n
+        assert s['round_count'] == 4 * n
+        assert s['game_count'] == 4 * n
+
+
+def test_prepopulate_buffer_logic():
+    """Verify that synthetic experiences can be stored in the GlobalBuffer."""
+    import numpy as np
+    import config
+    from Models.global_buffer import GlobalBuffer
+    from Models.action_conversion import action_3d_to_policy
+
+    buf = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
+    synthetic_experiences = []
+    for _ in range(config.BATCH_SIZE * 4):
+        synthetic_experiences.append([
+            np.zeros(config.OBSERVATION_SIZE),
+            [np.zeros(3, dtype=np.int32) for _ in range(config.UNROLL_STEPS - 1)],
+            [0.0] * config.UNROLL_STEPS,
+            [0.0] * config.UNROLL_STEPS,
+            [np.zeros(config.ACTION_CONCAT_SIZE) for _ in range(config.UNROLL_STEPS)],
+        ])
+    buf.store_episode(synthetic_experiences)
+    assert buf.get_gameplay_buffer_size() == config.BATCH_SIZE * 4

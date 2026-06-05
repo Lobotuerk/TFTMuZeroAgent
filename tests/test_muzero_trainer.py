@@ -60,8 +60,8 @@ def test_muzero_trainer():
         
         batch = (observations, actions, values, rewards, policies)
         
-        # Mock combat data
-        combat_obs = np.random.rand(2, 58, 4, 7).astype(np.float32)
+        # Mock combat data (full 184-channel observation, 0:58 are champion indicators)
+        combat_obs = np.random.rand(2, 184, 4, 7).astype(np.float32)
         combat_results = np.array([1.0, -1.0]).astype(np.float32)
         combats = (combat_obs, combat_results)
         
@@ -82,6 +82,7 @@ def test_muzero_trainer():
             print(f"   - Model value shape: {outputs['value'].shape}")
             print(f"   - Model policy shape: {outputs['policy_logits'].shape}")
             print(f"   - Model hidden state shape: {outputs['hidden_state'].shape}")
+            print(f"   - Board distribution shape: {board_dist.shape}")
             print("   ✓ Model forward pass successful")
         
         # Test trainer loss computation
