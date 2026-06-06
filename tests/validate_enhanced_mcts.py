@@ -36,7 +36,8 @@ def main():
         # Test 4: TFTState Creation  
         print("4. Testing TFTState creation...", end=" ")
         import numpy as np
-        mock_obs = np.zeros(5152)
+        import config
+        mock_obs = np.zeros(config.OBSERVATION_SIZE)
         state = TFTState(mock_obs)
         print("✓ PASSED")
         

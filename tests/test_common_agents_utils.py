@@ -13,6 +13,8 @@ import os
 # Add the parent directory to the path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
+import config
+
 # Initialize module variables
 utils = None
 COST = None
@@ -64,11 +66,9 @@ class TestCommonAgentsUtils(unittest.TestCase):
         raw_observation = self.simulator.game_observations[self.test_player_id].observation(
             self.test_player_id, self.test_player)
         
-        # Extract and reshape the tensor for utils functions
+        # Extract the tensor for utils functions (already flat 1D)
         if isinstance(raw_observation, dict) and 'tensor' in raw_observation:
-            tensor_obs = raw_observation['tensor']
-            # Reshape to (184, 4, 7) as expected by utils functions
-            self.test_observation = tensor_obs.reshape(184, 4, 7)
+            self.test_observation = raw_observation['tensor']
         else:
             self.test_observation = raw_observation
         
@@ -216,8 +216,8 @@ class TestCommonAgents(unittest.TestCase):
         self.fast_level_agent = FastLevelAgent()
         self.random_agent = RandomAgent()
         
-        # Create a simple mock observation matching schema size (5152 = 184*4*7)
-        self.mock_obs = np.random.random(5152)  # Flat observation
+        import config
+        self.mock_obs = np.random.random(config.OBSERVATION_SIZE)  # Flat observation
         self.mock_obs_dict = {
             'tensor': self.mock_obs,
             'action_mask': np.ones((54,), dtype=np.int8)
@@ -330,10 +330,8 @@ class TestCommonAgents(unittest.TestCase):
         
         # Helper to create a structured observation that BaseAgent can parse
         def create_obs(turns, hp, streak=0):
-            # We need to mock extract_field_from_observation or use a real observation
-            # Since we are testing BaseAgent.select_action, let's mock it
             return {
-                'tensor': np.zeros((184, 4, 7)).flatten(),
+                'tensor': np.zeros(config.OBSERVATION_SIZE),
                 'turns_for_combat': turns,
                 'health': hp,
                 'streak': streak
@@ -368,7 +366,7 @@ class TestCommonAgents(unittest.TestCase):
 
         def create_obs(turns, hp, streak):
             return {
-                'tensor': np.zeros((184, 4, 7)).flatten(),
+                'tensor': np.zeros(config.OBSERVATION_SIZE),
                 'turns_for_combat': turns,
                 'health': hp,
                 'streak': streak
@@ -429,8 +427,8 @@ class TestUtilsIntegration(unittest.TestCase):
         try:
             agent = CultistAgent()
             
-            # Create a more realistic mock observation
-            obs = np.zeros((5152,))
+            import config
+            obs = np.zeros((config.OBSERVATION_SIZE,))
             
             # Test the workflow - should not crash
             action = agent.select_action(obs, None)
@@ -513,42 +511,39 @@ class TestGymEnvironmentUtils(unittest.TestCase):
         self.expected_health = 85
         
     def _get_reshaped_observation_from_gym(self, simulator, player_id):
-        """Get and reshape observation from the simulator."""
+        """Get observation from the simulator (flat 1D)."""
         player = simulator.PLAYERS[player_id]
         raw_observation = simulator.game_observations[player_id].observation(
             player_id, player)
         
-        # Extract and reshape the tensor for utils functions
+        # Extract the tensor for utils functions (flat 1D)
         if isinstance(raw_observation, dict) and 'tensor' in raw_observation:
-            tensor_obs = raw_observation['tensor']
-            return tensor_obs.reshape(184, 4, 7)
+            return raw_observation['tensor']
         else:
             return raw_observation
     
     def _get_reshaped_observation_from_parallel(self, observations, player_id):
-        """Get and reshape observation from parallel environment observations."""
+        """Get observation from parallel environment (flat 1D)."""
         # Extract observation for specific player from parallel env observations
         if player_id in observations:
             gym_obs = observations[player_id]
             
-            # Extract and reshape the tensor for utils functions
+            # Extract the tensor for utils functions (flat 1D)
             if isinstance(gym_obs, dict) and 'tensor' in gym_obs:
-                tensor_obs = gym_obs['tensor']
-                return tensor_obs.reshape(184, 4, 7)
+                return gym_obs['tensor']
             else:
                 return gym_obs
         return None
 
     def _get_reshaped_observation(self, player_id):
-        """Get and reshape observation from the simulator."""
+        """Get observation from the simulator (flat 1D)."""
         player = self.simulator.PLAYERS[player_id]
         raw_observation = self.simulator.game_observations[player_id].observation(
             player_id, player)
         
-        # Extract and reshape the tensor for utils functions
+        # Extract the tensor for utils functions (flat 1D)
         if isinstance(raw_observation, dict) and 'tensor' in raw_observation:
-            tensor_obs = raw_observation['tensor']
-            return tensor_obs.reshape(184, 4, 7)
+            return raw_observation['tensor']
         else:
             return raw_observation
 
@@ -602,9 +597,9 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             self.assertIn('tensor', gym_obs)
             self.assertIn('action_mask', gym_obs)
             
-            # Verify tensor shape
+            import config
             tensor_shape = gym_obs['tensor'].shape
-            expected_size = 184 * 4 * 7  # 5152
+            expected_size = config.OBSERVATION_SIZE
             self.assertEqual(len(gym_obs['tensor']), expected_size, 
                            f"Tensor should have {expected_size} elements, got {len(gym_obs['tensor'])}")
             
@@ -766,26 +761,23 @@ class TestGymEnvironmentUtils(unittest.TestCase):
             self.skipTest(f"Could not test parallel environment step utils: {e}")
 
     def test_observation_preprocessing(self):
-        """Test that common agents can handle gym environment observations."""
+        """Test that common agents can handle gym environment observations (flat 1D)."""
         if not MODULES_AVAILABLE:
             self.skipTest("TFT modules not available")
         
         try:
-            from Models.Common_agents import preprocess_observation, CultistAgent
+            from Models.Common_agents import CultistAgent
             
             # Get gym environment observation
             gym_obs = self.simulator.game_observations[self.test_player_id].observation(
                 self.test_player_id, self.simulator.PLAYERS[self.test_player_id])
             
-            # Test preprocessing function
-            processed_obs = preprocess_observation(gym_obs)
+            # The tensor is now flat 1D
+            tensor_obs = gym_obs['tensor']
+            self.assertIsInstance(tensor_obs, np.ndarray)
+            self.assertEqual(tensor_obs.ndim, 1, f"Expected flat 1D observation, got shape {tensor_obs.shape}")
             
-            # Verify preprocessing worked correctly
-            self.assertIsInstance(processed_obs, np.ndarray)
-            self.assertEqual(processed_obs.shape, (184, 4, 7), 
-                           f"Expected shape (184, 4, 7), got {processed_obs.shape}")
-            
-            print(f"✅ Observation preprocessing test passed: {gym_obs['tensor'].shape} -> {processed_obs.shape}")
+            print(f"✅ Observation preprocessing test passed: tensor shape = {tensor_obs.shape}")
             
             # Test that agent can handle gym observation directly
             agent = CultistAgent()
@@ -800,21 +792,6 @@ class TestGymEnvironmentUtils(unittest.TestCase):
                                     f"Action element {i} should be integer, got {type(val)}")
             
             print(f"✅ Agent gym observation handling test passed: action={action}")
-            
-            # Test with different observation formats
-            test_cases = [
-                gym_obs,  # Dict format from gym
-                gym_obs['tensor'],  # Raw tensor
-                processed_obs,  # Already processed
-            ]
-            
-            for i, obs in enumerate(test_cases):
-                try:
-                    preprocessed = preprocess_observation(obs)
-                    self.assertEqual(preprocessed.shape, (184, 4, 7))
-                    print(f"✅ Test case {i+1} preprocessing passed")
-                except Exception as e:
-                    self.fail(f"Preprocessing failed for test case {i+1}: {e}")
             
         except Exception as e:
             print(f"⚠️  Observation preprocessing test failed: {e}")

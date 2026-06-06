@@ -123,7 +123,15 @@ def _parse_board_from_fields(board_champions, board_stars, board_chosen):
 def _parse_bench_from_field(bench_champions):
     """Parse bench units from schema field."""
     bench_list = []
-    if bench_champions.ndim == 3:  # (58, 4, 7) format - use first position for count
+    if bench_champions.ndim == 1:  # (58,) flat format
+        for i, count in enumerate(bench_champions):
+            if count > 0:
+                if i + 1 >= len(COST.keys()):
+                    raise ValueError(f"Unknown champion index on bench: {i+1}")
+                champion_name = list(COST.keys())[i + 1]
+                for _ in range(int(count)):
+                    bench_list.append(champion_name)
+    elif bench_champions.ndim == 3:  # (58, 4, 7) legacy format - use first position for count
         bench = bench_champions[:, 0, 0]
         for i, count in enumerate(bench):
             if count > 0:
@@ -138,7 +146,18 @@ def _parse_bench_from_field(bench_champions):
 def _parse_shop_from_fields(shop_champions, shop_chosen):
     """Parse shop units from schema fields."""
     shop_units = [" "] * 5
-    if shop_champions.ndim == 3:  # (58, 4, 7) format
+    if shop_champions.ndim == 1:  # (58,) flat format
+        # Shop has up to 5 slots; find non-zero entries
+        non_zero = np.where(shop_champions > 0)[0]
+        for slot, champ_idx in enumerate(non_zero[:5]):
+            if champ_idx + 1 >= len(COST.keys()):
+                raise ValueError(f"Unknown champion index in shop: {champ_idx + 1}")
+            champion_name = list(COST.keys())[champ_idx + 1]
+            # Check chosen status
+            if shop_chosen is not None and np.ravel(shop_chosen)[0] > 0.5:
+                champion_name += "_c"
+            shop_units[slot] = champion_name
+    elif shop_champions.ndim == 3:  # (58, 4, 7) legacy format
         for slot in range(min(5, shop_champions.shape[2])):
             for i, unit_data in enumerate(shop_champions):
                 if unit_data[0, slot] > 0:  # Check if unit is in this shop slot
