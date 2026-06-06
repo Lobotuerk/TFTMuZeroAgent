@@ -4,11 +4,6 @@ import collections
 import numpy as np
 import time
 import os
-NUM_CHAMPIONS = 58
-NUM_CLASSES = NUM_CHAMPIONS + 1
-BOARD_HEIGHT = 4
-BOARD_WIDTH = 7
-
 BOARD_CHAMPIONS_ELEMS = 58 * 4 * 7
 BOARD_STARS_ELEMS = 1 * 4 * 7
 BOARD_CHOSEN_ELEMS = 1 * 4 * 7
@@ -106,10 +101,6 @@ class MuZeroNetwork(AbstractNetwork):
 
         # self.reward_encoder = ValueEncoder(*tuple(map(inverse_contractive_mapping, (-300., 300.))), 0)
 
-        self.board_generator = BoardGenerator(input_dim=116).cuda()
-
-        self.directive_generator = DirectiveGenerator(128, 58).cuda()
-
     def prediction(self, encoded_state):
         policy_logits, value = self.prediction_network(encoded_state)
         return policy_logits, value
@@ -166,9 +157,6 @@ class MuZeroNetwork(AbstractNetwork):
             observation_tensor = observation.to(device)
         hidden_state = self.representation(observation_tensor)
         policy_logits, value_logits = self.prediction(hidden_state)
-        directive = self.directive_generator(observation_tensor)
-        availability = encode_champion_availability_torch(observation_tensor)
-        board_distribution = self.board_generator(availability)
 
         reward = np.zeros(observation.shape[0])
 
@@ -181,10 +169,8 @@ class MuZeroNetwork(AbstractNetwork):
             "reward": reward,
             "policy_logits": policy_logits,
             "hidden_state": hidden_state,
-            "directive": directive,
-            "board_distribution": board_distribution
         }
-        return outputs, directive, board_distribution
+        return outputs
 
     @staticmethod
     def rnn_to_flat(state):
@@ -240,104 +226,6 @@ def mlp(input_size,
         act = activation if i < len(sizes) - 2 else output_activation
         layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), act()]
     return torch.nn.Sequential(*layers).cuda()
-
-
-class DirectiveGenerator(torch.nn.Module):
-    def __init__(self, ndf, n_units):
-        # Input = (batch, 58*3+1+1+1+1+1+1+1+58, 1)
-        # Output =  (batch, 58)
-        super(DirectiveGenerator, self).__init__()
-        self.main = torch.nn.Sequential(
-            # TODO: Encode items and extra data``
-            # torch.nn.Conv1d(58*3+58+1+1+1+1+1+1+1, ndf, 1, 1, 0, bias=False),
-            torch.nn.Linear(config.OBSERVATION_SIZE, ndf),
-            torch.nn.LeakyReLU(inplace=True),
-
-            # torch.nn.Conv1d(ndf, ndf * 2, 1, 1, 0, bias=False),
-            torch.nn.Linear(ndf, ndf * 2),
-            # torch.nn.BatchNorm1d(ndf * 2),
-            torch.nn.LeakyReLU(inplace=True),
-
-            # torch.nn.Conv1d(ndf * 2, ndf * 4, 1, 1, 0, bias=False),
-            torch.nn.Linear(ndf * 2, ndf * 4),
-            # torch.nn.BatchNorm1d(ndf * 4),
-            torch.nn.LeakyReLU(inplace=True),
-
-            # torch.nn.Conv1d(ndf * 4, ndf * 8, 1, 1, 0, bias=False),
-            torch.nn.Linear(ndf * 4, ndf * 8),
-            # torch.nn.BatchNorm1d(ndf * 8),
-            torch.nn.LeakyReLU(inplace=True),
-
-            # torch.nn.Flatten(),
-            torch.nn.Linear(ndf * 8, n_units),
-        )
-
-    def forward(self, input):
-        # input = torch.squeeze(input, dim=2)
-        # return self.main(input)
-        input = torch.flatten(input, start_dim=1)
-        # input = torch.squeeze(input)
-        return self.main(input)
-    
-    def __call__(self, x):
-        return self.forward(x)
-
-def encode_champion_availability_torch(obs: torch.Tensor) -> torch.Tensor:
-    batch_size = obs.shape[0]
-    obs_board = obs[:, :FIRST_3304_SIZE]
-    board_champions = obs_board[:, BOARD_CHAMPIONS_START:BOARD_CHAMPIONS_START + BOARD_CHAMPIONS_ELEMS].reshape(batch_size, 58, 4, 7)
-    board_stars = obs_board[:, BOARD_STARS_START:BOARD_STARS_START + BOARD_STARS_ELEMS].reshape(batch_size, 1, 4, 7)
-    board_chosen = obs_board[:, BOARD_CHOSEN_START:BOARD_CHOSEN_START + BOARD_CHOSEN_ELEMS].reshape(batch_size, 1, 4, 7)
-    bench_champions = obs_board[:, BENCH_CHAMPIONS_START:BENCH_CHAMPIONS_START + BENCH_CHAMPIONS_ELEMS].reshape(batch_size, 58, 4, 7)
-
-    board_present = (board_champions > 0.5).float()
-    level = (board_stars * board_present).amax(dim=[2, 3])
-    chosen = (board_chosen * board_present).amax(dim=[2, 3]) > 0.5
-
-    on_board = board_present.amax(dim=[2, 3])
-    on_bench = (bench_champions > 0.5).float().amax(dim=[2, 3])
-    level = torch.where(on_board > 0.5, level, on_bench * 1.0)
-
-    level_normalized = level / 3.0
-    result = torch.cat([level_normalized, chosen.float()], dim=1)
-    return result
-
-
-class BoardGenerator(torch.nn.Module):
-    BOTTLENECK_CHANNELS = 512
-    BOTTLENECK_H = 1
-    BOTTLENECK_W = 2
-    BOTTLENECK_SIZE = BOTTLENECK_CHANNELS * BOTTLENECK_H * BOTTLENECK_W
-
-    def __init__(self, input_dim: int = 116):
-        super().__init__()
-        self.input_dim = input_dim
-        self.fc = torch.nn.Linear(input_dim, self.BOTTLENECK_SIZE)
-        self.deconv1 = torch.nn.ConvTranspose2d(
-            in_channels=512,
-            out_channels=256,
-            kernel_size=(2, 4),
-            stride=(2, 2),
-            padding=(0, 1),
-        )
-        self.bn1 = torch.nn.BatchNorm2d(256)
-        self.deconv2 = torch.nn.ConvTranspose2d(
-            in_channels=256,
-            out_channels=NUM_CLASSES,
-            kernel_size=(2, 3),
-            stride=(2, 2),
-            padding=(0, 1),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.fc(x)
-        x = torch.nn.functional.relu(x)
-        x = x.view(-1, self.BOTTLENECK_CHANNELS, self.BOTTLENECK_H, self.BOTTLENECK_W)
-        x = self.deconv1(x)
-        x = self.bn1(x)
-        x = torch.nn.functional.relu(x)
-        x = self.deconv2(x)
-        return x
 
 
 class PredNetwork(torch.nn.Module):
