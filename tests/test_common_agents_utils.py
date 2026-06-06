@@ -329,13 +329,14 @@ class TestCommonAgents(unittest.TestCase):
         agent = RandomAgent(global_buffer=gb)
         
         # Helper to create a structured observation that BaseAgent can parse
-        def create_obs(turns, hp):
+        def create_obs(turns, hp, streak=0):
             # We need to mock extract_field_from_observation or use a real observation
             # Since we are testing BaseAgent.select_action, let's mock it
             return {
                 'tensor': np.zeros((184, 4, 7)).flatten(),
                 'turns_for_combat': turns,
-                'health': hp
+                'health': hp,
+                'streak': streak
             }
         
         # 1. First step: Combat is ongoing or just started
@@ -356,6 +357,68 @@ class TestCommonAgents(unittest.TestCase):
         self.assertEqual(gb.combat_buffer[1][1], 0.0)
         
         print("✅ BaseAgent combat tracking test passed")
+
+    def test_streak_aware_combat_tracking(self):
+        """Test that combat outcome evaluation considers player streak."""
+        from Models.global_buffer import GlobalBuffer
+        from Models.Common_agents import RandomAgent
+
+        gb = GlobalBuffer()
+        agent = RandomAgent(global_buffer=gb)
+
+        def create_obs(turns, hp, streak):
+            return {
+                'tensor': np.zeros((184, 4, 7)).flatten(),
+                'turns_for_combat': turns,
+                'health': hp,
+                'streak': streak
+            }
+
+        # --- Loss streak (streak < 0) ---
+        # Loss streak, loss outcome: losing maintains streak gold -> good (1.0)
+        agent.select_action(create_obs(0, 100, -3))
+        agent.select_action(create_obs(10, 80, -4))
+        self.assertEqual(len(gb.combat_buffer), 1)
+        self.assertEqual(gb.combat_buffer[0][1], 1.0,
+                         "Loss on a loss streak should be good (1.0)")
+
+        # Loss streak, win outcome: winning breaks streak -> bad (0.0)
+        agent.select_action(create_obs(0, 80, -4))
+        agent.select_action(create_obs(10, 80, 1))
+        self.assertEqual(len(gb.combat_buffer), 2)
+        self.assertEqual(gb.combat_buffer[1][1], 0.0,
+                         "Win on a loss streak should be bad (0.0)")
+
+        # --- Win streak / neutral (streak >= 0) ---
+        # Win streak, win outcome: winning continues streak -> good (1.0)
+        agent.select_action(create_obs(0, 80, 3))
+        agent.select_action(create_obs(10, 80, 4))
+        self.assertEqual(len(gb.combat_buffer), 3)
+        self.assertEqual(gb.combat_buffer[2][1], 1.0,
+                         "Win on a win streak should be good (1.0)")
+
+        # Win streak, loss outcome: losing breaks streak -> bad (0.0)
+        agent.select_action(create_obs(0, 80, 4))
+        agent.select_action(create_obs(10, 60, -1))
+        self.assertEqual(len(gb.combat_buffer), 4)
+        self.assertEqual(gb.combat_buffer[3][1], 0.0,
+                         "Loss on a win streak should be bad (0.0)")
+
+        # Neutral (streak == 0), win -> good (1.0)
+        agent.select_action(create_obs(0, 60, 0))
+        agent.select_action(create_obs(10, 60, 1))
+        self.assertEqual(len(gb.combat_buffer), 5)
+        self.assertEqual(gb.combat_buffer[4][1], 1.0,
+                         "Win on neutral streak should be good (1.0)")
+
+        # Neutral (streak == 0), loss -> bad (0.0)
+        agent.select_action(create_obs(0, 60, 1))
+        agent.select_action(create_obs(10, 40, -1))
+        self.assertEqual(len(gb.combat_buffer), 6)
+        self.assertEqual(gb.combat_buffer[5][1], 0.0,
+                         "Loss on neutral streak should be bad (0.0)")
+
+        print("✅ BaseAgent streak-aware combat tracking test passed")
 
 
 class TestUtilsIntegration(unittest.TestCase):

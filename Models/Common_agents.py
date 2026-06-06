@@ -180,6 +180,7 @@ class BaseAgent:
         # State tracking for combat detection (per player)
         self.prev_turns_for_combat = {} # player_id -> value
         self.prev_health = {}           # player_id -> value
+        self.prev_streak = {}           # player_id -> value
         self.prev_observation = {}      # player_id -> value
 
         # Create local replay buffers that point to the global buffer
@@ -222,20 +223,28 @@ class BaseAgent:
         try:
             current_turns = extract_field_from_observation(observation, 'turns_for_combat')
             current_health = extract_field_from_observation(observation, 'health')
+            current_streak = extract_field_from_observation(observation, 'streak')
 
             p_turns = self.prev_turns_for_combat.get(player_id)
             p_health = self.prev_health.get(player_id)
+            p_streak = self.prev_streak.get(player_id)
             p_obs = self.prev_observation.get(player_id)
 
             if p_turns is not None and current_turns > p_turns:
                 # Combat just finished (turns_for_combat reset to max)
                 if p_health is not None and p_obs is not None:
-                    # Win if health stayed the same, loss if it decreased
-                    result = 1.0 if current_health >= p_health else 0.0
+                    is_win = current_health >= p_health
+                    if p_streak < 0:
+                        # On a loss streak: losing is good (maintains streak gold), winning is bad
+                        result = 1.0 if not is_win else 0.0
+                    else:
+                        # On win streak or neutral: winning is good, losing is bad
+                        result = 1.0 if is_win else 0.0
                     self._store_combat(p_obs, result)
 
             self.prev_turns_for_combat[player_id] = current_turns
             self.prev_health[player_id] = current_health
+            self.prev_streak[player_id] = current_streak
             # Use copy to avoid reference issues if observation is mutated
             self.prev_observation[player_id] = obs.copy() if isinstance(obs, np.ndarray) else obs
         except Exception:

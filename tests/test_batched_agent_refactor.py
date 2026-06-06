@@ -36,11 +36,12 @@ class TestBatchedAgentRefactor(unittest.TestCase):
         gb = GlobalBuffer()
         agent = RandomAgent(global_buffer=gb)
         
-        def create_obs(turns, hp):
+        def create_obs(turns, hp, streak=0):
             return {
                 'tensor': np.zeros(5152),
                 'turns_for_combat': turns,
-                'health': hp
+                'health': hp,
+                'streak': streak
             }
 
         # Step 1: Initialize states
