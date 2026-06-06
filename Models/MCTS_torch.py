@@ -57,12 +57,16 @@ class EnhancedMCTS:
         self.mcts_max_iterations = 100
         self.mcts_max_seconds = 10
 
-        # Batch inference queue for GPU-efficient batched recurrent_inference
+        # Batch inference queues mapped by game_id for multi-game concurrency
+        self.batch_queues = {}
+        self.batch_queues_lock = threading.Lock()
+
+        # For backward-compatibility with tests that expect self.batch_queue
         threshold = getattr(config, 'BATCHED_INFERENCE_THRESHOLD', 64)
         self.batch_queue = BlockingBatchInferenceQueue(
             network=network,
             batch_size=threshold,
-            timeout_seconds=0.005,
+            timeout_seconds=0.05,
         )
 
         # Performance tracking
@@ -73,6 +77,18 @@ class EnhancedMCTS:
             'average_depth': 0
         }
     
+    def get_batch_queue(self, game_id: str) -> BlockingBatchInferenceQueue:
+        """Get or create the dynamic batch queue for a specific game."""
+        with self.batch_queues_lock:
+            if game_id not in self.batch_queues:
+                threshold = getattr(config, 'BATCHED_INFERENCE_THRESHOLD', 64)
+                self.batch_queues[game_id] = BlockingBatchInferenceQueue(
+                    network=self.network,
+                    batch_size=threshold,
+                    timeout_seconds=0.05,
+                )
+            return self.batch_queues[game_id]
+
     def _get_local_state(self):
         """Ensure thread-local variables are initialized."""
         if not hasattr(self._local, 'obs_queue'):
@@ -88,7 +104,8 @@ class EnhancedMCTS:
 
     def generate_action(self, n_simulations: int, observation: np.ndarray, 
                        mask: np.ndarray,
-                       precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
+                       precomputed: Optional[Dict[str, Any]] = None,
+                       game_id: str = "default") -> Tuple[np.ndarray, np.ndarray]:
         """
         Generate actions using enhanced MCTS with new observation schema
         
@@ -97,6 +114,7 @@ class EnhancedMCTS:
             observation: Current observations for all players
             mask: Action masks for all players
             precomputed: Pre-computed neural network results to skip initial_inference
+            game_id: Identifier of the game environment for dynamic queue grouping
             
         Returns:
             Tuple of (actions, target_policies)
@@ -104,11 +122,18 @@ class EnhancedMCTS:
         state = self._get_local_state()
         state.obs_queue.append(observation)
         state.num_simulations = n_simulations
-        return self._generate_action_pymcts(observation, mask, precomputed=precomputed)
+        
+        batch_queue = self.get_batch_queue(game_id)
+        batch_queue.register()
+        try:
+            return self._generate_action_pymcts(observation, mask, precomputed=precomputed, batch_queue=batch_queue)
+        finally:
+            batch_queue.deregister()
     
     def _generate_action_pymcts(self, observation: np.ndarray, 
                                mask: np.ndarray,
-                               precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
+                               precomputed: Optional[Dict[str, Any]] = None,
+                               batch_queue: Optional[BlockingBatchInferenceQueue] = None) -> Tuple[np.ndarray, np.ndarray]:
         """Generate actions using PyMCTS integration"""
         state = self._get_local_state()
         with self._stats_lock:
@@ -117,9 +142,12 @@ class EnhancedMCTS:
         actions = []
         target_policies = []
         
+        if batch_queue is None:
+            batch_queue = self.batch_queue
+            
         # Create TFT state with batch queue for batched GPU inference
         tft_state = TFTState(np.array(list(state.obs_queue)), mask, self.network,
-                            precomputed=precomputed, batch_queue=self.batch_queue)
+                            precomputed=precomputed, batch_queue=batch_queue)
 
         state.mcts_agent = pymcts.MCTS_agent(
             pymcts.SerializedPythonState(tft_state), 
@@ -130,7 +158,7 @@ class EnhancedMCTS:
         # Generate move using PyMCTS
         best_move = state.mcts_agent.genmove(None)
         # Flush any remaining items in the batch queue
-        self.batch_queue.flush()
+        batch_queue.flush()
         with self._stats_lock:
             self.stats['total_generations'] += 1
 

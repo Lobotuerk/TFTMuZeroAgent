@@ -1627,6 +1627,7 @@ class TrainingOrchestrator:
             self.setup()
 
         self.training_active = True
+        self.num_evaluations = self.training_step // self.cfg.evaluation_interval
 
         last_logged_step = -1
         try:
@@ -1641,6 +1642,7 @@ class TrainingOrchestrator:
                     results.extend(batch)
                     remaining -= count
                 self.games_completed += len(results)
+                print(f'Finished {self.games_completed} games.')
 
                 if not self.training_active or self.training_step >= max_steps:
                     break
@@ -1654,11 +1656,13 @@ class TrainingOrchestrator:
                     await asyncio.sleep(0.01)
                     trained = True
 
-                if trained and self.training_step % self.cfg.evaluation_interval == 0:
+                if trained and self.training_step - (self.num_evaluations * self.cfg.evaluation_interval) > self.cfg.evaluation_interval:
                     self.env_manager.pause()
                     await self.env_manager.wait_for_drain()
                     await self.evaluate()
                     self.env_manager.resume()
+                    self.num_evaluations += 1
+
 
                 if not trained:
                     await asyncio.sleep(1.0)

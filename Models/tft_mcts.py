@@ -10,6 +10,7 @@ It unifies legacy string-based actions with modern integer-based 3D actions.
 import numpy as np
 import random
 import torch
+import threading
 from typing import List, Dict, Any, Optional, Tuple, Union
 import sys
 import os
@@ -116,6 +117,42 @@ class TFTMove(MCTS_MoveBase):
         if 0 <= self.index < concat_size:
             result[self.index] = 1.0
         return result
+
+
+_GLOBAL_MOVES_CACHE = {}
+_GLOBAL_MOVES_LOCK = threading.Lock()
+
+def get_precreated_moves(player_id: str) -> List[TFTMove]:
+    """Retrieve pre-created TFTMove objects to avoid high dynamic allocation cost."""
+    global _GLOBAL_MOVES_CACHE
+    if player_id in _GLOBAL_MOVES_CACHE:
+        return _GLOBAL_MOVES_CACHE[player_id]
+        
+    with _GLOBAL_MOVES_LOCK:
+        if player_id in _GLOBAL_MOVES_CACHE:
+            return _GLOBAL_MOVES_CACHE[player_id]
+            
+        actions = []
+        # Pass (0), Roll (4), Level (5)
+        for i in [0, 4, 5]:
+            actions.append(TFTMove(i, 0, 0, index=i, player_id=player_id))
+        
+        # Buy: 5 shop slots
+        for i in range(5):
+            actions.append(TFTMove(2, i, 0, index=2, player_id=player_id))
+            
+        # Sell: 37 positions
+        for i in range(37):
+            actions.append(TFTMove(3, i, 0, index=3, player_id=player_id))
+            
+        # Move: Sample a subset to avoid explosion
+        for i in range(28):
+            for j in [0, 5, 10, 15, 20, 25, 30, 35]: # Sampled targets
+                if i != j:
+                    actions.append(TFTMove(1, i, j, index=1, player_id=player_id))
+                    
+        _GLOBAL_MOVES_CACHE[player_id] = actions
+        return actions
 
 
 class TFTState(MCTS_StateBase):
@@ -241,33 +278,7 @@ class TFTState(MCTS_StateBase):
 
     def actions_to_try(self) -> List[TFTMove]:
         """Generate all possible moves from current state."""
-        if self._cached_actions is not None:
-            return self._cached_actions
-            
-        actions = []
-        
-        # Always allow basic actions (index 0, 4, 5 are usually always valid if not masked)
-        # Pass (0), Roll (4), Level (5)
-        for i in [0, 4, 5]:
-            # if i < len(self.mask) and self.mask[i]:
-            actions.append(TFTMove(i, 0, 0, index=i, player_id=self.current_player))
-        
-        # Buy: 5 shop slots
-        for i in range(5):
-            actions.append(TFTMove(2, i, 0, index=2, player_id=self.current_player))
-            
-        # Sell: 37 positions
-        for i in range(37):
-            actions.append(TFTMove(3, i, 0, index=3, player_id=self.current_player))
-            
-        # Move: Sample a subset to avoid explosion
-        for i in range(28):
-            for j in [0, 5, 10, 15, 20, 25, 30, 35]: # Sampled targets
-                if i != j:
-                    actions.append(TFTMove(1, i, j, index=1, player_id=self.current_player))
-        
-        self._cached_actions = actions
-        return actions
+        return get_precreated_moves(self.current_player)
 
     def next_state(self, move: TFTMove) -> 'TFTState':
         """Apply a move to get the next game state."""

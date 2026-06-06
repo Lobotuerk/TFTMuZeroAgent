@@ -6,7 +6,7 @@ import numpy as np
 IS_GIL_DISABLED: bool = not getattr(sys, '_is_gil_enabled', lambda: True)()
 """True when running on a free-threaded (no-GIL) Python build."""
 
-FORCE_THREADING_ENV_MANAGER: bool = False
+FORCE_THREADING_ENV_MANAGER: bool = True
 """Set to True to prefer thread-based env managers even when GIL is active."""
 
 #### MODEL SET UP ####
@@ -45,14 +45,14 @@ N_HEAD_HIDDEN_LAYERS = 4
 
 ### TIME RELATED VALUES ###
 ACTIONS_PER_TURN = 25
-CONCURRENT_GAMES = 18
-COLLECT_GAMES_PER_BATCH = 100
+CONCURRENT_GAMES = 4
+COLLECT_GAMES_PER_BATCH = 4
 NUM_PLAYERS = 8
 NUM_SIMULATIONS = 50
 SAMPLES_PER_PLAYER = 2048  # Normal is 128
 UNROLL_STEPS = 15
-EVALUATION_GAMES = 10
-EVALUATION_CONCURRENT_GAMES = 10
+EVALUATION_GAMES = 8
+EVALUATION_CONCURRENT_GAMES = 4
 
 ### TRAINING ###
 BATCH_SIZE = 128

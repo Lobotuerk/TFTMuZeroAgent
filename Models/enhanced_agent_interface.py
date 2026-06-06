@@ -112,9 +112,10 @@ class BatchInferenceServer:
         self._processing_tasks: Dict[Any, asyncio.Task] = {}
 
         self.agent_instances: Dict[Any, Any] = {}
-        # Use single-threaded executor (max_workers=1) to serialize all GPU operations
-        # and prevent deadlocks between the GIL and PyTorch's CUDA Caching Allocator mutex.
-        self.executor = ThreadPoolExecutor(max_workers=1)
+        # On free-threaded python (no GIL), we scale max_workers to run batches concurrently.
+        # Otherwise we keep it at 1 to prevent GIL-contention during GPU memory operations.
+        max_workers = 8 if config.IS_GIL_DISABLED else 1
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._setup_gpu()
@@ -191,8 +192,16 @@ class BatchInferenceServer:
                 if agent is None:
                     raise RuntimeError(f"Unregistered agent type requested: {getattr(agent_type, 'agent_name', getattr(type(agent_type), '__name__', str(agent_type)))}")
 
-                results = await self._run_inference(agent, requests)
-                self._distribute_results(requests, results)
+                # Spawn a concurrent background task to process inference and distribute results,
+                # rather than blockingly awaiting it.
+                asyncio.create_task(self._run_inference_and_distribute(agent, requests))
+
+    async def _run_inference_and_distribute(self, agent: Any, requests: List[InferenceRequest]):
+        try:
+            results = await self._run_inference(agent, requests)
+            self._distribute_results(requests, results)
+        except Exception as e:
+            print(f"Error in concurrent inference: {e}")
 
     async def _collect_batch(self, agent_type: Any) -> List[InferenceRequest]:
         requests: List[InferenceRequest] = []
@@ -206,17 +215,12 @@ class BatchInferenceServer:
         except asyncio.CancelledError:
             return requests
             
-        start = time.perf_counter()
-        # Collect more items until max_batch_size or batch_timeout_ms
+        # Collect all other currently available items in the queue immediately (non-blocking)
         while len(requests) < self.max_batch_size:
             try:
-                # Wait with timeout for subsequent items
-                timeout = max(0.0, (self.batch_timeout_ms / 1000.0) - (time.perf_counter() - start))
-                if timeout <= 0:
-                    break
-                req = await asyncio.wait_for(queue.get(), timeout=timeout)
+                req = queue.get_nowait()
                 requests.append(req)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except asyncio.QueueEmpty:
                 break
 
         if self.metrics_collector and len(requests) > 0:

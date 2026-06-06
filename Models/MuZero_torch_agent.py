@@ -100,6 +100,8 @@ class MuZeroAgent(BaseAgent):
         if batch_size == 0:
             return []
 
+        player_ids = kwargs.get('player_ids')
+
         if precomputed_results is not None:
             precomputed_list = precomputed_results
         else:
@@ -133,7 +135,14 @@ class MuZeroAgent(BaseAgent):
             mask = masks[i] if i < len(masks) else np.ones(54, dtype=bool)
             pc = precomputed_list[i]
 
-            env_move, action_vector = self._generate_action_with_mcts(obs, mask, precomputed=pc)
+            pid = player_ids[i] if player_ids and i < len(player_ids) else "default"
+            game_id = "default"
+            if "thread_env_" in pid:
+                game_id = pid.split("_player")[0]
+            elif "env_" in pid:
+                game_id = pid.split("_player")[0]
+
+            env_move, action_vector = self._generate_action_with_mcts(obs, mask, precomputed=pc, game_id=game_id)
 
             value = 0.0
             if 'value' in pc:
@@ -178,7 +187,8 @@ class MuZeroAgent(BaseAgent):
     def _generate_action_with_mcts(self, 
                                    observation: np.ndarray, 
                                    mask: np.ndarray,
-                                   precomputed: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, np.ndarray]:
+                                   precomputed: Optional[Dict[str, Any]] = None,
+                                   game_id: str = "default") -> Tuple[np.ndarray, np.ndarray]:
         """
         Generate actions using Enhanced MCTS
         
@@ -187,13 +197,15 @@ class MuZeroAgent(BaseAgent):
             mask: Action mask
             precomputed: Pre-computed NN results (hidden_state, policy, value)
                          to avoid redundant initial_inference
+            game_id: Identifier of the game environment
         """        
         # Use Enhanced MCTS for action generation
         actions, action_vector = self.mcts.generate_action(
             self.simulations, 
             observation=observation, 
             mask=mask,
-            precomputed=precomputed
+            precomputed=precomputed,
+            game_id=game_id
         )
         
         return actions, action_vector
