@@ -56,8 +56,8 @@ async def test_parallel_env_manager_drain():
     await run_task
 
 @pytest.mark.asyncio
-async def test_orchestrator_integration_drain():
-    """Verify that TrainingOrchestrator uses pause/drain during evaluation."""
+async def test_orchestrator_no_pause_in_train_step():
+    """Verify that _train_step does NOT call pause/drain/evaluate (moved to run())."""
     from training_orchestrator import TrainingOrchestrator, TrainingConfig
     
     # Mock everything needed for TrainingOrchestrator
@@ -87,20 +87,15 @@ async def test_orchestrator_integration_drain():
         orch.global_buffer = MagicMock()
         orch.global_buffer.read_gameplay_batch.return_value = [None]*5
         
-        # First train step (step becomes 1)
-        await orch._train_step()
-        assert orch.training_step == 1
+        # Run multiple train steps
+        for _ in range(5):
+            await orch._train_step()
+        
+        # Verify no pause/drain/evaluate happened inside _train_step
         orch.env_manager.pause.assert_not_called()
-        
-        # Second train step (step becomes 2, evaluation_interval is 2)
-        await orch._train_step()
-        assert orch.training_step == 2
-        
-        # Should have called pause, wait_for_drain, evaluate, resume
-        orch.env_manager.pause.assert_called_once()
-        orch.env_manager.wait_for_drain.assert_called_once()
-        orch.evaluate.assert_called_once()
-        orch.env_manager.resume.assert_called_once()
+        orch.env_manager.wait_for_drain.assert_not_called()
+        orch.evaluate.assert_not_called()
+        orch.env_manager.resume.assert_not_called()
 
 from unittest.mock import patch
 

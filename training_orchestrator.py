@@ -369,6 +369,7 @@ class TrainingConfig:
     save_interval: int = config.CHECKPOINT_STEPS
     evaluation_interval: int = config.CHECKPOINT_STEPS
     concurrent_games: int = config.CONCURRENT_GAMES
+    collect_games_per_batch: int = config.COLLECT_GAMES_PER_BATCH
     evaluation_games: int = config.EVALUATION_GAMES
     evaluation_concurrent: int = config.EVALUATION_CONCURRENT_GAMES
     max_batch_size: int = config.BATCH_SIZE
@@ -1377,9 +1378,15 @@ class TrainingOrchestrator:
         print("COLLECT phase started – sequential Collect -> Train loop active.")
 
         while self.training_active:
-            results = await self.env_manager.run_fixed_games(
-                self.agent_manager, self.cfg.concurrent_games
-            )
+            results = []
+            remaining = self.cfg.collect_games_per_batch
+            while remaining > 0 and self.training_active:
+                count = min(remaining, self.cfg.concurrent_games)
+                batch = await self.env_manager.run_fixed_games(
+                    self.agent_manager, count
+                )
+                results.extend(batch)
+                remaining -= count
             self.games_completed += len(results)
 
             if not self.training_active:
@@ -1624,9 +1631,15 @@ class TrainingOrchestrator:
         last_logged_step = -1
         try:
             while self.training_active and self.training_step < max_steps:
-                results = await self.env_manager.run_fixed_games(
-                    self.agent_manager, self.cfg.concurrent_games
-                )
+                results = []
+                remaining = self.cfg.collect_games_per_batch
+                while remaining > 0 and self.training_active and self.training_step < max_steps:
+                    count = min(remaining, self.cfg.concurrent_games)
+                    batch = await self.env_manager.run_fixed_games(
+                        self.agent_manager, count
+                    )
+                    results.extend(batch)
+                    remaining -= count
                 self.games_completed += len(results)
 
                 if not self.training_active or self.training_step >= max_steps:

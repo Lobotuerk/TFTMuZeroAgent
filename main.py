@@ -27,6 +27,7 @@ from Models.MuZero_torch_agent import MuZeroNetwork as TFTNetwork
 def _build_config(args) -> TrainingConfig:
     cfg = TrainingConfig()
     cfg.concurrent_games = getattr(args, "concurrent_games", config.CONCURRENT_GAMES)
+    cfg.collect_games_per_batch = getattr(args, "collect_games", config.COLLECT_GAMES_PER_BATCH)
     cfg.evaluation_interval = getattr(args, "eval_interval", config.CHECKPOINT_STEPS)
     cfg.evaluation_games = getattr(args, "eval_games", config.EVALUATION_GAMES)
     cfg.evaluation_concurrent = getattr(args, "eval_concurrent", config.EVALUATION_CONCURRENT_GAMES)
@@ -134,6 +135,7 @@ async def async_main():
     # Training
     parser.add_argument("--concurrent_games", "-cg", type=int,
                         default=config.CONCURRENT_GAMES)
+    parser.add_argument("--collect_games", type=int, default=config.COLLECT_GAMES_PER_BATCH)
     parser.add_argument("--max_steps", "-ms", type=int, default=1_000_000)
     parser.add_argument("--eval_interval", "-ei", type=int,
                         default=config.CHECKPOINT_STEPS)

@@ -56,7 +56,7 @@ async def test_non_blocking_training_loop():
         mock_agent = MockAgent.return_value
         mock_agent.get_weights.return_value = {}
 
-        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1, sync_steps=1))
+        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=2, sync_steps=1, collect_games_per_batch=2))
         orch.setup()
         
         # Run collect which executes the sequential Collect -> Train loop
@@ -111,7 +111,7 @@ async def test_run_non_blocking():
         MockSetup.return_value = (MagicMock(), MagicMock())
         MockAgent.return_value.get_weights.return_value = {}
 
-        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=1, sync_steps=5))
+        orch = TrainingOrchestrator(TrainingConfig(concurrent_games=2, sync_steps=5, collect_games_per_batch=2))
         orch.setup()
         
         # Start run (which should run one iteration of collect and train, then stop because of mock)
