@@ -48,6 +48,284 @@ async def training_mode(args):
     return True
 
 
+async def train_server_mode(args):
+    """GPU-bound Training Server process (Option A)."""
+    import os
+    import glob
+    import pickle
+    import torch
+    
+    print("=== Training Server Mode (Option A) ===")
+    cfg = _build_config(args)
+    orch = TrainingOrchestrator(cfg)
+    
+    # We do NOT run full orch.setup() because we don't need game environments!
+    # Instead, we manually initialize the minimal training components:
+    from Models.global_buffer import create_global_buffer
+    from Models.MuZero_torch_agent import MuZeroAgent
+    from Models.MuZero_torch_trainer import Trainer as MuZeroTrainer
+    
+    orch.global_buffer = create_global_buffer(cfg.max_batch_size)
+    
+    # Initialize active model (current_model)
+    orch.current_model = MuZeroAgent(
+        action_size=3,
+        action_limits=[7, 37, 10],
+        obs_size=config.OBSERVATION_SIZE,
+        simulations=config.NUM_SIMULATIONS,
+        global_buffer=orch.global_buffer,
+        config_obj=cfg,
+    )
+    orch.trainer = MuZeroTrainer()
+    
+    # Set required executors/logs
+    from concurrent.futures import ThreadPoolExecutor
+    orch._train_executor = ThreadPoolExecutor(max_workers=1)
+    orch.summary_writer = orch._build_logger()
+    
+    # Create checkpoints, gameplay, and combat directories
+    os.makedirs("./checkpoint", exist_ok=True)
+    os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
+    os.makedirs(config.COMBAT_BUFFER_PATH, exist_ok=True)
+    
+    # If starting from a checkpoint, load it
+    if args.starting_episode > 0:
+        step_path = f"./checkpoint/current_{args.starting_episode}"
+        if os.path.isfile(step_path):
+            orch.current_model.model.load_state_dict(torch.load(step_path))
+            orch.training_step = args.starting_episode
+            print(f"Resumed from checkpoint step {orch.training_step}")
+    elif os.path.isfile("./checkpoint/latest_model.pth"):
+        try:
+            orch.current_model.model.load_state_dict(torch.load("./checkpoint/latest_model.pth"))
+            print("Found existing latest_model.pth checkpoint, loaded to training server.")
+        except Exception:
+            pass
+            
+    # Save first initial weights so workers have something to start with
+    torch.save(orch.current_model.model.state_dict(), "./checkpoint/latest_model.pth")
+    if not os.path.isfile("./checkpoint/best_model.pth"):
+        torch.save(orch.current_model.model.state_dict(), "./checkpoint/best_model.pth")
+            
+    print("Training server is listening for worker experience files...")
+    
+    orch.training_active = True
+    try:
+        while orch.training_active:
+            # 1. Sweep gameplay buffer folder for pkl experience files
+            pattern = os.path.join(config.GAMEPLAY_BUFFER_PATH, "exp_*.pkl")
+            exp_files = glob.glob(pattern)
+            
+            for f_path in exp_files:
+                try:
+                    with open(f_path, "rb") as f:
+                        replay_set = pickle.load(f)
+                    orch.global_buffer.gameplay_buffer.add(replay_set)
+                    os.remove(f_path) # Delete consumed file
+                except Exception:
+                    # File might be partially written, try again next loop
+                    pass
+                    
+            # 2. Sweep combat buffer folder for pkl experience files
+            c_pattern = os.path.join(config.COMBAT_BUFFER_PATH, "combat_*.pkl")
+            combat_files = glob.glob(c_pattern)
+            
+            for c_path in combat_files:
+                try:
+                    with open(c_path, "rb") as f:
+                        combat_samples = pickle.load(f)
+                    for sample in combat_samples:
+                        orch.global_buffer.store_combat(sample)
+                    os.remove(c_path) # Delete consumed file
+                except Exception:
+                    # File might be partially written, try again next loop
+                    pass
+                    
+            # 3. Run training step if data is available
+            trained = False
+            while orch.training_active and orch.global_buffer.available_gameplay_batch() and orch.training_step < args.max_steps:
+                t0 = time.time()
+                await orch._train_step() # Run 1 training update
+                
+                # Periodically save latest weights (sync_steps)
+                if orch.training_step % cfg.save_interval == 0:
+                    orch.save_current_checkpoint()
+                    # Also save as latest_model.pth for easy worker pulling
+                    torch.save(orch.current_model.model.state_dict(), "./checkpoint/latest_model.pth")
+                    print(f"[Server] Synced latest weights at step {orch.training_step} (Gameplay Buffer Size: {len(orch.global_buffer.gameplay_buffer)})")
+                    
+                trained = True
+                await asyncio.sleep(0.001)
+                
+            if not trained:
+                await asyncio.sleep(1.0) # Rest the CPU/GPU while waiting for data
+                
+    except KeyboardInterrupt:
+        print("\nTraining server stopped.")
+    finally:
+        orch._train_executor.shutdown(wait=False)
+    return True
+
+
+async def worker_mode(args):
+    """CPU-bound Game Collection or Evaluation Worker process (Option A)."""
+    import os
+    import pickle
+    import torch
+    import sys
+    
+    worker_id = getattr(args, "worker_id", 0)
+    worker_role = getattr(args, "worker_role", "collector")
+    
+    # Redirect stdout and stderr to a unique line-buffered file per worker
+    log_file_path = f"log_n_{worker_id}.txt"
+    log_file = open(log_file_path, "w", buffering=1)
+    sys.stdout = log_file
+    sys.stderr = log_file
+    
+    print(f"=== Worker Process {worker_id} Mode: {worker_role} ===")
+    
+    cfg = _build_config(args)
+    
+    # We create a local TrainingOrchestrator to run games
+    orch = TrainingOrchestrator(cfg)
+    
+    # Only evaluator and trainer should write to TensorBoard. Disable for collectors
+    # before calling setup() to avoid creating empty TensorBoard directories on disk.
+    if worker_role == "collector":
+        orch._build_logger = lambda: None
+        
+    orch.setup()
+            
+    os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
+    os.makedirs(config.COMBAT_BUFFER_PATH, exist_ok=True)
+    os.makedirs("./checkpoint", exist_ok=True)
+    
+    try:
+        if worker_role == "collector":
+            print(f"[Worker {worker_id}] Starting collection loop...")
+            while True:
+                # 1. Pull best weights if available (MuZero self-play is driven by current best weights)
+                best_weights_path = "./checkpoint/best_model.pth"
+                if os.path.isfile(best_weights_path):
+                    try:
+                        weights = torch.load(best_weights_path, map_location="cpu")
+                        orch.current_model.model.load_state_dict(weights)
+                        # Sync weights to training agents
+                        for agent in orch._training_agents:
+                            agent.update_weights(weights)
+                    except Exception:
+                        # Might be writing, skip this iteration
+                        pass
+                
+                # 2. Run fixed games to collect experiences
+                print(f"[Worker {worker_id}] Starting a batch of {cfg.concurrent_games} game(s)...")
+                await orch.env_manager.run_fixed_games(orch.agent_manager, cfg.concurrent_games)
+                
+                # 3. Pull experiences from local gameplay buffer
+                samples = list(orch.global_buffer.gameplay_buffer)
+                if samples:
+                    # 4. Save to shared gameplay directory
+                    timestamp = time.time_ns()
+                    f_path = os.path.join(config.GAMEPLAY_BUFFER_PATH, f"exp_worker_{worker_id}_{timestamp}.pkl")
+                    with open(f_path, "wb") as f:
+                        pickle.dump(samples, f)
+                    print(f"[Worker {worker_id}] Saved {len(samples)} steps to {f_path}")
+                    
+                    # 5. Clear local buffer
+                    orch.global_buffer.clear_gameplay_buffer()
+                    
+                # 6. Pull experiences from local combat buffer
+                combat_buffer = orch.global_buffer.combat_buffer
+                if combat_buffer._size > 0:
+                    combat_samples = combat_buffer._buffer[:combat_buffer._size]
+                    timestamp = time.time_ns()
+                    c_path = os.path.join(config.COMBAT_BUFFER_PATH, f"combat_worker_{worker_id}_{timestamp}.pkl")
+                    with open(c_path, "wb") as f:
+                        pickle.dump(combat_samples, f)
+                    print(f"[Worker {worker_id}] Saved {len(combat_samples)} combat steps to {c_path}")
+                    
+                    # 7. Clear local combat buffer
+                    combat_buffer._size = 0
+                    combat_buffer._pos = 0
+                    
+                await asyncio.sleep(1.0)
+                
+        elif worker_role == "evaluator":
+            print(f"[Worker {worker_id}] Starting evaluator loop...")
+            last_evaluated_mtime = 0
+            
+            latest_weights_path = "./checkpoint/latest_model.pth"
+            best_weights_path = "./checkpoint/best_model.pth"
+            
+            while True:
+                # Check if latest_model.pth was updated
+                if os.path.isfile(latest_weights_path):
+                    mtime = os.path.getmtime(latest_weights_path)
+                    if mtime > last_evaluated_mtime:
+                        last_evaluated_mtime = mtime
+                        print(f"[Worker {worker_id}] Detected updated latest_model.pth. Running evaluation...")
+                        
+                        # Load latest model weights
+                        try:
+                            # Parse step from checkpoints to ensure correct TensorBoard plotting step
+                            import glob
+                            checkpoints = glob.glob("./checkpoint/current_*")
+                            if checkpoints:
+                                steps = []
+                                for ckpt in checkpoints:
+                                    try:
+                                        steps.append(int(ckpt.split("current_")[-1]))
+                                    except ValueError:
+                                        pass
+                                if steps:
+                                    orch.training_step = max(steps)
+                                    
+                            latest_weights = torch.load(latest_weights_path, map_location="cpu")
+                            orch.current_model.model.load_state_dict(latest_weights)
+                        except Exception:
+                            # File might be mid-write, skip this iteration
+                            last_evaluated_mtime = 0 # Retry next loop
+                            await asyncio.sleep(2.0)
+                            continue
+                            
+                        # Load best model weights (if not exists, default to latest)
+                        if os.path.isfile(best_weights_path):
+                            try:
+                                best_weights = torch.load(best_weights_path, map_location="cpu")
+                                orch.best_model.model.load_state_dict(best_weights)
+                            except Exception:
+                                pass
+                        else:
+                            # If no best_model.pth exists, current latest is the best by default
+                            torch.save(latest_weights, best_weights_path)
+                            orch.best_model.model.load_state_dict(latest_weights)
+                            
+                        # Run Standalone Evaluation
+                        results = await orch.evaluate()
+                        
+                        # Save evaluation results
+                        current_mean = results["current_placement"]
+                        best_mean = results["best_placement"]
+                        
+                        # If current is strictly better (lower placement score)
+                        if current_mean < best_mean:
+                            print(f"[Evaluator] \u2713 Model improved! Placement: {current_mean:.2f} vs {best_mean:.2f}")
+                            # Save as new best weights
+                            torch.save(latest_weights, best_weights_path)
+                            print("[Evaluator] Saved new best_model.pth")
+                        else:
+                            print(f"[Evaluator] \u2717 No improvement. Placement: {current_mean:.2f} vs {best_mean:.2f}")
+                            
+                await asyncio.sleep(5.0)
+                
+    except KeyboardInterrupt:
+        print(f"\nWorker {worker_id} stopped.")
+    finally:
+        orch.cleanup()
+    return True
+
+
 async def evaluation_mode(args):
     """Run evaluation games."""
     print("=== Evaluation Mode ===")
@@ -128,9 +406,15 @@ async def async_main():
 
     # Mode
     parser.add_argument("--mode", "-m",
-                        choices=["train", "eval", "demo", "debug"],
+                        choices=["train", "eval", "demo", "debug", "train_server", "worker"],
                         default="train",
                         help="Execution mode")
+
+    # Distributed Option A Core args
+    parser.add_argument("--worker_id", type=int, default=0,
+                        help="ID of this collection worker (worker mode)")
+    parser.add_argument("--worker_role", choices=["collector", "evaluator"], default="collector",
+                        help="Role of this worker process (worker mode)")
 
     # Training
     parser.add_argument("--concurrent_games", "-cg", type=int,
@@ -167,11 +451,17 @@ async def async_main():
     print("TFT MuZero Agent – TrainingOrchestrator")
     print("=" * 60)
     print(f"Mode: {args.mode}")
+    if args.mode == "worker":
+        print(f"Worker Role: {args.worker_role}  |  Worker ID: {args.worker_id}")
 
     success = False
     try:
         if args.mode == "train":
             success = await training_mode(args)
+        elif args.mode == "train_server":
+            success = await train_server_mode(args)
+        elif args.mode == "worker":
+            success = await worker_mode(args)
         elif args.mode == "eval":
             success = await evaluation_mode(args)
         elif args.mode == "demo":
