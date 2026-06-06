@@ -1437,13 +1437,6 @@ class TrainingOrchestrator:
             if self.training_step % self.cfg.sync_steps == 0:
                 self.save_current_checkpoint()
     
-            # Periodic evaluation
-            if self.training_step % self.cfg.evaluation_interval == 0:
-                self.env_manager.pause()
-                await self.env_manager.wait_for_drain()
-                await self.evaluate()
-                self.env_manager.resume()
-
             # Periodic benchmarking (every 200 steps)
             if self.training_step - self._last_benchmark_step >= 200:
                 self._last_benchmark_step = self.training_step
@@ -1638,6 +1631,12 @@ class TrainingOrchestrator:
                     self.profiling.record_train_step(time.time() - t0)
                     await asyncio.sleep(0.01)
                     trained = True
+
+                if trained and self.training_step % self.cfg.evaluation_interval == 0:
+                    self.env_manager.pause()
+                    await self.env_manager.wait_for_drain()
+                    await self.evaluate()
+                    self.env_manager.resume()
 
                 if not trained:
                     await asyncio.sleep(1.0)
