@@ -398,6 +398,13 @@ class BatchInferenceServer:
         obs = np.asarray(obs, dtype=np.float32)
         return obs.flatten() if obs.ndim > 1 else obs
 
+    def shutdown(self):
+        """Cancel all background processing tasks and shutdown the executor."""
+        for agent_type, task in list(self._processing_tasks.items()):
+            if not task.done():
+                task.cancel()
+        self.executor.shutdown(wait=False)
+
 
 class EnhancedAgentManager:
     """
@@ -498,6 +505,10 @@ class EnhancedAgentManager:
                     await agent.replay_buffer.move_buffer_to_global_async(final_value)
                 else:
                     agent.replay_buffer.move_buffer_to_global(final_value)
+
+    def shutdown(self):
+        """Shutdown the underlying batch inference processor."""
+        self.batch_processor.shutdown()
 
 
 # ── game runner ──────────────────────────────────────────────────

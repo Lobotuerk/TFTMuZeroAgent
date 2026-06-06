@@ -1578,6 +1578,10 @@ class TrainingOrchestrator:
                 if hasattr(self.global_buffer, "clear_gameplay_buffer"):
                     self.global_buffer.clear_gameplay_buffer()
 
+        # Clean up temporary evaluation agents and environment manager to prevent asyncio task leaks
+        eval_mgr.shutdown()
+        eval_env_mgr.stop()
+
         return {"current_placement": current_mean, "best_placement": best_mean}
 
     # ------------------------------------------------------------------

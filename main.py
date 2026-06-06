@@ -102,6 +102,17 @@ async def train_server_mode(args):
         except Exception:
             pass
             
+    # Override save_current_checkpoint to ALSO save latest_model.pth for worker sync
+    original_save_current = orch.save_current_checkpoint
+    def custom_save_current():
+        original_save_current()
+        try:
+            torch.save(orch.current_model.model.state_dict(), "./checkpoint/latest_model.pth")
+            print(f"[Server] Synced latest weights to latest_model.pth at step {orch.training_step} (Gameplay Buffer Size: {len(orch.global_buffer.gameplay_buffer)})")
+        except Exception as e:
+            print(f"Error syncing latest_model.pth: {e}")
+    orch.save_current_checkpoint = custom_save_current
+    
     # Save first initial weights so workers have something to start with
     torch.save(orch.current_model.model.state_dict(), "./checkpoint/latest_model.pth")
     if not os.path.isfile("./checkpoint/best_model.pth"):
@@ -144,16 +155,7 @@ async def train_server_mode(args):
             # 3. Run training step if data is available
             trained = False
             while orch.training_active and orch.global_buffer.available_gameplay_batch() and orch.training_step < args.max_steps:
-                t0 = time.time()
                 await orch._train_step() # Run 1 training update
-                
-                # Periodically save latest weights (sync_steps)
-                if orch.training_step % cfg.save_interval == 0:
-                    orch.save_current_checkpoint()
-                    # Also save as latest_model.pth for easy worker pulling
-                    torch.save(orch.current_model.model.state_dict(), "./checkpoint/latest_model.pth")
-                    print(f"[Server] Synced latest weights at step {orch.training_step} (Gameplay Buffer Size: {len(orch.global_buffer.gameplay_buffer)})")
-                    
                 trained = True
                 await asyncio.sleep(0.001)
                 
