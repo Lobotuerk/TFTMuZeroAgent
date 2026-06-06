@@ -2,7 +2,7 @@ import config
 import collections
 import torch
 import numpy as np
-from Models.MuZero_torch_model import NUM_CLASSES
+
 
 Prediction = collections.namedtuple(
     'Prediction',
@@ -50,7 +50,7 @@ class Trainer(object):
         target_value = torch.from_numpy(target_value).to(device)
 
         # initial step
-        output, _, _ = agent.initial_inference(observation)
+        output = agent.initial_inference(observation)
 
         predictions = [
             Prediction(
@@ -117,54 +117,9 @@ class Trainer(object):
             accs['target_value'].append(target_value[:, tstep])
             accs['target_policy'].append(target_policy[:, tstep])
 
-        if len(combats) > 0:
-            obs, results = combats
-            # Ensure obs is 4D for spatial loss calculation [batch, depth, height, width]
-            if obs.ndim == 2:
-                # If flat, reshape to standard TFT observation shape (184, 4, 7)
-                obs_4d = obs.reshape(obs.shape[0], 184, 4, 7)
-                obs_flat = obs
-            elif obs.ndim == 4:
-                obs_4d = obs
-                obs_flat = obs.reshape(obs.shape[0], -1)
-            else:
-                # Fallback for unexpected shapes
-                obs_4d = obs
-                obs_flat = obs
-
-            # Ensure obs_flat has correct size for initial_inference
-            target_size = config.OBSERVATION_SIZE
-            if obs_flat.shape[1] < target_size:
-                obs_flat = np.pad(obs_flat, ((0, 0), (0, target_size - obs_flat.shape[1])))
-            elif obs_flat.shape[1] > target_size:
-                obs_flat = obs_flat[:, :target_size]
-            
-            _, _, board_distribution = agent.initial_inference(obs_flat)
-            
-            # Use 4D observation for board loss (comparing spatial distributions)
-            torch_obs = torch.from_numpy(obs_4d[:, 0:58, :, :]).float().to(device)
-            torch_results = torch.from_numpy(results).float().to(device)
-            # from shape [batch] to shape [batch, 1 ,1 ,1]
-            torch_results = torch.reshape(torch_results, (torch_results.shape[0], 1, 1, 1))
-            
-            # Convert binary champion targets to class indices (0-57 for champions, 58 for empty)
-            target_classes = torch.argmax(torch_obs, dim=1)
-            empty_mask = torch_obs.sum(dim=1) < 0.5
-            target_classes = torch.where(empty_mask, torch.tensor(NUM_CLASSES - 1, device=device), target_classes)
-            board_loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
-            loss_per_hex = board_loss_fn(board_distribution, target_classes)
-
-            margin = 1.0
-            Y = (torch_results > 0.5).float()
-            d_pos = Y * loss_per_hex**2
-            d_neg = (1 - Y) * torch.clamp(margin - loss_per_hex, min=0)**2
-            combat_board_loss = torch.sum(d_pos + d_neg, dim=[1, 2])
-
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 
         mean_loss = value_loss.mean() + policy_loss.mean()
-        if len(combats) > 0:
-            mean_loss += combat_board_loss.mean()
         mean_loss.register_hook(lambda grad: grad * (1 / config.UNROLL_STEPS))
 
         sum_accs = {k: torch.sum(a, -1) for k, a in accs.items()}
@@ -182,8 +137,6 @@ class Trainer(object):
             summary_writer.add_scalar('target/policy_variance', torch.mean(torch.var(accs['target_policy'], dim=1)), train_step)
 
             summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
-            if len(combats) > 0:
-                summary_writer.add_scalar('losses/combat_contrastive', combat_board_loss.mean(), train_step)
             summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
             summary_writer.add_scalar('losses/total', torch.mean(mean_loss), train_step)
 

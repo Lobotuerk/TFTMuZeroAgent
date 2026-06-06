@@ -79,11 +79,10 @@ def test_muzero_trainer():
         print("4. Testing model forward pass...")
         model.eval()
         with torch.no_grad():
-            outputs, directive, board_dist = model.initial_inference(observations)
+            outputs = model.initial_inference(observations)
             print(f"   - Model value shape: {outputs['value'].shape}")
             print(f"   - Model policy shape: {outputs['policy_logits'].shape}")
             print(f"   - Model hidden state shape: {outputs['hidden_state'].shape}")
-            print(f"   - Board distribution shape: {board_dist.shape}")
             print("   ✓ Model forward pass successful")
         
         # Test trainer loss computation

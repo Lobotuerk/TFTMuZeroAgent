@@ -311,10 +311,6 @@ class BatchInferenceServer:
                 self.metrics_collector.record("gpu_forward_pass", gpu_time)
                 self.metrics_collector.record("gpu_sync", sync_time)
 
-            # Handle both dict and (dict, directive, board) returns from model
-            if isinstance(net_out, tuple):
-                net_out = net_out[0]
-
             precomputed = []
             for i in range(batch_size):
                 precomputed.append({

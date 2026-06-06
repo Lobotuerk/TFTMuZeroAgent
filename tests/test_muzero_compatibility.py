@@ -31,7 +31,7 @@ def test_muzero_compatibility():
         batch_size = 1
         obs = np.random.rand(batch_size, 5152)
         
-        outputs, directive, board_dist = model.initial_inference(obs)
+        outputs = model.initial_inference(obs)
         print("   ✓ Model inference successful")
         
         # Check output shapes

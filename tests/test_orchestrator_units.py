@@ -55,7 +55,7 @@ class TestTrainingConfig:
         cfg = TrainingConfig(starting_train_step=50, concurrent_games=2)
         assert cfg.starting_train_step == 50
         assert cfg.concurrent_games == 2
-        assert cfg.evaluation_games == 10
+        assert cfg.evaluation_games == 8
 
     def test_all_fields_have_defaults(self):
         cfg = TrainingConfig()

@@ -11,7 +11,7 @@ class CombatBuffer:
     
     Never clears or pops data. Overwrites oldest entries when full.
     Capacity must be a multiple of batch_size.
-    Supports uniform random sampling for BoardGenerator training.
+    Supports uniform random sampling for combat info based training.
     """
     def __init__(self, capacity: int = 64000, batch_size: int = 32):
         assert capacity % batch_size == 0, \
