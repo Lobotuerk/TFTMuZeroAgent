@@ -94,13 +94,13 @@ class Trainer(object):
         policy_loss = torch.tensor(0.0, device=device)
 
         # Define loss functions
-        MAE_loss = torch.nn.L1Loss(reduction='none')
+        MSE_loss = torch.nn.MSELoss(reduction='none')
         kl_loss_fn = torch.nn.KLDivLoss(reduction='batchmean')
         for tstep, prediction in enumerate(predictions):
             value = prediction.value
             policy_logits = prediction.policy_logits
 
-            value_loss_step = MAE_loss(value.squeeze(), target_value[:, tstep])
+            value_loss_step = MSE_loss(value.squeeze(), target_value[:, tstep])
             value_loss += value_loss_step
 
             policy_logits_flat = policy_logits.view(policy_logits.shape[0], -1)

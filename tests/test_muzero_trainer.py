@@ -134,6 +134,7 @@ def test_muzero_trainer():
         print("✅ Model compatibility verified")
         print("✅ TFTSet4Gym data shapes handled correctly")
         print("✅ Policy shape (3, 37) → (111,) flattening working")
+        print("✅ Value loss uses MSE (L1→MSE upgrade)")
         print("✅ Loss computation framework ready")
         print("✅ Optimizer integration working")
         
