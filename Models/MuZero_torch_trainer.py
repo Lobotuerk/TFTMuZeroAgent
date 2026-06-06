@@ -139,7 +139,7 @@ class Trainer(object):
             elif obs_flat.shape[1] > target_size:
                 obs_flat = obs_flat[:, :target_size]
             
-            output, _, _ = agent.initial_inference(obs_flat)
+            output = agent.initial_inference(obs_flat)
             hidden_states = output["hidden_state"]
             hidden_flat = hidden_states.view(hidden_states.size(0), -1)
             
