@@ -41,8 +41,9 @@ def test_muzero_trainer():
         # Create mock data with correct shapes for TFTSet4Gym
         print("3. Creating mock training data...")
         batch_size = 4
-        unroll_steps = 5
-        
+        import config
+        unroll_steps = config.UNROLL_STEPS
+
         # Observations: (batch_size, obs_size)
         observations = np.random.rand(batch_size, 5152).astype(np.float32)
         

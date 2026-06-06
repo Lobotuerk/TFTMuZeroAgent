@@ -153,7 +153,12 @@ class Trainer(object):
             target_classes = torch.where(empty_mask, torch.tensor(NUM_CLASSES - 1, device=device), target_classes)
             board_loss_fn = torch.nn.CrossEntropyLoss(reduction='none')
             loss_per_hex = board_loss_fn(board_distribution, target_classes)
-            combat_board_loss = torch.sum(loss_per_hex * torch_results.squeeze(-1), dim=[1, 2])
+
+            margin = 1.0
+            Y = (torch_results > 0.5).float()
+            d_pos = Y * loss_per_hex**2
+            d_neg = (1 - Y) * torch.clamp(margin - loss_per_hex, min=0)**2
+            combat_board_loss = torch.sum(d_pos + d_neg, dim=[1, 2])
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 
@@ -178,7 +183,7 @@ class Trainer(object):
 
             summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
             if len(combats) > 0:
-                summary_writer.add_scalar('losses/board', combat_board_loss.mean(), train_step)
+                summary_writer.add_scalar('losses/combat_contrastive', combat_board_loss.mean(), train_step)
             summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
             summary_writer.add_scalar('losses/total', torch.mean(mean_loss), train_step)
 
