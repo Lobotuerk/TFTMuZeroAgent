@@ -1515,6 +1515,7 @@ class TrainingOrchestrator:
             global_buffer=None,
             weights=copy.deepcopy(self.current_model.get_weights()),
             config_obj=self.cfg,
+            training=False,
         )
         eval_best = MuZeroAgent(
             action_size=3,
@@ -1524,6 +1525,7 @@ class TrainingOrchestrator:
             global_buffer=None,
             weights=copy.deepcopy(self.best_model.get_weights()),
             config_obj=self.cfg,
+            training=False,
         )
         random_agent = RandomAgent("EvalRandom")
         cultist_agent = CultistAgent()

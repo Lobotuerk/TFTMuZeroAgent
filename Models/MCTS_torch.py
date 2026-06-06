@@ -52,6 +52,9 @@ class EnhancedMCTS:
         # Thread safety setup
         self._local = threading.local()
         self._stats_lock = threading.Lock()
+
+        # Exploration noise flag: True during training/data collection, False during evaluation
+        self.training = True
         
         # PyMCTS agents configuration
         self.mcts_max_iterations = 100
@@ -146,8 +149,10 @@ class EnhancedMCTS:
             batch_queue = self.batch_queue
             
         # Create TFT state with batch queue for batched GPU inference
+        # Add Dirichlet exploration noise at the root during training
         tft_state = TFTState(np.array(list(state.obs_queue)), mask, self.network,
-                            precomputed=precomputed, batch_queue=batch_queue)
+                            precomputed=precomputed, batch_queue=batch_queue,
+                            add_root_noise=self.training)
 
         state.mcts_agent = pymcts.MCTS_agent(
             pymcts.SerializedPythonState(tft_state), 
@@ -163,15 +168,6 @@ class EnhancedMCTS:
             self.stats['total_generations'] += 1
 
         return best_move.to_env_action(), best_move.to_numpy()
-    
-    def add_exploration_noise(self, policy_logits: List, noises: List) -> List:
-        """Add exploration noise to policy logits"""
-        exploration_fraction = config.ROOT_EXPLORATION_FRACTION
-        for i in range(len(noises)):
-            for j in range(min(len(noises[i]), len(policy_logits[i]))):
-                policy_logits[i][j] = (policy_logits[i][j] * (1 - exploration_fraction) + 
-                                     noises[i][j] * exploration_fraction)
-        return policy_logits
     
     def fill_metadata(self) -> Dict[str, str]:
         """Fill metadata for tracking"""

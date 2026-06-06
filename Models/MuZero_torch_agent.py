@@ -42,7 +42,8 @@ class MuZeroAgent(BaseAgent):
                  action_limits: Optional[List[int]] = None,
                  obs_size: Optional[int] = None,
                  simulations: Optional[int] = None,
-                 weights: Optional[Dict[str, Any]] = None):
+                 weights: Optional[Dict[str, Any]] = None,
+                 training: bool = True):
         super().__init__(agent_name, global_buffer)
 
         self.config = config_obj if config_obj is not None else config
@@ -80,6 +81,9 @@ class MuZeroAgent(BaseAgent):
             network=self.model
         )
         
+        # Control exploration noise: added during training, disabled during evaluation
+        self.mcts.training = training
+
         # Move model to GPU if available
         if torch.cuda.is_available():
             self.model.to('cuda')
@@ -248,5 +252,5 @@ class MuZeroAgent(BaseAgent):
 # Aliases and factory functions for testing
 EnhancedMuZeroAgent = MuZeroAgent
 
-def create_enhanced_muzero_agent(global_buffer=None):
-    return MuZeroAgent(global_buffer=global_buffer)
+def create_enhanced_muzero_agent(global_buffer=None, training=True):
+    return MuZeroAgent(global_buffer=global_buffer, training=training)

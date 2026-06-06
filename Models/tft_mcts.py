@@ -166,6 +166,7 @@ class TFTState(MCTS_StateBase):
                  precomputed: Optional[Dict[str, Any]] = None,
                  current_player: str = "player_0", round_num: int = 1,
                  batch_queue=None,
+                 add_root_noise: bool = False,
                  **kwargs):
         if PYMCTS_AVAILABLE:
             super().__init__()
@@ -177,6 +178,7 @@ class TFTState(MCTS_StateBase):
         self.current_player = current_player
         self.round_num = round_num
         self.batch_queue = batch_queue
+        self.add_root_noise = add_root_noise
         
         # MCTS Values
         self.hidden_state = None
@@ -372,8 +374,17 @@ class TFTState(MCTS_StateBase):
         scores = np.exp(scores - np.max(scores))
         total = scores.sum()
         if total > 0:
-            return (scores / total).tolist()
-        return [1.0 / len(moves)] * len(moves)
+            probs = (scores / total).tolist()
+        else:
+            probs = [1.0 / len(moves)] * len(moves)
+
+        if self.add_root_noise:
+            alpha = config.ROOT_DIRICHLET_ALPHA
+            frac = config.ROOT_EXPLORATION_FRACTION
+            noise = np.random.dirichlet([alpha] * len(probs))
+            probs = ((1 - frac) * np.array(probs) + frac * noise).tolist()
+
+        return probs
     
     def print(self):
         print(f"TFTState(player={self.current_player}, round={self.round_num}, value={self.value:.3f})")
