@@ -45,7 +45,7 @@ def test_muzero_trainer():
         unroll_steps = config.UNROLL_STEPS
 
         # Observations: (batch_size, obs_size)
-        observations = np.random.rand(batch_size, 5152).astype(np.float32)
+        observations = np.random.rand(batch_size, config.OBSERVATION_SIZE).astype(np.float32)
         
         # Actions: (batch_size, unroll_steps-1, action_size) - TFT actions are 3D [type, target1, target2] for TFTSet4Gym
         actions = np.random.randint(0, 10, (batch_size, unroll_steps-1, 3)).astype(np.float32)
@@ -61,8 +61,8 @@ def test_muzero_trainer():
         
         batch = (observations, actions, values, rewards, policies)
         
-        # Mock combat data (full 184-channel observation, 0:58 are champion indicators)
-        combat_obs = np.random.rand(2, 184, 4, 7).astype(np.float32)
+        # Mock combat data (flat observation, first 1624 = board_champions)
+        combat_obs = np.random.rand(2, config.OBSERVATION_SIZE).astype(np.float32)
         combat_results = np.array([1.0, -1.0]).astype(np.float32)
         combats = (combat_obs, combat_results)
         

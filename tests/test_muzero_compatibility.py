@@ -28,8 +28,9 @@ def test_muzero_compatibility():
         
         # Test model output
         print("3. Testing model output...")
+        import config
         batch_size = 1
-        obs = np.random.rand(batch_size, 5152)
+        obs = np.random.rand(batch_size, config.OBSERVATION_SIZE)
         
         outputs = model.initial_inference(obs)
         print("   ✓ Model inference successful")

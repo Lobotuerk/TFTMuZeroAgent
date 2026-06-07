@@ -6,6 +6,7 @@ import os
 # Add the project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import config
 from Models.Common_agents import BaseAgent, RandomAgent
 from Models.global_buffer import GlobalBuffer
 
@@ -24,7 +25,7 @@ class MockBatchedAgent(BaseAgent):
 class TestBatchedAgentRefactor(unittest.TestCase):
     def test_batch_select_action_calls_impl(self):
         agent = MockBatchedAgent()
-        obs = [np.zeros(5152) for _ in range(4)]
+        obs = [np.zeros(config.OBSERVATION_SIZE) for _ in range(4)]
         masks = [None] * 4
         
         actions = agent.batch_select_action(obs, masks)
@@ -38,7 +39,7 @@ class TestBatchedAgentRefactor(unittest.TestCase):
         
         def create_obs(turns, hp, streak=0):
             return {
-                'tensor': np.zeros(5152),
+                'tensor': np.zeros(config.OBSERVATION_SIZE),
                 'turns_for_combat': turns,
                 'health': hp,
                 'streak': streak
@@ -74,7 +75,7 @@ class TestBatchedAgentRefactor(unittest.TestCase):
         # Mock global_buffer might not have everything, let's use the real one or check it
         agent = RandomAgent(global_buffer=gb, save_data=True)
         
-        obs = [np.zeros(5152) for _ in range(3)]
+        obs = [np.zeros(config.OBSERVATION_SIZE) for _ in range(3)]
         agent.batch_select_action(obs, [None]*3, player_ids=["p1", "p2", "p3"])
         
         # Check that steps were stored in player buffers
@@ -87,8 +88,8 @@ class TestBatchedAgentRefactor(unittest.TestCase):
         agent = RandomAgent(global_buffer=gb, save_data=True)
         
         # Two players active
-        agent.select_action(np.zeros(5152), player_id="p1")
-        agent.select_action(np.zeros(5152), player_id="p2")
+        agent.select_action(np.zeros(config.OBSERVATION_SIZE), player_id="p1")
+        agent.select_action(np.zeros(config.OBSERVATION_SIZE), player_id="p2")
         
         # Check buffers are created
         self.assertIn("p1", agent.replay_buffers)

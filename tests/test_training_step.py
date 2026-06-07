@@ -44,7 +44,7 @@ def test_training_step():
         import config
         unroll_steps = config.UNROLL_STEPS  # Should be 5
         
-        observations = np.random.rand(batch_size, 5152).astype(np.float32)
+        observations = np.random.rand(batch_size, config.OBSERVATION_SIZE).astype(np.float32)
         # Actions need (unroll_steps-1) time steps for recurrent inference
         actions = np.random.randint(0, 10, (batch_size, unroll_steps-1, 3)).astype(np.float32)
         values = np.random.rand(batch_size, unroll_steps).astype(np.float32)
@@ -53,8 +53,8 @@ def test_training_step():
         
         batch = (observations, actions, values, rewards, policies)
         
-        # Mock combat data (same batch size to avoid complications)
-        combat_obs = np.random.rand(batch_size, 58, 4, 7).astype(np.float32)
+        # Mock combat data (flat observation)
+        combat_obs = np.random.rand(batch_size, config.OBSERVATION_SIZE).astype(np.float32)
         combat_results = np.array([1.0, -1.0]).astype(np.float32)
         combats = (combat_obs, combat_results)
         

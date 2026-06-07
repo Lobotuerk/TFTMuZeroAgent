@@ -42,9 +42,10 @@ def test_enhanced_muzero_agent():
         # Test action selection
         print("4. Testing action selection...")
         
+        import config
         # Create sample observation and mask
         batch_size = 2
-        obs = np.random.rand(batch_size, 5152)
+        obs = np.random.rand(batch_size, config.OBSERVATION_SIZE)
         mask = np.ones((batch_size, 3, 37), dtype=bool)
         reward = np.array([0.0, 0.0])
         terminated = np.array([False, False])

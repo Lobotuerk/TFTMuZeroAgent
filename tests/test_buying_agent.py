@@ -10,9 +10,9 @@ from Models.Common_agents import BuyingAgent
 def test_unit_counting():
     """Test the unit counting functionality."""
     
-    # Create a simple mock observation for testing
-    # This is a simplified version - in reality the observation is much more complex
-    observation = np.zeros((184, 4, 7))
+    import config
+    # Create a simple mock observation for testing (flat 1D)
+    observation = np.zeros((config.OBSERVATION_SIZE,))
     
     # Test the buying agent
     agent = BuyingAgent(["yasuo", "fiora", "vayne", "nidalee", "garen"])
