@@ -1253,51 +1253,62 @@ class TrainingOrchestrator:
     # Setup
     # ------------------------------------------------------------------
 
-    def setup(self):
+    def setup(self, is_collector: bool = False):
         """Create all components: buffer, agents, batch processor, trainer."""
         self.trainer = Trainer()
         self.summary_writer = self._build_logger()
         self.global_buffer = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
 
         # --- agent config -------------------------------------------------
-        # best_model: the best performing model — only updated when evaluation beats it
-        self.best_model = MuZeroAgent(
-            action_size=3,
-            action_limits=[7, 37, 10],
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS,
-            global_buffer=self.global_buffer,
-            config_obj=self.cfg,
-        )
+        if not is_collector:
+            # best_model: the best performing model — only updated when evaluation beats it
+            self.best_model = MuZeroAgent(
+                action_size=3,
+                action_limits=[7, 37, 10],
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=self.global_buffer,
+                config_obj=self.cfg,
+            )
 
-        # current_model: the model actively being trained
-        self.current_model = MuZeroAgent(
-            action_size=3,
-            action_limits=[7, 37, 10],
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS,
-            global_buffer=self.global_buffer,
-            weights=copy.deepcopy(self.best_model.get_weights()),
-            config_obj=self.cfg,
-        )
+            # current_model: the model actively being trained
+            self.current_model = MuZeroAgent(
+                action_size=3,
+                action_limits=[7, 37, 10],
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=self.global_buffer,
+                weights=copy.deepcopy(self.best_model.get_weights()),
+                config_obj=self.cfg,
+            )
 
-        if self.training_step > 0:
-            ckpt = f"./checkpoint/best_{self.training_step}"
-            if os.path.isfile(ckpt):
-                state = torch.load(ckpt)
-                self.best_model.model.load_state_dict(state)
-                self.current_model.model.load_state_dict(state)
+            if self.training_step > 0:
+                ckpt = f"./checkpoint/best_{self.training_step}"
+                if os.path.isfile(ckpt):
+                    state = torch.load(ckpt)
+                    self.best_model.model.load_state_dict(state)
+                    self.current_model.model.load_state_dict(state)
 
         # MuZero agents for *collection* – start with best model weights
-        collection_agent = MuZeroAgent(
-            action_size=3,
-            action_limits=[7, 37, 10],
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS,
-            global_buffer=self.global_buffer,
-            weights=copy.deepcopy(self.best_model.get_weights()),
-            config_obj=self.cfg,
-        )
+        if is_collector:
+            collection_agent = MuZeroAgent(
+                action_size=3,
+                action_limits=[7, 37, 10],
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=self.global_buffer,
+                config_obj=self.cfg,
+            )
+        else:
+            collection_agent = MuZeroAgent(
+                action_size=3,
+                action_limits=[7, 37, 10],
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=self.global_buffer,
+                weights=copy.deepcopy(self.best_model.get_weights()),
+                config_obj=self.cfg,
+            )
         self._training_agents = [collection_agent]
 
         agent_configs: List[Tuple[Any, int]] = [

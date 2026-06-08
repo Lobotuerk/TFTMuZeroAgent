@@ -101,6 +101,7 @@ class AbstractNetwork(torch.nn.Module):
 
     # Renaming as to not override built-in functions
     def tft_save_model(self, episode):
+        import os
         if not os.path.exists("./Checkpoints"):
             os.makedirs("./Checkpoints")
 
@@ -109,6 +110,7 @@ class AbstractNetwork(torch.nn.Module):
 
     # Renaming as to not override built-in functions
     def tft_load_model(self, episode):
+        import os
         path = f'./Checkpoints/checkpoint_{episode}'
         if os.path.isfile(path):
             self.load_state_dict(torch.load(path))
@@ -183,6 +185,13 @@ class MuZeroNetwork(AbstractNetwork):
             observation_tensor = torch.from_numpy(observation).float().to(device)
         else:
             observation_tensor = observation.to(device)
+
+        # Ensure observation_tensor size matches config.OBSERVATION_SIZE explicitly
+        target_size = config.OBSERVATION_SIZE
+        size = observation_tensor.shape[-1] if observation_tensor.ndim > 1 else observation_tensor.shape[0]
+        if size != target_size:
+            raise ValueError(f"Observation size {size} does not match config.OBSERVATION_SIZE {target_size}!")
+
         hidden_state = self.representation(observation_tensor)
         policy_logits, value_logits = self.prediction(hidden_state)
 

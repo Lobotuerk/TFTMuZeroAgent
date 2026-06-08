@@ -127,25 +127,17 @@ class Trainer(object):
 
         if len(combats) > 0:
             obs, results = combats
-            # Ensure obs is 4D for spatial loss calculation [batch, depth, height, width]
             if obs.ndim == 2:
-                # If flat, reshape to standard TFT observation shape (184, 4, 7)
-                obs_4d = obs.reshape(obs.shape[0], 184, 4, 7)
                 obs_flat = obs
             elif obs.ndim == 4:
-                obs_4d = obs
                 obs_flat = obs.reshape(obs.shape[0], -1)
             else:
-                # Fallback for unexpected shapes
-                obs_4d = obs
                 obs_flat = obs
 
             # Ensure obs_flat has correct size for initial_inference
             target_size = config.OBSERVATION_SIZE
-            if obs_flat.shape[1] < target_size:
-                obs_flat = np.pad(obs_flat, ((0, 0), (0, target_size - obs_flat.shape[1])))
-            elif obs_flat.shape[1] > target_size:
-                obs_flat = obs_flat[:, :target_size]
+            if obs_flat.shape[1] != target_size:
+                raise ValueError(f"Combat observation size {obs_flat.shape[1]} does not match config.OBSERVATION_SIZE {target_size}!")
             
             output = agent.initial_inference(obs_flat)
             hidden_states = output["hidden_state"]
@@ -154,7 +146,7 @@ class Trainer(object):
             torch_results = torch.from_numpy(results).float().to(device)
             torch_results = torch_results.view(-1)
             
-            anchors, positives, negatives = [], [], []
+            triplet_candidates = []
             for i in range(len(torch_results)):
                 anchor_label = torch_results[i]
                 pos_indices = (torch_results == anchor_label).nonzero(as_tuple=True)[0]
@@ -164,14 +156,23 @@ class Trainer(object):
                 if len(pos_indices) > 0 and len(neg_indices) > 0:
                     for p in pos_indices:
                         for n in neg_indices:
-                            anchors.append(hidden_flat[i])
-                            positives.append(hidden_flat[p])
-                            negatives.append(hidden_flat[n])
+                            triplet_candidates.append((i, p.item(), n.item()))
             
-            if len(anchors) > 0:
-                anchors = torch.stack(anchors)
-                positives = torch.stack(positives)
-                negatives = torch.stack(negatives)
+            if len(triplet_candidates) > 0:
+                # Limit the number of triplets to prevent combinatorial memory explosion / CUDA OOM
+                max_triplets = 3000
+                if len(triplet_candidates) > max_triplets:
+                    import random
+                    # Seed random for deterministic execution within a single step if needed, or keep it stochastic
+                    sampled_indices = random.sample(range(len(triplet_candidates)), max_triplets)
+                    triplets = [triplet_candidates[idx] for idx in sampled_indices]
+                else:
+                    triplets = triplet_candidates
+
+                anchors = torch.stack([hidden_flat[t[0]] for t in triplets])
+                positives = torch.stack([hidden_flat[t[1]] for t in triplets])
+                negatives = torch.stack([hidden_flat[t[2]] for t in triplets])
+                
                 triplet_loss_fn = torch.nn.TripletMarginLoss(margin=1.0, p=2)
                 combat_board_loss = triplet_loss_fn(anchors, positives, negatives)
             else:

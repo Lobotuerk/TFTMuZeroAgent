@@ -95,12 +95,37 @@ async def train_server_mode(args):
             orch.current_model.model.load_state_dict(torch.load(step_path))
             orch.training_step = args.starting_episode
             print(f"Resumed from checkpoint step {orch.training_step}")
-    elif os.path.isfile("./checkpoint/latest_model.pth"):
-        try:
-            orch.current_model.model.load_state_dict(torch.load("./checkpoint/latest_model.pth"))
-            print("Found existing latest_model.pth checkpoint, loaded to training server.")
-        except Exception:
-            pass
+    else:
+        # Auto-detect latest step if checkpoint files exist and latest_model.pth is present
+        import glob
+        checkpoints = glob.glob("./checkpoint/current_*")
+        if checkpoints and os.path.isfile("./checkpoint/latest_model.pth"):
+            steps = []
+            for ckpt in checkpoints:
+                try:
+                    steps.append(int(ckpt.split("current_")[-1]))
+                except ValueError:
+                    pass
+            if steps:
+                latest_step = max(steps)
+                step_path = f"./checkpoint/current_{latest_step}"
+                try:
+                    orch.current_model.model.load_state_dict(torch.load(step_path))
+                    orch.training_step = latest_step
+                    print(f"Auto-detected and resumed from checkpoint step {orch.training_step}")
+                except Exception as e:
+                    print(f"Failed to load latest checkpoint {step_path}: {e}. Falling back to default latest_model.pth.")
+                    try:
+                        orch.current_model.model.load_state_dict(torch.load("./checkpoint/latest_model.pth"))
+                        print("Found existing latest_model.pth checkpoint, loaded to training server.")
+                    except Exception:
+                        pass
+        elif os.path.isfile("./checkpoint/latest_model.pth"):
+            try:
+                orch.current_model.model.load_state_dict(torch.load("./checkpoint/latest_model.pth"))
+                print("Found existing latest_model.pth checkpoint, loaded to training server.")
+            except Exception:
+                pass
             
     # Override save_current_checkpoint to ALSO save latest_model.pth for worker sync
     original_save_current = orch.save_current_checkpoint
@@ -194,10 +219,11 @@ async def worker_mode(args):
     
     # Only evaluator and trainer should write to TensorBoard. Disable for collectors
     # before calling setup() to avoid creating empty TensorBoard directories on disk.
-    if worker_role == "collector":
+    is_collector = (worker_role == "collector")
+    if is_collector:
         orch._build_logger = lambda: None
         
-    orch.setup()
+    orch.setup(is_collector=is_collector)
             
     os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
     os.makedirs(config.COMBAT_BUFFER_PATH, exist_ok=True)
@@ -212,7 +238,8 @@ async def worker_mode(args):
                 if os.path.isfile(best_weights_path):
                     try:
                         weights = torch.load(best_weights_path, map_location="cpu")
-                        orch.current_model.model.load_state_dict(weights)
+                        if orch.current_model is not None:
+                            orch.current_model.model.load_state_dict(weights)
                         # Sync weights to training agents
                         for agent in orch._training_agents:
                             agent.update_weights(weights)

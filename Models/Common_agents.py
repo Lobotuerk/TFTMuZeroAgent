@@ -33,7 +33,7 @@ def extract_field_from_observation(observation, field_name):
         val = np.squeeze(val, axis=0)
     
     # Handle tiled scalar fields by returning proper scalar values
-    if field_name in ['gold', 'level', 'health', 'turns_for_combat']:
+    if field_name in ['gold', 'level', 'health', 'turns_for_combat', 'streak', 'round']:
         if isinstance(val, np.ndarray):
             if val.size > 0:
                 return val.flat[0]
@@ -266,8 +266,11 @@ class BaseAgent:
             self.prev_streak[player_id] = current_streak
             # Use copy to avoid reference issues if observation is mutated
             self.prev_observation[player_id] = obs.copy() if isinstance(obs, np.ndarray) else obs
-        except Exception:
+        except Exception as e:
             # If schema extraction fails, we just don't track combat for this step
+            import traceback
+            print(f"Exception in combat tracking: {e}")
+            traceback.print_exc()
             pass
 
         # Flatten to 1D array if needed (schema expects flat observation)

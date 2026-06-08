@@ -10,7 +10,7 @@ FORCE_THREADING_ENV_MANAGER: bool = True
 """Set to True to prefer thread-based env managers even when GIL is active."""
 
 #### MODEL SET UP ####
-HIDDEN_STATE_SIZE = 4096
+HIDDEN_STATE_SIZE = 2048
 NUM_RNN_CELLS = 8
 LSTM_SIZE = int(HIDDEN_STATE_SIZE / (NUM_RNN_CELLS * 2))
 RNN_SIZES = [LSTM_SIZE] * NUM_RNN_CELLS
@@ -26,7 +26,14 @@ PB_C_BASE = 19652
 PB_C_INIT = 1.25
 DISCOUNT = 0.97
 TRAINING_STEPS = 1e10
-OBSERVATION_SIZE = 28946 # TFT-182: Embedding-based schema with champions, items, traits, origins, opponents
+
+# Resolve observation size dynamically based on installed/imported TFTSet4Gym schema
+try:
+    from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
+    OBSERVATION_SIZE = get_observation_schema("current_player").total_size
+except Exception:
+    OBSERVATION_SIZE = 28946  # Fallback
+
 OBSERVATION_TIME_STEPS = 1
 OBSERVATION_TIME_STEP_INTERVAL = 1
 ACTION_ENCODING_SIZE = 54  # sum(ACTION_DIM) = 7+37+10; matches 3-block variable-dim encoding
@@ -61,7 +68,7 @@ BATCH_SIZE = 128
 INIT_LEARNING_RATE = 0.001
 LEARNING_RATE_DECAY = int(350e3)
 LR_DECAY_FUNCTION = 0.1
-SYNC_STEPS = 100
+SYNC_STEPS = 200
 
 DEBUG = False
 CHECKPOINT_STEPS = 200
