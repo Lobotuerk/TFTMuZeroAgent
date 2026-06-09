@@ -29,9 +29,10 @@ def action_to_3d(action):
     from Models.action_conversion import action_3d_to_policy
     action_2d = np.atleast_2d(action)
     batch_size = action_2d.shape[0]
-    encoded = np.zeros((batch_size, 1, 111), dtype=np.float32)
+    policy_size = config.ACTION_CONCAT_SIZE
+    encoded = np.zeros((batch_size, 1, policy_size), dtype=np.float32)
     for i in range(batch_size):
-        encoded[i, 0, :] = action_3d_to_policy(action_2d[i], num_slots=37)
+        encoded[i, 0, :] = action_3d_to_policy(action_2d[i])
     return encoded
 
 def dict_to_cpu(dictionary):

@@ -84,10 +84,11 @@ class Trainer(object):
                 len(predictions), num_target_steps))
 
         accs = collections.defaultdict(list)
-        # Updated for TFTSet4Gym: policy shape is (batch, time_steps, 3, 37) 
-        # Flatten last two dims: 3 * 37 = 111
         target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, config.ACTION_CONCAT_SIZE)).to(device)
-        
+
+        dim_sizes = config.ACTION_DIM
+        block_offsets = [0] + list(np.cumsum(dim_sizes))
+
         # Initialize losses as tensors with proper shape
         batch_size = target_value.shape[0]
         value_loss = torch.zeros(batch_size, device=device)
@@ -104,10 +105,18 @@ class Trainer(object):
             value_loss += value_loss_step
 
             policy_logits_flat = policy_logits.view(policy_logits.shape[0], -1)
-            
+
             target_policy_normalized = target_policy[:, tstep]
-            policy_log_probs = torch.nn.functional.log_softmax(policy_logits_flat, dim=-1)
-            policy_loss += kl_loss_fn(policy_log_probs, target_policy_normalized)
+
+            step_policy_loss = torch.tensor(0.0, device=device)
+            for i in range(len(dim_sizes)):
+                s = block_offsets[i]
+                e = block_offsets[i + 1]
+                block_logits = policy_logits_flat[:, s:e]
+                block_target = target_policy_normalized[:, s:e]
+                block_log_probs = torch.nn.functional.log_softmax(block_logits, dim=-1)
+                step_policy_loss = step_policy_loss + kl_loss_fn(block_log_probs, block_target)
+            policy_loss = policy_loss + step_policy_loss
 
             accs['value_diff'].append(torch.abs(torch.squeeze(value) - target_value[:, tstep]))
 
