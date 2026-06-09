@@ -1,32 +1,41 @@
 import numpy as np
 from typing import List, Optional, Callable, Union
+import config
 
 
-def action_3d_to_policy(action_3d: Union[List[int], np.ndarray], num_slots: int = 37) -> np.ndarray:
+def _get_dim_sizes(dim_sizes: Optional[List[int]] = None) -> List[int]:
+    if dim_sizes is not None:
+        return dim_sizes
+    return config.ACTION_DIM
+
+
+def action_3d_to_policy(action_3d: Union[List[int], np.ndarray],
+                        dim_sizes: Optional[List[int]] = None) -> np.ndarray:
     """
     Convert a 3D action [action_type, target_1, target_2] to a policy vector.
 
-    The policy is a concatenation of three num_slots-sized one-hot blocks,
-    one for each dimension of the 3D action. With the default num_slots=37,
-    the resulting vector has 111 elements (3 * 37).
-
-    This matches the format expected by the MuZero trainer where policy_logits
-    has shape (batch, 3, 37) and gets flattened to (batch, 111).
+    The policy is a concatenation of one-hot blocks, one for each dimension
+    of the 3D action. Block sizes are determined by dim_sizes (default
+    config.ACTION_DIM = [7, 37, 10]), giving a total of 54 elements.
 
     Args:
         action_3d: 3-element list or array [action_type, target_1, target_2]
-        num_slots: Number of slots per dimension (default 37)
+        dim_sizes: Per-dimension block sizes (default config.ACTION_DIM)
 
     Returns:
-        numpy float32 array of shape (num_slots * 3,) with one-hot encoding
+        numpy float32 array of shape (sum(dim_sizes),) with one-hot encoding
     """
+    dims = _get_dim_sizes(dim_sizes)
     action = np.asarray(action_3d, dtype=np.int32).flatten()
-    total_size = num_slots * 3
+    total_size = sum(dims)
     policy = np.zeros(total_size, dtype=np.float32)
-    for i in range(3):
+    offset = 0
+    for i in range(len(dims)):
         idx = int(action[i])
-        if 0 <= idx < num_slots:
-            policy[i * num_slots + idx] = 1.0
+        bound = dims[i]
+        if 0 <= idx < bound:
+            policy[offset + idx] = 1.0
+        offset += bound
     return policy
 
 
@@ -63,8 +72,9 @@ def action_to_policy_if_needed(
     return np.zeros(1, dtype=np.float32)
 
 
-def make_action_converter(num_slots: int = 37) -> Callable:
-    """Create a converter callable with a specific num_slots value."""
+def make_action_converter(dim_sizes: Optional[List[int]] = None) -> Callable:
+    """Create a converter callable with specific dimension sizes."""
+    dims = _get_dim_sizes(dim_sizes)
     def converter(action_3d):
-        return action_3d_to_policy(action_3d, num_slots=num_slots)
+        return action_3d_to_policy(action_3d, dim_sizes=dims)
     return converter

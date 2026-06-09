@@ -70,8 +70,8 @@ class MuZeroAgent(BaseAgent):
             self.load_weights_from_state_dict(weights)
         
         # Initialize Enhanced MCTS with action dimensions from schema/config
-        # For TFTSet4Gym: ACTION_DIM = [7, 37, 10], so policy_size should accommodate the action space
-        policy_size = self.action_limits[1] * self.action_size if len(self.action_limits) > 1 else sum(self.action_limits)
+        # For TFTSet4Gym: ACTION_DIM = [7, 37, 10], so policy_size = sum(ACTION_DIM) = 54
+        policy_size = sum(self.action_limits)
         
         self.mcts = EnhancedMCTS(
             sample_size=80,
