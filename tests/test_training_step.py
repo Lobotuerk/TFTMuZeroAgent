@@ -49,7 +49,7 @@ def test_training_step():
         actions = np.random.randint(0, 10, (batch_size, unroll_steps-1, 3)).astype(np.float32)
         values = np.random.rand(batch_size, unroll_steps).astype(np.float32)
         rewards = np.random.rand(batch_size, unroll_steps).astype(np.float32)
-        policies = np.random.rand(batch_size, unroll_steps, 111).astype(np.float32)
+        policies = np.random.rand(batch_size, unroll_steps, config.ACTION_CONCAT_SIZE).astype(np.float32)
         
         batch = (observations, actions, values, rewards, policies)
         

@@ -38,7 +38,7 @@ def test_muzero_compatibility():
         # Check output shapes
         print("4. Checking output compatibility...")
         policy_shape = outputs["policy_logits"].shape
-        expected_shape = (batch_size, 3, 37)  # Corrected for TFTSet4Gym: ACTION_DIM = [7, 37, 10]
+        expected_shape = (batch_size, config.ACTION_CONCAT_SIZE)
         
         print(f"   - Policy shape: {policy_shape}")
         print(f"   - Expected shape: {expected_shape}")
@@ -46,16 +46,16 @@ def test_muzero_compatibility():
         print(f"   - Hidden state shape: {outputs['hidden_state'].shape}")
         
         if policy_shape == expected_shape:
-            print("   ✓ Policy shape matches TFTSet4Gym Enhanced MCTS requirements")
+            print("   ✓ Policy shape matches concatenated 3-block variable-dim format")
             
             # Test Enhanced MCTS creation with this network
             print("5. Testing Enhanced MCTS integration...")
-            action_limits = [7, 37, 10]  # Corrected for TFTSet4Gym config
+            action_limits = config.ACTION_DIM
             mcts = EnhancedMCTS(
                 sample_size=16,
-                action_size=3,  # 3 action dimensions
+                action_size=3,
                 action_limits=action_limits,
-                policy_size=111,  # 3 * 37
+                policy_size=config.ACTION_CONCAT_SIZE,
                 network=model
             )
             print("   ✓ Enhanced MCTS created successfully with MuZero model")
