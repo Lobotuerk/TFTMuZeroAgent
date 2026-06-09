@@ -56,8 +56,8 @@ def test_muzero_trainer():
         # Rewards: (batch_size, unroll_steps)
         rewards = np.random.rand(batch_size, unroll_steps).astype(np.float32)
         
-        # Policies: (batch_size, unroll_steps, 111) - flattened TFTSet4Gym policy
-        policies = np.random.rand(batch_size, unroll_steps, 111).astype(np.float32)
+        # Policies: (batch_size, unroll_steps, concat_size) - 3-block variable-dim policy
+        policies = np.random.rand(batch_size, unroll_steps, config.ACTION_CONCAT_SIZE).astype(np.float32)
         
         batch = (observations, actions, values, rewards, policies)
         
@@ -133,7 +133,7 @@ def test_muzero_trainer():
         print("✅ Trainer initialization working")
         print("✅ Model compatibility verified")
         print("✅ TFTSet4Gym data shapes handled correctly")
-        print("✅ Policy shape (3, 37) → (111,) flattening working")
+        print("✅ Policy shape (3-block variable dim) accepted")
         print("✅ Value loss uses MSE (L1→MSE upgrade)")
         print("✅ Loss computation framework ready")
         print("✅ Optimizer integration working")

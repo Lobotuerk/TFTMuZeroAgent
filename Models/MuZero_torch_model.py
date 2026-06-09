@@ -29,10 +29,17 @@ def action_to_3d(action):
     from Models.action_conversion import action_3d_to_policy
     action_2d = np.atleast_2d(action)
     batch_size = action_2d.shape[0]
-    policy_size = config.ACTION_CONCAT_SIZE
-    encoded = np.zeros((batch_size, 1, policy_size), dtype=np.float32)
+<<<<<<< HEAD
+    total_size = sum(config.ACTION_DIM)
+    encoded = np.zeros((batch_size, 1, total_size), dtype=np.float32)
     for i in range(batch_size):
-        encoded[i, 0, :] = action_3d_to_policy(action_2d[i])
+        encoded[i, 0, :] = action_3d_to_policy(action_2d[i], action_dims=config.ACTION_DIM)
+=======
+    total_size = sum(config.ACTION_DIM)
+    encoded = np.zeros((batch_size, 1, total_size), dtype=np.float32)
+    for i in range(batch_size):
+        encoded[i, 0, :] = action_3d_to_policy(action_2d[i], action_dims=config.ACTION_DIM)
+>>>>>>> 828c058 (feat: satisfy spec for TFT-180)
     return encoded
 
 def dict_to_cpu(dictionary):
@@ -270,7 +277,7 @@ class PredNetwork(torch.nn.Module):
         self.policy_dense1 = torch.nn.Linear(layer_size, layer_size)
         self.policy_dense2 = torch.nn.Linear(layer_size, layer_size)
         self.policy_dense3 = torch.nn.Linear(layer_size, layer_size)
-        self.policy_dense4 = torch.nn.Linear(layer_size, config.ACTION_CONCAT_SIZE)  # 3 action dims * 37 max actions per dim
+        self.policy_dense4 = torch.nn.Linear(layer_size, config.ACTION_CONCAT_SIZE)  # sum(ACTION_DIM)=7+37+10=54
         self.ln_p1 = torch.nn.LayerNorm(layer_size)
         self.ln_p2 = torch.nn.LayerNorm(layer_size)
         self.ln_p3 = torch.nn.LayerNorm(layer_size)

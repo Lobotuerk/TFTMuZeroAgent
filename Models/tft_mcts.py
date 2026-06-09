@@ -12,6 +12,7 @@ import random
 import torch
 import threading
 from typing import List, Dict, Any, Optional, Tuple, Union
+from Models.action_conversion import action_3d_to_policy
 import sys
 import os
 
@@ -110,10 +111,11 @@ class TFTMove(MCTS_MoveBase):
             
         return [int(a_type), int(self.target_1), int(self.target_2)]
 
-    def to_numpy(self) -> np.ndarray:
-        from Models.action_conversion import action_3d_to_policy
+   def to_numpy(self) -> List[float]:
+        """Convert move to one-hot numpy array for neural network processing."""
         env_action = self.to_env_action()
-        return action_3d_to_policy(env_action)
+        policy = action_3d_to_policy(env_action, action_dims=config.ACTION_DIM)
+        return policy.tolist()
 
 
 _GLOBAL_MOVES_CACHE = {}
@@ -357,33 +359,28 @@ class TFTState(MCTS_StateBase):
         if self.policy is None:
             return [1.0 / len(moves)] * len(moves)
 
-        dim_sizes = config.ACTION_DIM
-        block_offsets = np.cumsum([0] + list(dim_sizes))
-
+       # Split policy into 3 independent softmax distributions per ACTION_DIM
+        dims = config.ACTION_DIM
+        blocks = np.split(np.asarray(self.policy, dtype=np.float64), np.cumsum(dims[:-1]))
         block_probs = []
-        for i in range(len(dim_sizes)):
-            start = block_offsets[i]
-            end = block_offsets[i + 1]
-            block_logits = self.policy[start:end].astype(np.float64)
-            block_logits = block_logits - np.max(block_logits)
-            block_exp = np.exp(block_logits)
-            block_probs.append(block_exp / block_exp.sum())
+        for block in blocks:
+            b = block - np.max(block)
+            exp_b = np.exp(b)
+            block_probs.append(exp_b / np.sum(exp_b))
 
-        scores = np.ones(len(moves), dtype=np.float64)
+        # Compute joint probability for each move
+        scores = np.zeros(len(moves), dtype=np.float64)
         for i, move in enumerate(moves):
-            try:
-                env_action = move.to_env_action()
-                prob = 1.0
-                for j in range(len(dim_sizes)):
-                    idx = int(env_action[j])
-                    probs_j = block_probs[j]
-                    if 0 <= idx < len(probs_j):
-                        prob *= probs_j[idx]
-                    else:
-                        prob = 0.0
-                scores[i] = prob
-            except (ValueError, IndexError, TypeError):
-                scores[i] = 0.0
+            env_action = move.to_env_action()
+            prob = 1.0
+            for j in range(3):
+                idx = int(env_action[j])
+                if 0 <= idx < dims[j]:
+                    prob *= block_probs[j][idx]
+                else:
+                    prob = 0.0
+                    break
+            scores[i] = prob
 
         total = scores.sum()
         if total > 0:

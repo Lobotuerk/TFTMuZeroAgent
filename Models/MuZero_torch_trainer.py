@@ -84,11 +84,12 @@ class Trainer(object):
                 len(predictions), num_target_steps))
 
         accs = collections.defaultdict(list)
+        # Policy is a concatenation of 3 independent blocks per ACTION_DIM
         target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, config.ACTION_CONCAT_SIZE)).to(device)
-
-        dim_sizes = config.ACTION_DIM
-        block_offsets = [0] + list(np.cumsum(dim_sizes))
-
+        
+        # Precompute split indices from ACTION_DIM
+        dims = list(config.ACTION_DIM)
+        
         # Initialize losses as tensors with proper shape
         batch_size = target_value.shape[0]
         value_loss = torch.zeros(batch_size, device=device)
@@ -104,24 +105,22 @@ class Trainer(object):
             value_loss_step = MSE_loss(value.squeeze(), target_value[:, tstep])
             value_loss += value_loss_step
 
-            policy_logits_flat = policy_logits.view(policy_logits.shape[0], -1)
+           # Split logits and targets into 3 independent blocks
+            logits_flat = policy_logits.view(policy_logits.shape[0], -1)
+            logits_blocks = torch.split(logits_flat, dims, dim=-1)
+            target_blocks = torch.split(target_policy[:, tstep], dims, dim=-1)
 
-            target_policy_normalized = target_policy[:, tstep]
-
-            step_policy_loss = torch.tensor(0.0, device=device)
-            for i in range(len(dim_sizes)):
-                s = block_offsets[i]
-                e = block_offsets[i + 1]
-                block_logits = policy_logits_flat[:, s:e]
-                block_target = target_policy_normalized[:, s:e]
-                block_log_probs = torch.nn.functional.log_softmax(block_logits, dim=-1)
-                step_policy_loss = step_policy_loss + kl_loss_fn(block_log_probs, block_target)
-            policy_loss = policy_loss + step_policy_loss
+            # Compute per-block KL divergence and sum them
+            block_kl = []
+            for block_logits, block_target in zip(logits_blocks, target_blocks):
+                log_probs = torch.nn.functional.log_softmax(block_logits, dim=-1)
+                block_kl.append(kl_loss_fn(log_probs, block_target))
+            policy_loss += sum(block_kl)
 
             accs['value_diff'].append(torch.abs(torch.squeeze(value) - target_value[:, tstep]))
 
             accs['value'].append(torch.squeeze(value))
-            accs['policy'].append(torch.squeeze(policy_logits_flat))
+            accs['policy'].append(torch.squeeze(logits_flat))
 
             accs['target_value'].append(target_value[:, tstep])
             accs['target_policy'].append(target_policy[:, tstep])
