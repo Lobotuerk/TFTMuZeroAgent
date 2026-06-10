@@ -114,10 +114,7 @@ Models/*.zip
 suggestions.py
 libdevice.10.bc
 
-# C/C++ build artifacts
-core/build/
-core/ctree/build/
-core/ctree/cytree.cpp
-core/ctree/cytree.cpython-*
-core/ctree/*.so
-core/ctree/*.pyddata/
+# Codegraph
+.codegraph/
+
+

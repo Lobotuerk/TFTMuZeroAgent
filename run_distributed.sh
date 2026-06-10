@@ -64,7 +64,7 @@ PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mo
 # Give the evaluator a second to spawn
 sleep 2
 
-# 3. Start 4 self-play Collection Workers
+# 3. Start 6 self-play Collection Workers
 for i in {1..6}
 do
     echo "============================================================"
