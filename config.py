@@ -26,7 +26,7 @@ PB_C_BASE = 19652
 PB_C_INIT = 1.25
 DISCOUNT = 0.97
 TRAINING_STEPS = 1e10
-OBSERVATION_SIZE = 1804 # Reduced: board retains (58,4,7)+(1,4,7)+(1,4,7); bench, shop & scalars are flat 1D
+OBSERVATION_SIZE = 28946 # TFT-182: Embedding-based schema with champions, items, traits, origins, opponents
 OBSERVATION_TIME_STEPS = 1
 OBSERVATION_TIME_STEP_INTERVAL = 1
 ACTION_ENCODING_SIZE = 54  # sum(ACTION_DIM) = 7+37+10; matches 3-block variable-dim encoding
