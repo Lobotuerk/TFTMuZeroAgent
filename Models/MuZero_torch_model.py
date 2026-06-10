@@ -385,87 +385,59 @@ class RepNetwork(torch.nn.Module):
         self.ln4 = torch.nn.LayerNorm(hidden)
         self.ln5 = torch.nn.LayerNorm(hidden)
 
-    def _extract_champion_id(self, slot_vector: torch.Tensor) -> int:
-        """Extract champion ID from a normalized slot vector."""
-        normalized_id = slot_vector[0].item()
-        return int(round(normalized_id * (NUM_CHAMPIONS - 1)))
+    def _extract_champion_id(self, slot_vector: torch.Tensor) -> torch.Tensor:
+        """Extract champion ID from a normalized slot vector for a batch."""
+        normalized_id = slot_vector[:, 0]
+        return torch.round(normalized_id * (NUM_CHAMPIONS - 1)).long()
 
-    def _extract_item_id(self, slot_vector: torch.Tensor, slot_idx: int) -> int:
-        """Extract item ID from a normalized slot vector."""
-        normalized_id = slot_vector[1 + slot_idx].item()
-        return int(round(normalized_id * (NUM_ITEMS - 1)))
+    def _extract_item_id(self, slot_vector: torch.Tensor, slot_idx: int) -> torch.Tensor:
+        """Extract item ID from a normalized slot vector for a batch."""
+        normalized_id = slot_vector[:, 1 + slot_idx]
+        return torch.round(normalized_id * (NUM_ITEMS - 1)).long()
 
-    def _extract_trait_id(self, slot_vector: torch.Tensor, trait_idx: int) -> int:
-        """Extract trait ID from a normalized slot vector."""
-        normalized_id = slot_vector[4 + trait_idx].item()
-        return int(round(normalized_id * (NUM_TRAITS - 1)))
+    def _extract_trait_id(self, slot_vector: torch.Tensor, trait_idx: int) -> torch.Tensor:
+        """Extract trait ID from a normalized slot vector for a batch."""
+        normalized_id = slot_vector[:, 4 + trait_idx]
+        return torch.round(normalized_id * (NUM_TRAITS - 1)).long()
 
-    def _extract_origin_id(self, slot_vector: torch.Tensor, origin_idx: int) -> int:
-        """Extract origin ID from a normalized slot vector."""
-        normalized_id = slot_vector[6 + origin_idx].item()
-        return int(round(normalized_id * (NUM_ORIGINS - 1)))
+    def _extract_origin_id(self, slot_vector: torch.Tensor, origin_idx: int) -> torch.Tensor:
+        """Extract origin ID from a normalized slot vector for a batch."""
+        normalized_id = slot_vector[:, 6 + origin_idx]
+        return torch.round(normalized_id * (NUM_ORIGINS - 1)).long()
 
     def _encode_slot(self, slot_vector: torch.Tensor) -> torch.Tensor:
-        """Apply embedding lookups for a single board/bench slot."""
-        # Check for empty slot (all zeros)
-        if slot_vector.abs().sum() < 1e-6:
-            zero_embed = (
-                torch.zeros(1, CHAMPION_EMBED_DIM, device=slot_vector.device) +
-                self.champion_embedding.weight.mean() * 0
-            )
-            three_items = torch.zeros(1, 3 * ITEM_EMBED_DIM, device=slot_vector.device)
-            traits_embed = torch.zeros(1, TRAIT_EMBED_DIM, device=slot_vector.device)
-            origins_embed = torch.zeros(1, ORIGIN_EMBED_DIM, device=slot_vector.device)
-        else:
-            # Get champion ID and apply embedding
-            champ_id = self._extract_champion_id(slot_vector)
-            champ_id = torch.tensor([champ_id], device=slot_vector.device)
-            champ_embed = self.champion_embedding(champ_id)  # (1, 32)
+        """Apply embedding lookups for a single board/bench slot across a batch."""
+        # Mask of active slots: shape (batch, 1)
+        active_mask = (slot_vector.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
 
-            # Get item IDs and apply embeddings
-            item_ids = []
-            for i in range(3):
-                item_id = self._extract_item_id(slot_vector, i)
-                item_ids.append(item_id)
-            item_ids_tensor = torch.tensor(item_ids, device=slot_vector.device)
-            item_embed = self.item_embedding(item_ids_tensor)  # (3, 24)
+        # Get champion ID and apply embedding
+        champ_id = self._extract_champion_id(slot_vector)
+        champ_embed = self.champion_embedding(champ_id) * active_mask  # (batch, 32)
 
-            # Get trait IDs and apply embeddings
-            trait_ids = []
-            for i in range(2):
-                trait_id = self._extract_trait_id(slot_vector, i)
-                trait_ids.append(trait_id)
-            trait_ids_tensor = torch.tensor(trait_ids, device=slot_vector.device)
-            traits_embed = self.trait_embedding(trait_ids_tensor)  # (2, 8)
+        # Get item IDs and apply embeddings
+        item_embeds = []
+        for i in range(3):
+            item_id = self._extract_item_id(slot_vector, i)
+            item_embeds.append(self.item_embedding(item_id))  # each (batch, 24)
+        three_items = torch.cat(item_embeds, dim=1) * active_mask  # (batch, 72)
 
-            # Get origin IDs and apply embeddings
-            origin_ids = []
-            for i in range(2):
-                origin_id = self._extract_origin_id(slot_vector, i)
-                origin_ids.append(origin_id)
-            origin_ids_tensor = torch.tensor(origin_ids, device=slot_vector.device)
-            origins_embed = self.origin_embedding(origin_ids_tensor)  # (2, 8)
+        # Get trait IDs and apply embeddings
+        trait_embeds = []
+        for i in range(2):
+            trait_id = self._extract_trait_id(slot_vector, i)
+            trait_embeds.append(self.trait_embedding(trait_id))  # each (batch, 8)
+        traits_embed = (trait_embeds[0] + trait_embeds[1]) * active_mask  # (batch, 8)
 
-            # Sum trait embeddings (handle varying number of traits)
-            if traits_embed.shape[0] == 2:
-                trait_sum = traits_embed.sum(dim=0, keepdim=True)  # (1, 8)
-            else:
-                trait_sum = traits_embed.sum(dim=0, keepdim=True)
-
-            # Sum origin embeddings
-            if origins_embed.shape[0] == 2:
-                origin_sum = origins_embed.sum(dim=0, keepdim=True)  # (1, 8)
-            else:
-                origin_sum = origins_embed.sum(dim=0, keepdim=True)
-
-            champ_embed = champ_embed.view(1, CHAMPION_EMBED_DIM)
-            three_items = item_embed.view(1, 3 * ITEM_EMBED_DIM)
-            traits_embed = trait_sum
-            origins_embed = origin_sum
+        # Get origin IDs and apply embeddings
+        origin_embeds = []
+        for i in range(2):
+            origin_id = self._extract_origin_id(slot_vector, i)
+            origin_embeds.append(self.origin_embedding(origin_id))  # each (batch, 8)
+        origins_embed = (origin_embeds[0] + origin_embeds[1]) * active_mask  # (batch, 8)
 
         # Concatenate: champ(32) + items(72) + traits(8) + origins(8) + star(1) + chosen(1) = 122
-        star_level = slot_vector[8:9]
-        chosen_flag = slot_vector[9:10]
+        star_level = slot_vector[:, 8:9] * active_mask
+        chosen_flag = slot_vector[:, 9:10] * active_mask
         slot_embed = torch.cat([champ_embed, three_items, traits_embed,
                                 origins_embed, star_level, chosen_flag], dim=1)
         return slot_embed
@@ -503,27 +475,27 @@ class RepNetwork(torch.nn.Module):
         bench_item_shape = x[:, offset:offset + BENCH_ITEM_DIM].view(
             -1, BENCH_ITEM_SLOTS, ITEM_EMBED_DIM)
         offset += BENCH_ITEM_DIM
-        bench_item_ids = []
+        bench_item_embeds = []
         for slot in range(BENCH_ITEM_SLOTS):
-            item_id = self._extract_item_id(bench_item_shape[:, slot, :], 0)
-            item_id = torch.tensor([item_id], device=device)
-            bench_item_ids.append(item_id)
-        bench_item_ids_tensor = torch.stack(bench_item_ids, dim=0)  # (10,)
-        bench_items_embed = self.item_embedding(bench_item_ids_tensor)  # (10, 24)
-        bench_items_repr = bench_items_embed.view(-1, BENCH_ITEM_DIM)
+            slot_vec = bench_item_shape[:, slot, :]  # (batch, 24)
+            active_mask = (slot_vec.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
+            item_id = torch.round(slot_vec[:, 0] * (NUM_ITEMS - 1)).long()
+            item_embed = self.item_embedding(item_id) * active_mask  # (batch, 24)
+            bench_item_embeds.append(item_embed)
+        bench_items_repr = torch.cat(bench_item_embeds, dim=1)  # (batch, 10*24=240)
 
         # 4. Shop champions: (batch, 5, 32) - champion indices in first dim, embed
         shop_shape = x[:, offset:offset + SHOP_CHAMP_DIM].view(
             -1, SHOP_CHAMP_SLOTS, CHAMPION_EMBED_DIM)
         offset += SHOP_CHAMP_DIM
-        shop_champ_ids = []
+        shop_champ_embeds = []
         for slot in range(SHOP_CHAMP_SLOTS):
-            champ_id = self._extract_champion_id(shop_shape[:, slot, :])
-            champ_id = torch.tensor([champ_id], device=device)
-            shop_champ_ids.append(champ_id)
-        shop_champ_ids_tensor = torch.stack(shop_champ_ids, dim=0)
-        shop_champs_embed = self.champion_embedding(shop_champ_ids_tensor)
-        shop_champs_repr = shop_champs_embed.view(-1, SHOP_CHAMP_DIM)
+            slot_vec = shop_shape[:, slot, :]  # (batch, 32)
+            active_mask = (slot_vec.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
+            champ_id = torch.round(slot_vec[:, 0] * (NUM_CHAMPIONS - 1)).long()
+            champ_embed = self.champion_embedding(champ_id) * active_mask  # (batch, 32)
+            shop_champ_embeds.append(champ_embed)
+        shop_champs_repr = torch.cat(shop_champ_embeds, dim=1)  # (batch, 5*32=160)
 
         # 5. Shop chosen: scalar
         shop_chosen = x[:, offset:offset + SHOP_CHOSEN_DIM]

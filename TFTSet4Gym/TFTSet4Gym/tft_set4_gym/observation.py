@@ -101,15 +101,20 @@ class Observation:
         for player_id in players:
             other_player = players[player_id]
             if other_player != cur_player:
-                other_player_vector = np.zeros((26,6,10))
+                other_player_vector = np.zeros((26, 6, 10))
                 if other_player:
                     other_player_vector = other_player.player_public_vector
-                # other_player.board_vector,
-                # other_player.bench_vector,
-                # other_player.chosen_vector,
-                # other_player.item_vector,
                 self.other_player_observations[player_id] = other_player_vector
         self.turn_since_update = 0
+
+    def build_full_observation(self, player_id: str, player, players: dict,
+                                shop_vector=None) -> dict:
+        """Build observation including opponent data using the new schema.
+
+        Returns a dict with 'tensor' and 'action_mask' keys, where the tensor
+        includes opponent_boards and opponent_info fields.
+        """
+        return self.builder.build_full_observation(player_id, player, players, shop_vector)
 
     """
     Description - Generates the vector for a comp tier for a given player. This is equal to the game compositions bar 
@@ -135,15 +140,13 @@ class Observation:
                     player who the shop belongs to.
     '''
     def generate_shop_vector(self, shop, player):
-        # Flat shop vector matching the new observation schema:
-        #   shop_champions: indices [0:58) = champion type counts (58,)
-        #   shop_chosen:    index  58    = chosen champion index (1,)
+        # 1D vector: [0:58] champion counts, [58] chosen champion index
         output_array = np.zeros(59)
         shop_chosen = False
         chosen_shop_index = -1
         chosen_shop = ''
         shop_costs = np.zeros((5, 1))
-        shop_counts = np.zeros((58,))
+        shop_counts = np.zeros((58,1))
         shop_elems = np.zeros((5, 1))
         for x in range(0, len(shop)):
             if shop[x] != " ":
@@ -172,10 +175,20 @@ class Observation:
             # Input chosen mechanics once I go back and update the chosen mechanics.
             self.shop_mask[x] = 0
         if shop_chosen:
+            # if shop_chosen == 'the':
+            #     shop_chosen = 'the_boss'
+            # c_index = list(team_traits.keys()).index(shop_chosen)
+            # # This should update the item name section of the vector
+            # for z in range(5, 0, -1):
+            #     if c_index > 2 * z:
+            #         # output_array[45 - z] = 1
+            #         c_index -= 2 * z
             shop[chosen_shop_index] = chosen_shop
 
         player.shop_costs = shop_costs
         player.shop_elems = shop_elems
+
+        # print(player.player_num, " has ", player.shop_elems, " = ", shop)
 
         for idx, cost in enumerate(player.shop_costs):
             if player.gold < cost or cost == 0:
@@ -186,7 +199,7 @@ class Observation:
         if player.bench_full():
             self.shop_mask = np.zeros(5)
 
-        output_array[0:58] = shop_counts
+        output_array[:58] = shop_counts.flatten()
         if chosen_shop != '':
             output_array[58] = list(COST.keys()).index(chosen_shop.split('_')[0]) - 1
 

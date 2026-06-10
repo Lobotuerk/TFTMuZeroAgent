@@ -111,7 +111,7 @@ class TFTMove(MCTS_MoveBase):
             
         return [int(a_type), int(self.target_1), int(self.target_2)]
 
-   def to_numpy(self) -> List[float]:
+    def to_numpy(self) -> List[float]:
         """Convert move to one-hot numpy array for neural network processing."""
         env_action = self.to_env_action()
         policy = action_3d_to_policy(env_action, action_dims=config.ACTION_DIM)
