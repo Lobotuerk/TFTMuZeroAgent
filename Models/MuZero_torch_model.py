@@ -386,24 +386,32 @@ class RepNetwork(torch.nn.Module):
         self.ln5 = torch.nn.LayerNorm(hidden)
 
     def _extract_champion_id(self, slot_vector: torch.Tensor) -> torch.Tensor:
-        """Extract champion ID from a normalized slot vector for a batch."""
-        normalized_id = slot_vector[:, 0]
-        return torch.round(normalized_id * (NUM_CHAMPIONS - 1)).long()
+        """Extract champion ID from slot vector for a batch."""
+        return torch.clamp(torch.round(slot_vector[:, 0]).long(), 0, NUM_CHAMPIONS - 1)
 
     def _extract_item_id(self, slot_vector: torch.Tensor, slot_idx: int) -> torch.Tensor:
-        """Extract item ID from a normalized slot vector for a batch."""
-        normalized_id = slot_vector[:, 1 + slot_idx]
-        return torch.round(normalized_id * (NUM_ITEMS - 1)).long()
+        """Extract item ID from slot vector for a batch."""
+        # item 0 at index 32, item 1 at 56, item 2 at 80
+        item_val = slot_vector[:, 32 + (slot_idx * 24)]
+        return torch.clamp(torch.round(item_val).long(), 0, NUM_ITEMS - 1)
 
     def _extract_trait_id(self, slot_vector: torch.Tensor, trait_idx: int) -> torch.Tensor:
-        """Extract trait ID from a normalized slot vector for a batch."""
-        normalized_id = slot_vector[:, 4 + trait_idx]
-        return torch.round(normalized_id * (NUM_TRAITS - 1)).long()
+        """Extract trait ID from slot vector for a batch."""
+        # trait 0 at index 104, trait_idx == 1 is not used under 122-dim layout
+        if trait_idx == 0:
+            val = slot_vector[:, 104]
+        else:
+            val = torch.zeros_like(slot_vector[:, 104])
+        return torch.clamp(torch.round(val).long(), 0, NUM_TRAITS - 1)
 
     def _extract_origin_id(self, slot_vector: torch.Tensor, origin_idx: int) -> torch.Tensor:
-        """Extract origin ID from a normalized slot vector for a batch."""
-        normalized_id = slot_vector[:, 6 + origin_idx]
-        return torch.round(normalized_id * (NUM_ORIGINS - 1)).long()
+        """Extract origin ID from slot vector for a batch."""
+        # origin 0 at index 112, origin_idx == 1 is not used under 122-dim layout
+        if origin_idx == 0:
+            val = slot_vector[:, 112]
+        else:
+            val = torch.zeros_like(slot_vector[:, 112])
+        return torch.clamp(torch.round(val).long(), 0, NUM_ORIGINS - 1)
 
     def _encode_slot(self, slot_vector: torch.Tensor) -> torch.Tensor:
         """Apply embedding lookups for a single board/bench slot across a batch."""
@@ -436,8 +444,8 @@ class RepNetwork(torch.nn.Module):
         origins_embed = (origin_embeds[0] + origin_embeds[1]) * active_mask  # (batch, 8)
 
         # Concatenate: champ(32) + items(72) + traits(8) + origins(8) + star(1) + chosen(1) = 122
-        star_level = slot_vector[:, 8:9] * active_mask
-        chosen_flag = slot_vector[:, 9:10] * active_mask
+        star_level = slot_vector[:, 120:121] * active_mask
+        chosen_flag = slot_vector[:, 121:122] * active_mask
         slot_embed = torch.cat([champ_embed, three_items, traits_embed,
                                 origins_embed, star_level, chosen_flag], dim=1)
         return slot_embed
@@ -479,7 +487,7 @@ class RepNetwork(torch.nn.Module):
         for slot in range(BENCH_ITEM_SLOTS):
             slot_vec = bench_item_shape[:, slot, :]  # (batch, 24)
             active_mask = (slot_vec.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
-            item_id = torch.round(slot_vec[:, 0] * (NUM_ITEMS - 1)).long()
+            item_id = torch.clamp(torch.round(slot_vec[:, 0]).long(), 0, NUM_ITEMS - 1)
             item_embed = self.item_embedding(item_id) * active_mask  # (batch, 24)
             bench_item_embeds.append(item_embed)
         bench_items_repr = torch.cat(bench_item_embeds, dim=1)  # (batch, 10*24=240)
@@ -492,7 +500,7 @@ class RepNetwork(torch.nn.Module):
         for slot in range(SHOP_CHAMP_SLOTS):
             slot_vec = shop_shape[:, slot, :]  # (batch, 32)
             active_mask = (slot_vec.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
-            champ_id = torch.round(slot_vec[:, 0] * (NUM_CHAMPIONS - 1)).long()
+            champ_id = torch.clamp(torch.round(slot_vec[:, 0]).long(), 0, NUM_CHAMPIONS - 1)
             champ_embed = self.champion_embedding(champ_id) * active_mask  # (batch, 32)
             shop_champ_embeds.append(champ_embed)
         shop_champs_repr = torch.cat(shop_champ_embeds, dim=1)  # (batch, 5*32=160)

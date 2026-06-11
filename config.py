@@ -36,14 +36,13 @@ except Exception:
 
 OBSERVATION_TIME_STEPS = 1
 OBSERVATION_TIME_STEP_INTERVAL = 1
-ACTION_ENCODING_SIZE = 54  # sum(ACTION_DIM) = 7+37+10; matches 3-block variable-dim encoding
-ACTION_CONCAT_SIZE = 54
-ACTION_DIM = [7, 37, 10]
+ACTION_ENCODING_SIZE = 55  # sum(ACTION_DIM) = 7+37+10; matches 3-block variable-dim encoding
+ACTION_CONCAT_SIZE = 55
+ACTION_DIM = [8, 37, 10]
 ACTION_ENCODING_SIZE = sum(ACTION_DIM)  # Must match ACTION_CONCAT_SIZE for one-hot action encoding in DynNetwork
 ACTION_CONCAT_SIZE = sum(ACTION_DIM)
 
 POLICY_HEAD_SIZES = [1624+1+1+58+58+1]  # [All probabble actions without items]
-NEEDS_2ND_DIM = [1, 2, 3, 4]
 
 # ACTION_DIM = 10
 ENCODER_NUM_STEPS = 601
