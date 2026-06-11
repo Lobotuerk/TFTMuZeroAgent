@@ -14,177 +14,163 @@ from TFTSet4Gym.tft_set4_gym.observation_builder import get_field_value_from_obs
 from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
 from Models.replay_buffer import ReplayBuffer
 
+# Legacy field names mapped to player_state index
+# player_state = [health, gold, level, round, exp_to_level, streak, turns_for_combat]
+PLAYER_STATE_LEGACY_MAP = {
+    'health': 0,
+    'gold': 1,
+    'level': 2,
+    'round': 3,
+    'exp_to_level': 4,
+    'streak': 5,
+    'turns_for_combat': 6,
+}
+
 
 def extract_field_from_observation(observation, field_name):
-    """
-    Extract a specific field from an observation using the new schema system.
-    """
     if isinstance(observation, dict) and field_name in observation:
         val = observation[field_name]
+    elif field_name in PLAYER_STATE_LEGACY_MAP:
+        player_state = get_field_value_from_obs(
+            observation['tensor'] if isinstance(observation, dict) and 'tensor' in observation else observation,
+            'player_state'
+        )
+        idx = PLAYER_STATE_LEGACY_MAP[field_name]
+        val = player_state.flat[idx]
+        return float(val)
     else:
-        # If it's a dict but doesn't have the field at top level, it might be in 'tensor'
         obs_to_extract = observation
         if isinstance(observation, dict) and 'tensor' in observation:
             obs_to_extract = observation['tensor']
         val = get_field_value_from_obs(obs_to_extract, field_name)
-    
-    # Normalize: squeeze any leading dimensions of size 1 (batch dimension)
+
     if isinstance(val, np.ndarray) and val.ndim > 0 and val.shape[0] == 1:
         val = np.squeeze(val, axis=0)
-    
-    # Handle tiled scalar fields by returning proper scalar values
-    if field_name in ['gold', 'level', 'health', 'turns_for_combat', 'streak', 'round']:
+
+    if field_name in PLAYER_STATE_LEGACY_MAP:
         if isinstance(val, np.ndarray):
             if val.size > 0:
                 return val.flat[0]
             else:
-                # If field is missing or empty, it should probably be an error now
                 raise ValueError(f"Field {field_name} is empty in observation")
-    
+
     return val
 
 
 def get_board_units_from_observation(observation):
-    """Extract board units using new schema system."""
-    # Handle dictionary observations from parallel_env
     if isinstance(observation, dict):
         observation = observation.get('tensor', observation)
-    
-    # Use new schema-based extraction
-    board_champions = extract_field_from_observation(observation, 'board_champions')
-    board_stars = extract_field_from_observation(observation, 'board_stars')
-    board_chosen = extract_field_from_observation(observation, 'board_chosen')
-    
-    if board_champions is not None and board_stars is not None:
-        return _parse_board_from_fields(board_champions, board_stars, board_chosen)
-    
+
+    board = extract_field_from_observation(observation, 'board')
+    if board is not None:
+        return _parse_board_from_fields(board)
     return []
 
 
 def get_bench_units_from_observation(observation):
-    """Extract bench units using new schema system."""
-    # Handle dictionary observations from parallel_env
     if isinstance(observation, dict):
         observation = observation.get('tensor', observation)
-    
+
     bench_champions = extract_field_from_observation(observation, 'bench_champions')
     if bench_champions is not None:
         return _parse_bench_from_field(bench_champions)
-    
     return []
 
 
 def get_shop_units_from_observation(observation):
-    """Extract shop units using new schema system."""
-    # Handle dictionary observations from parallel_env
     if isinstance(observation, dict):
         observation = observation.get('tensor', observation)
-    
-    shop_champions = extract_field_from_observation(observation, 'shop_champions')
+
+    shop = extract_field_from_observation(observation, 'shop')
     shop_chosen = extract_field_from_observation(observation, 'shop_chosen')
-    if shop_champions is not None:
-        return _parse_shop_from_fields(shop_champions, shop_chosen)
-    
+    if shop is not None:
+        return _parse_shop_from_fields(shop, shop_chosen)
     return [" "] * 5
 
 
-def _parse_board_from_fields(board_champions, board_stars, board_chosen):
-    """Parse board units from schema fields."""
+def _decode_champion_name(champion_index):
+    champion_index = int(round(champion_index))
+    if champion_index < 0 or champion_index + 1 >= len(COST.keys()):
+        return None
+    return list(COST.keys())[champion_index + 1]
+
+
+def _parse_board_from_fields(board):
     champs = []
-    if board_champions.ndim == 3:  # (58, 4, 7) format
-        for i, unit_board in enumerate(board_champions):
-            indexes = np.where(unit_board == 1.0)
-            if len(indexes[0]) > 0 and len(indexes[1]) > 0:
-                if i + 1 >= len(COST.keys()):
-                    raise ValueError(f"Unknown champion index on board: {i+1}")
-                champion_name = list(COST.keys())[i + 1]
-                
-                stars = 1
-                chosen = False
-                if board_stars is not None and len(indexes[0]) > 0:
-                    val = board_stars[indexes[0][0], indexes[1][0]] if board_stars.ndim >= 2 else 1
-                    stars = np.ravel(val)[0] if isinstance(val, np.ndarray) else val
-                if board_chosen is not None and len(indexes[0]) > 0:
-                    val = board_chosen[indexes[0][0], indexes[1][0]] if board_chosen.ndim >= 2 else False
-                    chosen = (np.ravel(val)[0] if isinstance(val, np.ndarray) else val) > 0.5
-                
-                champ = {
-                    "name": champion_name,
-                    "id": i,
-                    "pos_y": int(indexes[0][0]),
-                    "pos_x": int(indexes[1][0]),
-                    "stars": int(stars),
-                    "chosen": bool(chosen)
-                }
-                champs.append(champ)
+    if board.ndim != 2 or board.shape[0] != 28 or board.shape[1] != 122:
+        return champs
+
+    for slot_idx in range(28):
+        slot = board[slot_idx]
+        champion_index = slot[0]
+        if champion_index <= 0:
+            continue
+
+        champion_name = _decode_champion_name(champion_index)
+        if champion_name is None:
+            continue
+
+        pos_x = slot_idx // 4
+        pos_y = slot_idx % 4
+        stars = int(round(slot[120]))
+        chosen = slot[121] > 0.5
+
+        champ = {
+            "name": champion_name,
+            "id": int(round(champion_index)),
+            "pos_y": pos_y,
+            "pos_x": pos_x,
+            "stars": max(1, stars),
+            "chosen": bool(chosen)
+        }
+        champs.append(champ)
     return champs
 
 
 def _parse_bench_from_field(bench_champions):
-    """Parse bench units from schema field."""
     bench_list = []
-    if bench_champions.ndim == 1:  # (58,) flat format
-        for i, count in enumerate(bench_champions):
-            if count > 0:
-                if i + 1 >= len(COST.keys()):
-                    raise ValueError(f"Unknown champion index on bench: {i+1}")
-                champion_name = list(COST.keys())[i + 1]
-                for _ in range(int(count)):
-                    bench_list.append(champion_name)
-    elif bench_champions.ndim == 3:  # (58, 4, 7) legacy format - use first position for count
-        bench = bench_champions[:, 0, 0]
-        for i, count in enumerate(bench):
-            if count > 0:
-                if i + 1 >= len(COST.keys()):
-                    raise ValueError(f"Unknown champion index on bench: {i+1}")
-                champion_name = list(COST.keys())[i + 1]
-                for _ in range(int(count)):
-                    bench_list.append(champion_name)
+    if bench_champions.ndim != 2 or bench_champions.shape[1] != 122:
+        return bench_list
+
+    for slot_idx in range(bench_champions.shape[0]):
+        slot = bench_champions[slot_idx]
+        champion_index = slot[0]
+        if champion_index <= 0:
+            continue
+
+        champion_name = _decode_champion_name(champion_index)
+        if champion_name is None:
+            continue
+
+        count = max(1, int(round(slot[120])))
+        for _ in range(count):
+            bench_list.append(champion_name)
     return bench_list
 
 
-def _parse_shop_from_fields(shop_champions, shop_chosen):
-    """Parse shop units from schema fields."""
+def _parse_shop_from_fields(shop, shop_chosen):
     shop_units = [" "] * 5
-    if shop_champions.ndim == 1:  # (58,) flat format
-        # Shop has up to 5 slots; find non-zero entries
-        non_zero = np.where(shop_champions > 0)[0]
-        for slot, champ_idx in enumerate(non_zero[:5]):
-            if champ_idx + 1 >= len(COST.keys()):
-                raise ValueError(f"Unknown champion index in shop: {champ_idx + 1}")
-            champion_name = list(COST.keys())[champ_idx + 1]
-            # Check chosen status
-            if shop_chosen is not None and np.ravel(shop_chosen)[0] > 0.5:
-                champion_name += "_c"
-            shop_units[slot] = champion_name
-    elif shop_champions.ndim == 3:  # (58, 4, 7) legacy format
-        for slot in range(min(5, shop_champions.shape[2])):
-            for i, unit_data in enumerate(shop_champions):
-                if unit_data[0, slot] > 0:  # Check if unit is in this shop slot
-                    if i + 1 >= len(COST.keys()):
-                        raise ValueError(f"Unknown champion index in shop: {i+1}")
-                    champion_name = list(COST.keys())[i + 1]
-                    
-                    # Check for chosen status with array-safe comparison and bounds checking
-                    if shop_chosen is not None:
-                        try:
-                            # Make sure we don't go out of bounds
-                            if slot < shop_chosen.shape[1]:
-                                chosen_value = shop_chosen[0, slot]
-                                # Handle scalar or array values safely
-                                if hasattr(chosen_value, 'item'):
-                                    if chosen_value.size == 1:
-                                        chosen_value = chosen_value.item()
-                                    else:
-                                        chosen_value = chosen_value.flat[0] if chosen_value.size > 0 else 0
-                                if chosen_value > 0.5:
-                                    champion_name += "_c"
-                        except (ValueError, TypeError, IndexError):
-                            # Fail explicitly on unexpected data format
-                            raise
-                    
-                    shop_units[slot] = champion_name
-                    break
+    if shop.ndim != 2 or shop.shape[1] != 32:
+        return shop_units
+
+    preferred_chosen_slot = None
+    if shop_chosen is not None:
+        if isinstance(shop_chosen, np.ndarray) and shop_chosen.size > 0:
+            preferred_chosen_slot = int(round(shop_chosen.flat[0]))
+
+    for slot in range(min(5, shop.shape[0])):
+        champion_index = shop[slot, 0]
+        if champion_index <= 0:
+            continue
+
+        champion_name = _decode_champion_name(champion_index)
+        if champion_name is None:
+            continue
+
+        if preferred_chosen_slot is not None and preferred_chosen_slot == slot + 1:
+            champion_name += "_c"
+
+        shop_units[slot] = champion_name
     return shop_units
 
 class BaseAgent:
