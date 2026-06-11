@@ -25,7 +25,7 @@ class MockNetwork(torch.nn.Module):
         h = self.fc(hidden_state)
         return {
             "hidden_state": h,
-            "policy_logits": torch.randn(batch, config.POLICY_HEAD_SIZES[0]),
+            "policy_logits": torch.randn(batch, config.ACTION_CONCAT_SIZE),
             "value": torch.randn(batch, 1),
         }
 
@@ -70,7 +70,7 @@ class TestBlockingBatchInferenceQueue:
         assert "policy_logits" in result
         assert "value" in result
         assert result["hidden_state"].shape == (config.HIDDEN_STATE_SIZE,)
-        assert result["policy_logits"].shape == (config.POLICY_HEAD_SIZES[0],)
+        assert result["policy_logits"].shape == (config.ACTION_CONCAT_SIZE,)
         assert result["value"].shape == (1,)
 
     def test_batch_triggered_at_threshold(self, queue):
@@ -150,7 +150,7 @@ class TestBlockingBatchInferenceQueue:
                 batch = hidden_state.size(0)
                 return {
                     "hidden_state": hidden_state + 1,
-                    "policy_logits": torch.zeros(batch, config.POLICY_HEAD_SIZES[0]),
+                    "policy_logits": torch.zeros(batch, config.ACTION_CONCAT_SIZE),
                     "value": torch.zeros(batch, 1),
                 }
         net = MinimalNet()
@@ -177,6 +177,7 @@ class TestBlockingBatchInferenceQueue:
     def test_parallel_batch_select_action(self):
         from Models.MuZero_torch_agent import MuZeroAgent
         agent = MuZeroAgent()
+        agent.network = MockNetwork().to("cpu")
         agent.simulations = 2
         agent.mcts.mcts_max_seconds = 1
         

@@ -1,4 +1,4 @@
-# Technical Specification: TFT-185 - Test Batched Inference
+# Technical Specification: [TFT-185](mention://issue/e273fe93-30c0-469f-83ad-b6f00a48b7af) - Test Batched Inference
 
 ## 1. Overview
 
