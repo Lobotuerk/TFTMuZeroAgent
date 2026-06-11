@@ -4,10 +4,10 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from utils.profiling import EnvironmentBenchmark, MetricsCollector, BenchmarkResults
-from Models.enhanced_agent_interface import (
+from Models.agent_manager import (
     BatchInferenceServer, EnhancedAgentManager, AsyncGameEnvironment,
-    MetricsCollector as MC,
 )
+from utils.profiling import MetricsCollector as MC
 from Models.Common_agents import BaseAgent
 
 
@@ -195,7 +195,7 @@ class TestBatchInferenceServerMetrics:
         agent = TestAgent()
         server.register_agent_instance(type(agent), agent)
 
-        from Models.enhanced_agent_interface import InferenceRequest
+        from Models.agent_manager import InferenceRequest
         import numpy as np
         import config
 

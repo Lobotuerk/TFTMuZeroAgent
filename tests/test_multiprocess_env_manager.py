@@ -14,7 +14,7 @@ from training_orchestrator import (
     GameResult,
     _env_worker_main,
 )
-from Models.enhanced_agent_interface import (
+from Models.agent_manager import (
     EnhancedAgentManager,
     BatchInferenceServer,
 )

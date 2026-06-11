@@ -245,8 +245,4 @@ class MuZeroAgent(BaseAgent):
         }
 
 
-# Aliases and factory functions for testing
-EnhancedMuZeroAgent = MuZeroAgent
 
-def create_enhanced_muzero_agent(global_buffer=None, training=True):
-    return MuZeroAgent(global_buffer=global_buffer, training=training)

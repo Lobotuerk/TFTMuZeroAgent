@@ -77,27 +77,6 @@ class BatchedInferenceRequest:
 
 
 class BatchInferenceServer:
-    """
-    Centralised inference server that batches requests from multiple
-    parallel environments by agent type, performs a single GPU forward
-    pass per batch, and routes pre-computed hidden states to each
-    agent's batch_select_action method.
-
-    Key design decisions:
-      - Requests are queued per agent type and collected into batches
-        up to *max_batch_size* or until *batch_timeout_ms* elapses.
-      - GPU inference runs in a thread-pool executor so the asyncio
-        loop is never blocked.
-      - When an agent exposes both ``batch_select_action`` and a
-        ``model`` with ``initial_inference``, the server runs one
-        forward pass on the full batch tensor and passes per-item
-        results (hidden_state, policy, value) to the agent, avoiding
-        N redundant representation-network calls.
-      - Otherwise it falls back to calling
-        ``agent.batch_select_action(observations, masks)`` without
-        precomputed results.
-    """
-
     def __init__(self,
                  max_batch_size: int = 32,
                  batch_timeout_ms: float = 10.0,
@@ -112,8 +91,6 @@ class BatchInferenceServer:
         self._processing_tasks: Dict[Any, asyncio.Task] = {}
 
         self.agent_instances: Dict[Any, Any] = {}
-        # On free-threaded python (no GIL), we scale max_workers to run batches concurrently.
-        # Otherwise we keep it at 1 to prevent GIL-contention during GPU memory operations.
         max_workers = 8 if config.IS_GIL_DISABLED else 1
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
@@ -123,8 +100,6 @@ class BatchInferenceServer:
         self.inference_times = defaultdict(list)
         self.batch_sizes = defaultdict(list)
         self.metrics_collector = metrics_collector
-
-    # ── public API ──────────────────────────────────────────────
 
     def register_agent(self, agent_type: Any, agent_instance: Any):
         self.agent_instances[agent_type] = agent_instance
@@ -150,7 +125,6 @@ class BatchInferenceServer:
         )
         self.request_queues[agent_type].put_nowait(request)
 
-        # Ensure task is running (e.g. if it crashed)
         if (agent_type not in self._processing_tasks
                 or self._processing_tasks[agent_type].done()):
             self._processing_tasks[agent_type] = asyncio.create_task(
@@ -171,29 +145,22 @@ class BatchInferenceServer:
                 }
         return stats
 
-    # ── GPU setup ───────────────────────────────────────────────
-
     def _setup_gpu(self):
         if torch.cuda.is_available():
             torch.cuda.set_per_process_memory_fraction(self.gpu_memory_fraction)
             torch.backends.cudnn.benchmark = True
-
-    # ── batch lifecycle ─────────────────────────────────────────
 
     async def _process_batch(self, agent_type: Any):
         async with self._processing_locks[agent_type]:
             while True:
                 requests = await self._collect_batch(agent_type)
                 if not requests:
-                    # Should only happen on cancellation
                     break
 
                 agent = self.agent_instances.get(agent_type)
                 if agent is None:
                     raise RuntimeError(f"Unregistered agent type requested: {getattr(agent_type, 'agent_name', getattr(type(agent_type), '__name__', str(agent_type)))}")
 
-                # Spawn a concurrent background task to process inference and distribute results,
-                # rather than blockingly awaiting it.
                 asyncio.create_task(self._run_inference_and_distribute(agent, requests))
 
     async def _run_inference_and_distribute(self, agent: Any, requests: List[InferenceRequest]):
@@ -206,16 +173,14 @@ class BatchInferenceServer:
     async def _collect_batch(self, agent_type: Any) -> List[InferenceRequest]:
         requests: List[InferenceRequest] = []
         queue = self.request_queues[agent_type]
-        
+
         try:
-            # Wait indefinitely for the first item
             req = await queue.get()
             requests.append(req)
             first_received = time.perf_counter()
         except asyncio.CancelledError:
             return requests
-            
-        # Collect all other currently available items in the queue immediately (non-blocking)
+
         while len(requests) < self.max_batch_size:
             try:
                 req = queue.get_nowait()
@@ -235,8 +200,6 @@ class BatchInferenceServer:
         for req, result in zip(requests, results):
             if req.future and not req.future.done():
                 req.future.set_result(result)
-
-    # ── inference ───────────────────────────────────────────────
 
     async def _run_inference(self,
                              agent: Any,
@@ -269,20 +232,6 @@ class BatchInferenceServer:
     def _infer_sync(self,
                     agent: Any,
                     requests: List[InferenceRequest]) -> List[Any]:
-        """Blocking inference method run in the thread pool.
-
-        Two execution paths:
-
-        1. **Batched GPU** – when the agent provides both
-           ``batch_select_action`` and a ``model`` with
-           ``initial_inference``.  A single forward pass is run on the
-           stacked observation tensor and per-item pre-computed results
-           are threaded through to ``batch_select_action``.
-
-        2. **Numpy fallback** – the observations are converted to CPU
-           numpy lists and ``agent.batch_select_action`` is called
-           without precomputed results.
-        """
         batch_size = len(requests)
         if batch_size == 0:
             return []
@@ -295,7 +244,6 @@ class BatchInferenceServer:
 
         batch_tensor, masks = self._stack_observations(requests)
 
-        # ── Path 1: true GPU batched forward pass ──────────────
         if can_batch_gpu and batch_tensor.numel() > 0:
             gpu_start = time.perf_counter()
             with torch.no_grad():
@@ -321,7 +269,7 @@ class BatchInferenceServer:
 
             obs_list = [self._obs_to_flat(requests[i].observation)
                         for i in range(batch_size)]
-            
+
             rewards = [req.reward for req in requests]
             terminated = [req.terminated for req in requests]
             player_ids = [req.player_id for req in requests]
@@ -331,7 +279,6 @@ class BatchInferenceServer:
                 rewards=rewards, terminated=terminated, player_ids=player_ids
             )
 
-        # ── Path 2: Standard select_action path (no precomputed) ─────
         obs_list = []
         for i in range(batch_size):
             obs = self._obs_to_flat(
@@ -340,7 +287,7 @@ class BatchInferenceServer:
                 else batch_tensor[i].cpu().numpy()
             )
             obs_list.append(obs)
-            
+
         rewards = [req.reward for req in requests]
         terminated = [req.terminated for req in requests]
         player_ids = [req.player_id for req in requests]
@@ -349,13 +296,7 @@ class BatchInferenceServer:
             obs_list, masks, rewards=rewards, terminated=terminated, player_ids=player_ids
         )
 
-    # ── helpers ─────────────────────────────────────────────────
-
     def _stack_observations(self, requests: List[InferenceRequest]):
-        """Stack individual observations into a GPU tensor.
-
-        Returns ``(batch_tensor, mask_list)``.
-        """
         obs_list = []
         masks = []
         for req in requests:
@@ -399,7 +340,6 @@ class BatchInferenceServer:
         return obs.flatten() if obs.ndim > 1 else obs
 
     def shutdown(self):
-        """Cancel all background processing tasks and shutdown the executor."""
         for agent_type, task in list(self._processing_tasks.items()):
             if not task.done():
                 task.cancel()
@@ -407,11 +347,6 @@ class BatchInferenceServer:
 
 
 class EnhancedAgentManager:
-    """
-    Maps player IDs to agent types and dispatches action requests
-    to the BatchInferenceServer.
-    """
-
     def __init__(self, batch_processor: Optional[BatchInferenceServer] = None,
                  metrics_collector: Optional[MetricsCollector] = None):
         self.agents: Dict[Any, Any] = {}
@@ -484,17 +419,14 @@ class EnhancedAgentManager:
         return self.batch_processor.get_performance_stats()
 
     async def flush_all_buffers(self, final_values: Optional[Dict[str, float]] = None, game_id: str = ""):
-        """Flush all agents' replay buffers to global storage concurrently"""
         final_vals = final_values or {}
         if game_id:
             final_vals = {f"{game_id}_{k}": v for k, v in final_vals.items()}
 
         for agent_type, agent in self.agents.items():
             if hasattr(agent, 'terminate'):
-                # Pass player-specific final values via dict
                 agent.terminate(final_vals)
             elif hasattr(agent, 'replay_buffer') and agent.replay_buffer is not None:
-                # Legacy fallback
                 final_value = 0.0
                 if final_vals:
                     for pid, p_agent_type in self.player_to_agent.items():
@@ -507,18 +439,10 @@ class EnhancedAgentManager:
                     agent.replay_buffer.move_buffer_to_global(final_value)
 
     def shutdown(self):
-        """Shutdown the underlying batch inference processor."""
         self.batch_processor.shutdown()
 
 
-# ── game runner ──────────────────────────────────────────────────
-
 class AsyncGameEnvironment:
-    """
-    Runs a single TFT game episode inside an asyncio context,
-    delegating action selection to the agent manager.
-    """
-
     def __init__(self, env_factory, agent_manager: EnhancedAgentManager,
                  metrics_collector: Optional[MetricsCollector] = None):
         self.env_factory = env_factory
@@ -561,17 +485,6 @@ class AsyncGameEnvironment:
 
 
 class EnvironmentPool:
-    """
-    Manages N AsyncGameEnvironment instances running concurrently via asyncio.
-
-    Features:
-    - Concurrent game execution with configurable parallelism
-    - Automatic lifecycle management (start, stop, restart)
-    - Experience collection forwarded to GlobalBuffer
-    - Performance monitoring and statistics
-    - Graceful shutdown
-    """
-
     def __init__(self,
                  env_factory,
                  agent_manager: EnhancedAgentManager,
@@ -579,14 +492,6 @@ class EnvironmentPool:
                  num_environments: Optional[int] = None,
                  max_concurrent_games: Optional[int] = None,
                  metrics_collector: Optional[MetricsCollector] = None):
-        """
-        Args:
-            env_factory: Callable that returns a new environment instance
-            agent_manager: Shared EnhancedAgentManager for batched inference
-            global_buffer: Optional GlobalBuffer for centralized experience storage
-            num_environments: Number of AsyncGameEnvironment instances. Defaults to CONCURRENT_GAMES config.
-            max_concurrent_games: Max games running simultaneously. Defaults to num_environments.
-        """
         self.env_factory = env_factory
         self.agent_manager = agent_manager
         self.global_buffer = global_buffer
@@ -607,7 +512,6 @@ class EnvironmentPool:
         self.game_durations: List[float] = []
 
     async def start(self, precreate: bool = True):
-        """Initialize the pool and optionally pre-create environments."""
         self._shutdown_event.clear()
         self._environments = []
         for i in range(self.num_environments):
@@ -620,7 +524,6 @@ class EnvironmentPool:
         self.game_durations.clear()
 
     async def stop(self, cancel_running: bool = False):
-        """Gracefully stop the pool and all running games."""
         self._shutdown_event.set()
         if cancel_running:
             for game_id, task in list(self._running_tasks.items()):
@@ -634,16 +537,6 @@ class EnvironmentPool:
         self._environments.clear()
 
     async def run_game(self, game_id: str, env_index: Optional[int] = None) -> Optional[Dict[str, Any]]:
-        """
-        Run a single game using a round-robin selected environment.
-
-        Args:
-            game_id: Unique identifier for this game
-            env_index: Optional specific environment index (round-robin if None)
-
-        Returns:
-            Game result dict, or None if pool is shut down
-        """
         if self._shutdown_event.is_set():
             return None
 
@@ -673,16 +566,6 @@ class EnvironmentPool:
     async def run_games(self,
                         num_games: int,
                         game_id_prefix: str = "game") -> List[Dict[str, Any]]:
-        """
-        Run multiple games concurrently, collecting results.
-
-        Args:
-            num_games: Total number of games to run
-            game_id_prefix: Prefix for auto-generated game IDs
-
-        Returns:
-            List of completed game result dicts
-        """
         game_tasks = []
         for i in range(num_games):
             game_id = f"{game_id_prefix}_{i}"
@@ -714,19 +597,6 @@ class EnvironmentPool:
     async def run_continuous(self,
                               num_games: Optional[int] = None,
                               game_id_prefix: str = "game") -> List[Dict[str, Any]]:
-        """
-        Run games continuously, always keeping max_concurrent_games active.
-
-        Spawns a new game as soon as one finishes, until num_games is reached.
-        If num_games is None, runs indefinitely until stop() is called.
-
-        Args:
-            num_games: Total games to run (None = unlimited)
-            game_id_prefix: Prefix for auto-generated game IDs
-
-        Returns:
-            List of completed game result dicts
-        """
         completed = []
         counter = 0
         pending = set()
@@ -770,19 +640,11 @@ class EnvironmentPool:
         return completed
 
     async def collect_experiences(self) -> List[Any]:
-        """
-        Collect accumulated game results and flush agent experiences to GlobalBuffer.
-
-        Returns:
-            List of game result dicts since last collection.
-        """
-        # Aggregate scores from all games in game_results to use as final values
         final_values = {}
         for result in self.game_results:
             if 'scores' in result:
                 final_values.update(result['scores'])
 
-        # Flush all agent replay buffers to global buffer
         await self.agent_manager.flush_all_buffers(final_values=final_values)
 
         async with self._lock:
@@ -800,7 +662,6 @@ class EnvironmentPool:
         return self._total_games_completed
 
     def get_performance_stats(self) -> Dict[str, Any]:
-        """Get performance statistics for the pool."""
         durations = self.game_durations
         avg_duration = float(np.mean(durations)) if durations else 0.0
         return {
@@ -813,8 +674,6 @@ class EnvironmentPool:
             'environments_initialized': len(self._environments),
         }
 
-
-# ── factory functions ────────────────────────────────────────────
 
 def create_enhanced_setup(agent_configs: Optional[List[Tuple[Any, int]]] = None,
                           max_batch_size: Optional[int] = None,
@@ -858,7 +717,6 @@ def create_custom_agent_setup(agents_and_counts: List[Tuple[Any, int]], **kwargs
 
 
 async def example_usage():
-    """Minimal example to verify the server wiring."""
     try:
         from TFTSet4Gym.tft_set4_gym.tft_simulator import parallel_env
     except ImportError:
@@ -879,8 +737,6 @@ async def example_usage():
     for name, s in stats.items():
         print(f"  {name}: {s}")
 
-
-# ── convenience helpers ──────────────────────────────────────────
 
 def create_muzero_vs_random_setup(num_muzero: int = 1,
                                    num_random: int = 7,

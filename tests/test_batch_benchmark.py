@@ -96,7 +96,7 @@ class TestBatchedInferenceSpeedup:
 
     def test_batched_runs_single_initial_inference(self):
         """Verify BatchInferenceServer runs model.initial_inference once per batch."""
-        from Models.enhanced_agent_interface import (
+        from Models.agent_manager import (
             BatchInferenceServer, InferenceRequest,
         )
         from Models.Common_agents import BaseAgent
@@ -151,7 +151,7 @@ class TestBatchedInferenceSpeedup:
 
     def test_precomputed_results_passed_to_agent(self):
         """Pre-computed results are passed through to batch_select_action."""
-        from Models.enhanced_agent_interface import (
+        from Models.agent_manager import (
             BatchInferenceServer, InferenceRequest,
         )
         from Models.Common_agents import BaseAgent
