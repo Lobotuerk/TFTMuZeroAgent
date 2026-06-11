@@ -9,7 +9,7 @@ import pytest
 # Add the parent directory to the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from Models.MuZero_torch_agent import MuZeroAgent, create_enhanced_muzero_agent
+from Models.MuZero_torch_agent import MuZeroAgent
 
 def test_muzero_agent_initialization():
     """Test that MuZero agent correctly reads action dimensions from schema/config."""
@@ -39,23 +39,6 @@ def test_muzero_agent_initialization():
             
     except Exception as e:
         print(f"✗ Direct initialization failed: {e}")
-        return False
-    
-    # Test factory function
-    try:
-        factory_agent = create_enhanced_muzero_agent()
-        print(f"✓ Factory initialization successful")
-        print(f"  Action size: {factory_agent.action_size}")
-        print(f"  Action limits: {factory_agent.action_limits}")
-        
-        # Verify factory agent has same values
-        if factory_agent.action_limits == agent.action_limits:
-            print(f"✓ Factory agent action limits match direct initialization")
-        else:
-            print(f"✗ Factory agent action limits mismatch")
-            
-    except Exception as e:
-        print(f"✗ Factory initialization failed: {e}")
         return False
     
     return True

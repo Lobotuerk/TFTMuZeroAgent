@@ -32,7 +32,7 @@ from Models.action_conversion import action_3d_to_policy
 from Models.MuZero_torch_trainer import Trainer
 from Models.MuZero_torch_agent import MuZeroAgent
 from Models.Common_agents import CultistAgent, DivineAgent, RandomAgent, WarlordAgent
-from Models.enhanced_agent_interface import (
+from Models.agent_manager import (
     create_enhanced_setup,
     create_custom_agent_setup,
     AsyncGameEnvironment,
@@ -592,115 +592,7 @@ class _GameWorker:
 # Parallel environment manager
 # ---------------------------------------------------------------------------
 
-class _ParallelEnvManager:
-    """
-    Manages N concurrent game workers without Ray.
-    Supports continuous execution (auto-restart) and fixed-run evaluation.
-    """
 
-    def __init__(self, num_workers: int,
-                 profiling: Optional[ProfilingTracker] = None,
-                 metrics_collector: Optional[MetricsCollector] = None):
-        self.num_workers = num_workers
-        self.profiling = profiling
-        self.metrics_collector = metrics_collector
-        self.workers = [_GameWorker(i, profiling=profiling, metrics_collector=metrics_collector) for i in range(num_workers)]
-        self.active_tasks: Dict[asyncio.Task, int] = {}
-        self.should_continue = True
-        self.should_spawn = True
-        self.metrics_collector = metrics_collector
-
-    def stop(self):
-        self.should_continue = False
-
-    def pause(self):
-        """Prevent spawning new games; let running ones drain naturally."""
-        self.should_spawn = False
-
-    def resume(self):
-        """Allow spawning new games again."""
-        self.should_spawn = True
-
-    async def wait_for_drain(self):
-        """Wait until all active game tasks have finished."""
-        while self.active_tasks:
-            await asyncio.sleep(0.5)
-
-    async def run_continuously(self,
-                               agent_manager: EnhancedAgentManager,
-                               on_game_done: Optional[Callable] = None) -> None:
-        """Run games back-to-back, starting a new one as soon as one finishes."""
-        self.active_tasks.clear()
-        for i, worker in enumerate(self.workers):
-            task = asyncio.create_task(worker.run_game(agent_manager))
-            self.active_tasks[task] = i
-
-        games_completed = 0
-        while self.should_continue:
-            if not self.active_tasks:
-                if not self.should_spawn:
-                    await asyncio.sleep(0.1)
-                    continue
-                for i, w in enumerate(self.workers):
-                    task = asyncio.create_task(w.run_game(agent_manager))
-                    self.active_tasks[task] = i
-                continue
-
-            try:
-                done, _ = await asyncio.wait(
-                    self.active_tasks.keys(),
-                    return_when=asyncio.FIRST_COMPLETED,
-                    timeout=1.0,
-                )
-            except asyncio.TimeoutError:
-                continue
-
-            for completed in done:
-                worker_id = self.active_tasks.pop(completed, -1)
-                self._discard(completed)
-                try:
-                    result = await completed
-                    games_completed += 1
-                    if on_game_done:
-                        await on_game_done(result)
-                except Exception as e:
-                    print(f"Game worker {worker_id} crashed: {e}")
-                    raise e
-
-                if worker_id >= 0 and self.should_spawn:
-                    new = asyncio.create_task(self.workers[worker_id].run_game(agent_manager))
-                    self.active_tasks[new] = worker_id
-
-        for t in list(self.active_tasks):
-            t.cancel()
-            try:
-                await t
-            except (asyncio.CancelledError, Exception):
-                pass
-        self.active_tasks.clear()
-
-    async def run_fixed_games(self,
-                              agent_manager: EnhancedAgentManager,
-                              num_games: int) -> List[GameResult]:
-        """Run exactly *num_games* evaluation games and return their results."""
-        games_per_worker = num_games // self.num_workers
-        remainder = num_games % self.num_workers
-        tasks = []
-        for i, worker in enumerate(self.workers):
-            count = games_per_worker + (1 if i < remainder else 0)
-            for _ in range(count):
-                tasks.append(asyncio.create_task(worker.run_game(agent_manager, return_placements=True)))
-
-        results = []
-        if tasks:
-            completed = await asyncio.gather(*tasks, return_exceptions=True)
-            for r in completed:
-                if isinstance(r, GameResult):
-                    results.append(r)
-        return results
-
-    def _discard(self, task):
-        self.active_tasks.pop(task, None)
 
 
 # ---------------------------------------------------------------------------

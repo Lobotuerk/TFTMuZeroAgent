@@ -13,7 +13,7 @@ from training_orchestrator import (
     _ThreadEnvManager,
     GameResult,
 )
-from Models.enhanced_agent_interface import (
+from Models.agent_manager import (
     EnhancedAgentManager,
     BatchInferenceServer,
 )
