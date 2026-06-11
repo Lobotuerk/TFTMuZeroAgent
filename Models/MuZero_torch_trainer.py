@@ -197,7 +197,7 @@ class Trainer(object):
 
             summary_writer.add_scalar('target/value', get_mean('target_value'), train_step)
             summary_writer.add_scalar('target/value_variance', torch.mean(torch.var(accs['target_value'], dim=0)), train_step)
-            summary_writer.add_scalar('target/policy_variance', torch.mean(torch.var(accs['target_policy'], dim=1)), train_step)
+            summary_writer.add_scalar('target/policy_variance', torch.mean(torch.var(accs['target_policy'], dim=0)), train_step)
 
             summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
             summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
