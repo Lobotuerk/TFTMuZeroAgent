@@ -33,7 +33,7 @@ class BenchmarkModel(torch.nn.Module):
         batch_size = observation.shape[0]
         return {
             'hidden_state': h,
-            'policy_logits': torch.randn(batch_size, 54, device=device),
+            'policy_logits': torch.randn(batch_size, sum(config.ACTION_DIM), device=device),
             'value': torch.randn(batch_size, device=device),
         }
 
@@ -109,7 +109,7 @@ class TestBatchedInferenceSpeedup:
                 batch_size = observation.shape[0]
                 return {
                     'hidden_state': torch.zeros(batch_size, config.HIDDEN_STATE_SIZE),
-                    'policy_logits': torch.zeros(batch_size, 54),
+                    'policy_logits': torch.zeros(batch_size, sum(config.ACTION_DIM)),
                     'value': torch.zeros(batch_size),
                 }
 
@@ -135,7 +135,7 @@ class TestBatchedInferenceSpeedup:
             InferenceRequest(
                 player_id=f"p{i}",
                 observation=np.random.randn(config.OBSERVATION_SIZE).astype(np.float32),
-                mask=np.ones(54, dtype=bool),
+                mask=np.ones(sum(config.ACTION_DIM), dtype=bool),
                 reward=0.0,
                 terminated=False,
             )
@@ -179,7 +179,7 @@ class TestBatchedInferenceSpeedup:
             InferenceRequest(
                 player_id=f"p{i}",
                 observation=np.random.randn(config.OBSERVATION_SIZE).astype(np.float32),
-                mask=np.ones(54, dtype=bool),
+                mask=np.ones(sum(config.ACTION_DIM), dtype=bool),
                 reward=0.0,
                 terminated=False,
             )

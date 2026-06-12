@@ -43,11 +43,11 @@ TOTAL_OBS_DIM = (BOARD_DIM + BENCH_CHAMP_DIM + BENCH_ITEM_DIM +
                  PLAYER_STATE_DIM + OPPONENT_BOARDS_DIM +
                  OPPONENT_INFO_DIM)  # 28892
 
-# Action mask size
-ACTION_MASK_DIM = 54
+# Action mask size (7 selectors + 37 sources + 37 destinations)
+ACTION_MASK_DIM = sum(config.ACTION_DIM)
 
 # Full observation size including action mask
-TOTAL_WITH_MASK = TOTAL_OBS_DIM + ACTION_MASK_DIM  # 28946
+TOTAL_WITH_MASK = TOTAL_OBS_DIM + ACTION_MASK_DIM
 
 NetworkOutput = collections.namedtuple(
     'NetworkOutput',

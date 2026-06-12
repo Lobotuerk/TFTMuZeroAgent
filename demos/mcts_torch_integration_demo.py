@@ -93,7 +93,7 @@ def demo_basic_functionality():
     mcts = EnhancedMCTS(
         sample_size=30,
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=config.ACTION_DIM,
         policy_size=1134,
         network=network
     )
@@ -106,7 +106,7 @@ def demo_basic_functionality():
     
     # Test enhanced state rollout
     observation = np.random.random(config.OBSERVATION_SIZE)
-    mask = np.zeros(54, dtype=bool)
+    mask = np.zeros(sum(config.ACTION_DIM), dtype=bool)
     
     enhanced_state = TFTState(
         observation=observation,
@@ -132,14 +132,14 @@ def demo_action_generation():
     mcts = EnhancedMCTS(
         sample_size=30,
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=config.ACTION_DIM,
         policy_size=1134,
         network=network
     )
     
     # Mock TFT observation and mask
     observation = np.random.random(config.OBSERVATION_SIZE)
-    mask = np.zeros(54, dtype=bool)
+    mask = np.zeros(sum(config.ACTION_DIM), dtype=bool)
     
     print("🎮 Generating actions...")
     
@@ -213,14 +213,14 @@ def demo_network_integration():
     ]
     
     observation = np.random.random(config.OBSERVATION_SIZE)
-    mask = np.zeros(54, dtype=bool)
+    mask = np.zeros(sum(config.ACTION_DIM), dtype=bool)
     
     for name, network in networks:
         print(f"🧠 Testing {name} network:")
         mcts = EnhancedMCTS(
             sample_size=10, 
             action_size=3, 
-            action_limits=[7, 37, 10], 
+            action_limits=config.ACTION_DIM, 
             policy_size=1134, 
             network=network
         )
@@ -255,13 +255,13 @@ def demo_performance_tracking():
     mcts = EnhancedMCTS(
         sample_size=30,
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=config.ACTION_DIM,
         policy_size=1134,
         network=network
     )
     
     observation = np.random.random(config.OBSERVATION_SIZE)
-    mask = np.zeros(54, dtype=bool)
+    mask = np.zeros(sum(config.ACTION_DIM), dtype=bool)
     
     print("📈 Running multiple actions to track performance:")
     
