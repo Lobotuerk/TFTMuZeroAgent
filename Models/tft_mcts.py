@@ -275,7 +275,7 @@ class TFTState(MCTS_StateBase):
             self.value = 0.5
 
     def _create_default_mask(self) -> np.ndarray:
-        return np.zeros((54,), dtype=bool)
+        return np.zeros((sum(config.ACTION_DIM),), dtype=bool)
 
     def actions_to_try(self) -> List[TFTMove]:
         """Generate all possible moves from current state."""
@@ -359,7 +359,7 @@ class TFTState(MCTS_StateBase):
         if self.policy is None:
             return [1.0 / len(moves)] * len(moves)
 
-       # Split policy into 3 independent softmax distributions per ACTION_DIM
+        # Split policy into 3 independent softmax distributions per ACTION_DIM
         dims = config.ACTION_DIM
         blocks = np.split(np.asarray(self.policy, dtype=np.float64), np.cumsum(dims[:-1]))
         block_probs = []
@@ -367,6 +367,15 @@ class TFTState(MCTS_StateBase):
             b = block - np.max(block)
             exp_b = np.exp(b)
             block_probs.append(exp_b / np.sum(exp_b))
+
+        # Apply mask to zero out probabilities for invalid action dimensions
+        if self.mask is not None and len(self.mask) == sum(dims):
+            mask_blocks = np.split(np.asarray(self.mask, dtype=bool), np.cumsum(dims[:-1]))
+            for j in range(3):
+                block_probs[j][~mask_blocks[j]] = 0.0
+                block_sum = block_probs[j].sum()
+                if block_sum > 0:
+                    block_probs[j] /= block_sum
 
         # Compute joint probability for each move
         scores = np.zeros(len(moves), dtype=np.float64)

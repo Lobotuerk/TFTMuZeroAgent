@@ -70,7 +70,7 @@ async def train_server_mode(args):
     # Initialize active model (current_model)
     orch.current_model = MuZeroAgent(
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=config.ACTION_DIM,
         obs_size=config.OBSERVATION_SIZE,
         simulations=config.NUM_SIMULATIONS,
         global_buffer=orch.global_buffer,

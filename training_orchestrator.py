@@ -1156,7 +1156,7 @@ class TrainingOrchestrator:
             # best_model: the best performing model — only updated when evaluation beats it
             self.best_model = MuZeroAgent(
                 action_size=3,
-                action_limits=[7, 37, 10],
+                action_limits=config.ACTION_DIM,
                 obs_size=config.OBSERVATION_SIZE,
                 simulations=config.NUM_SIMULATIONS,
                 global_buffer=self.global_buffer,
@@ -1166,7 +1166,7 @@ class TrainingOrchestrator:
             # current_model: the model actively being trained
             self.current_model = MuZeroAgent(
                 action_size=3,
-                action_limits=[7, 37, 10],
+                action_limits=config.ACTION_DIM,
                 obs_size=config.OBSERVATION_SIZE,
                 simulations=config.NUM_SIMULATIONS,
                 global_buffer=self.global_buffer,
@@ -1185,7 +1185,7 @@ class TrainingOrchestrator:
         if is_collector:
             collection_agent = MuZeroAgent(
                 action_size=3,
-                action_limits=[7, 37, 10],
+                action_limits=config.ACTION_DIM,
                 obs_size=config.OBSERVATION_SIZE,
                 simulations=config.NUM_SIMULATIONS,
                 global_buffer=self.global_buffer,
@@ -1194,7 +1194,7 @@ class TrainingOrchestrator:
         else:
             collection_agent = MuZeroAgent(
                 action_size=3,
-                action_limits=[7, 37, 10],
+                action_limits=config.ACTION_DIM,
                 obs_size=config.OBSERVATION_SIZE,
                 simulations=config.NUM_SIMULATIONS,
                 global_buffer=self.global_buffer,
@@ -1412,7 +1412,7 @@ class TrainingOrchestrator:
 
         eval_current = MuZeroAgent(
             action_size=3,
-            action_limits=[7, 37, 10],
+            action_limits=config.ACTION_DIM,
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
             global_buffer=None,
@@ -1422,7 +1422,7 @@ class TrainingOrchestrator:
         )
         eval_best = MuZeroAgent(
             action_size=3,
-            action_limits=[7, 37, 10],
+            action_limits=config.ACTION_DIM,
             obs_size=config.OBSERVATION_SIZE,
             simulations=config.NUM_SIMULATIONS,
             global_buffer=None,

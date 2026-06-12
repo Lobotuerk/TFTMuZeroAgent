@@ -182,7 +182,7 @@ class TestBlockingBatchInferenceQueue:
         agent.mcts.mcts_max_seconds = 1
         
         obs_list = [np.zeros(config.OBSERVATION_SIZE) for _ in range(4)]
-        masks = [np.ones(54, dtype=bool) for _ in range(4)]
+        masks = [np.ones(sum(config.ACTION_DIM), dtype=bool) for _ in range(4)]
         
         # Call batch action selection with 4 concurrent items
         results = agent.batch_select_action(obs_list, masks)
