@@ -135,7 +135,7 @@ class TestBatchedInferenceSpeedup:
             InferenceRequest(
                 player_id=f"p{i}",
                 observation=np.random.randn(config.OBSERVATION_SIZE).astype(np.float32),
-                mask=np.ones(54, dtype=bool),
+                mask=np.ones(55, dtype=bool),
                 reward=0.0,
                 terminated=False,
             )
@@ -179,7 +179,7 @@ class TestBatchedInferenceSpeedup:
             InferenceRequest(
                 player_id=f"p{i}",
                 observation=np.random.randn(config.OBSERVATION_SIZE).astype(np.float32),
-                mask=np.ones(54, dtype=bool),
+                mask=np.ones(55, dtype=bool),
                 reward=0.0,
                 terminated=False,
             )

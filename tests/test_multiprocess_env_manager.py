@@ -63,7 +63,7 @@ def _mock_env_worker_3games(env_id, conn):
             obs = {
                 p: {
                     "tensor": np.zeros((2504,), dtype=np.float32),
-                    "action_mask": np.ones(54, dtype=bool),
+                    "action_mask": np.ones(55, dtype=bool),
                 }
                 for p in player_ids
             }

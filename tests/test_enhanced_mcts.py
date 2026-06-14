@@ -174,7 +174,7 @@ def test_enhanced_mcts_basic():
     mcts = create_enhanced_mcts(
         sample_size=5,
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=[8, 37, 10],
         policy_size=1134,
         network=network
     )
@@ -212,7 +212,7 @@ def test_enhanced_mcts_action_generation():
     mcts = create_enhanced_mcts(
         sample_size=5,
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=[8, 37, 10],
         policy_size=1134,
         network=network
     )
@@ -287,7 +287,7 @@ def test_mcts_with_tft_states():
         
         # Create a TFT state
         observation = np.random.rand(config.OBSERVATION_SIZE)
-        mask = np.ones((54,), dtype=bool)
+mask = np.ones((55,), dtype=bool)
         tft_state = TFTState(observation, mask, network=MockNetwork())
         
         print(f"  - Created TFT state with {len(tft_state.actions_to_try())} actions")

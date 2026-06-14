@@ -275,7 +275,7 @@ class TFTState(MCTS_StateBase):
             self.value = 0.5
 
     def _create_default_mask(self) -> np.ndarray:
-        return np.zeros((54,), dtype=bool)
+        return np.zeros((55,), dtype=bool)
 
     def actions_to_try(self) -> List[TFTMove]:
         """Generate all possible moves from current state."""

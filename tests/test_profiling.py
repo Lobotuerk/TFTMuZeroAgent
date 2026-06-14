@@ -116,14 +116,14 @@ class TestEnvironmentBenchmark:
 
             def reset(self):
                 self._step_count = 0
-                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(54, dtype=bool)} for p in self.possible_agents}
+                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(55, dtype=bool)} for p in self.possible_agents}
                 return obs, {}
 
             def step(self, actions):
                 self._step_count += 1
                 terminated = {p: self._step_count >= 50 for p in self.possible_agents}
                 rewards = {p: 1.0 if t else 0.0 for p, t in terminated.items()}
-                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(54, dtype=bool)} for p in self.possible_agents}
+                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(55, dtype=bool)} for p in self.possible_agents}
                 return obs, rewards, terminated, {}, {}
 
         def env_factory():
@@ -143,14 +143,14 @@ class TestEnvironmentBenchmark:
 
             def reset(self):
                 self._step_count = 0
-                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(54, dtype=bool)} for p in self.possible_agents}
+                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(55, dtype=bool)} for p in self.possible_agents}
                 return obs, {}
 
             def step(self, actions):
                 self._step_count += 1
                 terminated = {p: self._step_count >= 20 for p in self.possible_agents}
                 rewards = {p: 1.0 if t else 0.0 for p, t in terminated.items()}
-                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(54, dtype=bool)} for p in self.possible_agents}
+                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(55, dtype=bool)} for p in self.possible_agents}
                 return obs, rewards, terminated, {}, {}
 
         def env_factory():
@@ -204,7 +204,7 @@ class TestBatchInferenceServerMetrics:
             InferenceRequest(
                 player_id=f"p{i}",
                 observation=np.random.randn(config.OBSERVATION_SIZE).astype(np.float32),
-                mask=np.ones(54, dtype=bool),
+                mask=np.ones(55, dtype=bool),
                 reward=0.0,
                 terminated=False,
             )
@@ -246,7 +246,7 @@ class TestEnhancedAgentManagerMetrics:
         observations = {
             f"player_{i}": {
                 "tensor": np.zeros((2504,), dtype=np.float32),
-                "action_mask": np.ones(54, dtype=bool)
+                "action_mask": np.ones(55, dtype=bool)
             }
             for i in range(8)
         }
@@ -289,14 +289,14 @@ class TestAsyncGameEnvironmentMetrics:
 
             def reset(self):
                 self._step = 0
-                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(54, dtype=bool)} for p in self.possible_agents}
+                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(55, dtype=bool)} for p in self.possible_agents}
                 return obs, {}
 
             def step(self, actions):
                 self._step += 1
                 terminated = {p: self._step >= 3 for p in self.possible_agents}
                 rewards = {p: 1.0 if t else 0.0 for p, t in terminated.items()}
-                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(54, dtype=bool)} for p in self.possible_agents}
+                obs = {p: {"tensor": np.zeros((2504,)), "action_mask": np.ones(55, dtype=bool)} for p in self.possible_agents}
                 return obs, rewards, terminated, {}, {}
 
         def env_factory():

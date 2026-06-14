@@ -304,7 +304,7 @@ class BatchInferenceServer:
             obs_list.append(torch.from_numpy(obs))
             masks.append(req.mask
                          if isinstance(req.mask, np.ndarray)
-                         else np.ones(54, dtype=bool))
+                         else np.ones(55, dtype=bool))
 
         if not obs_list:
             return torch.empty(0, device=self.device), masks
@@ -395,7 +395,7 @@ class EnhancedAgentManager:
             agent_type = self.player_to_agent.get(player_id)
             if agent_type is None:
                 continue
-            mask = obs.get('action_mask', np.ones(54, dtype=bool))
+            mask = obs.get('action_mask', np.ones(55, dtype=bool))
             unique_pid = f"{game_id}_{player_id}" if game_id else player_id
             task = self.batch_processor.request_action(
                 agent_type,

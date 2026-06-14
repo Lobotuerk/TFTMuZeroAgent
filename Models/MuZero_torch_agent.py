@@ -132,7 +132,7 @@ class MuZeroAgent(BaseAgent):
 
         def run_mcts_item(i):
             obs = observations[i]
-            mask = masks[i] if i < len(masks) else np.ones(54, dtype=bool)
+            mask = masks[i] if i < len(masks) else np.ones(55, dtype=bool)
             pc = precomputed_list[i]
 
             pid = player_ids[i] if player_ids and i < len(player_ids) else "default"

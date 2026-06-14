@@ -14,7 +14,7 @@ def test_muzero_agent_no_buffer_pollution():
     # Create an agent without a buffer
     agent = MuZeroAgent(
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=[8, 37, 10],
         obs_size=config.OBSERVATION_SIZE,
         simulations=1,
         global_buffer=None
@@ -26,7 +26,7 @@ def test_muzero_agent_no_buffer_pollution():
     
     # Simulate an action selection
     obs = np.zeros(config.OBSERVATION_SIZE)
-    mask = np.ones(54, dtype=bool)
+    mask = np.ones(55, dtype=bool)
     
     # This should not crash and should not store anything
     action = agent.select_action(obs, mask)
@@ -40,7 +40,7 @@ def test_muzero_agent_with_buffer_pollution():
     buffer = GlobalBuffer(batch_size=1)
     agent = MuZeroAgent(
         action_size=3,
-        action_limits=[7, 37, 10],
+        action_limits=[8, 37, 10],
         obs_size=config.OBSERVATION_SIZE,
         simulations=1,
         global_buffer=buffer
@@ -51,7 +51,7 @@ def test_muzero_agent_with_buffer_pollution():
     
     # Simulate an action selection
     obs = np.zeros(config.OBSERVATION_SIZE)
-    mask = np.ones(54, dtype=bool)
+    mask = np.ones(55, dtype=bool)
     
     # Simulate enough steps to fill the unroll buffer
     for _ in range(config.UNROLL_STEPS + 5):

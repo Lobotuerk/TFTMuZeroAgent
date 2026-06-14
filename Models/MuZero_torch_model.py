@@ -44,7 +44,7 @@ TOTAL_OBS_DIM = (BOARD_DIM + BENCH_CHAMP_DIM + BENCH_ITEM_DIM +
                  OPPONENT_INFO_DIM)  # 28892
 
 # Action mask size
-ACTION_MASK_DIM = 54
+ACTION_MASK_DIM = 55
 
 # Full observation size including action mask
 TOTAL_WITH_MASK = TOTAL_OBS_DIM + ACTION_MASK_DIM  # 28946
