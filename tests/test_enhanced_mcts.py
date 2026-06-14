@@ -123,7 +123,7 @@ def test_tft_state():
     
     # Create mock observation
     observation = np.ones(config.OBSERVATION_SIZE)
-    mask = np.ones((54,), dtype=bool)
+    mask = np.ones((55,), dtype=bool)
     
     # Create state
     state = TFTState(observation, mask, network=MockNetwork())
@@ -219,7 +219,7 @@ def test_enhanced_mcts_action_generation():
     
     # Test with single observation
     observation = np.random.rand(config.OBSERVATION_SIZE)
-    mask = np.ones((54,), dtype=bool)
+    mask = np.ones((55,), dtype=bool)
     
     print(f"  - Observation shape: {observation.shape}")
     print(f"  - Mask shape: {mask.shape}")
@@ -259,7 +259,7 @@ def test_observation_schema_integration():
     
     # Test with realistic observation
     observation = np.random.rand(config.OBSERVATION_SIZE)
-    mask = np.ones((54,), dtype=bool)
+    mask = np.ones((55,), dtype=bool)
     
     # Create state and test field extraction
     state = TFTState(observation, mask, network=MockNetwork())
@@ -287,7 +287,7 @@ def test_mcts_with_tft_states():
         
         # Create a TFT state
         observation = np.random.rand(config.OBSERVATION_SIZE)
-mask = np.ones((55,), dtype=bool)
+        mask = np.ones((55,), dtype=bool)
         tft_state = TFTState(observation, mask, network=MockNetwork())
         
         print(f"  - Created TFT state with {len(tft_state.actions_to_try())} actions")
