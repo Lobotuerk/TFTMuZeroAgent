@@ -33,11 +33,9 @@ except Exception:
 
 OBSERVATION_TIME_STEPS = 1
 OBSERVATION_TIME_STEP_INTERVAL = 1
-ACTION_DIM = [7, 37, 37]
-ACTION_ENCODING_SIZE = sum(ACTION_DIM)  # Must match ACTION_CONCAT_SIZE for one-hot action encoding in DynNetwork
-ACTION_CONCAT_SIZE = sum(ACTION_DIM)
-ACTION_ENCODING_SIZE = sum(ACTION_DIM)  # Must match ACTION_CONCAT_SIZE for one-hot action encoding in DynNetwork
-ACTION_CONCAT_SIZE = sum(ACTION_DIM)
+ACTION_ENCODING_SIZE = 55  # sum(ACTION_DIM) = 8+37+10; matches 3-block variable-dim encoding
+ACTION_CONCAT_SIZE = 55
+ACTION_DIM = [8, 37, 10]
 
 # ACTION_DIM = 10
 ENCODER_NUM_STEPS = 601
