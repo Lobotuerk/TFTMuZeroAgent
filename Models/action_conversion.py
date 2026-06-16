@@ -12,7 +12,7 @@ def action_3d_to_policy(
 
     The policy is a concatenation of variable-size one-hot blocks,
     one for each dimension of the 3D action. Block sizes come from
-    action_dims (defaults to config.ACTION_DIM=[7,37,10]).
+    action_dims (defaults to config.ACTION_DIM=[7,37,37]).
 
     Args:
         action_3d: 3-element list or array [action_type, target_1, target_2]
