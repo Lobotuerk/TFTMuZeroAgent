@@ -6,6 +6,7 @@ import os
 import time
 import numpy as np
 import pytest
+import config
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -53,6 +54,7 @@ def _mock_env_worker_3games(env_id, conn):
     Mock env worker that plays 3 short games then exits.
     Uses protocol compatible with _MultiProcessEnvManager.
     """
+    import config
     for game_idx in range(3):
         num_players = 8
         player_ids = [f"player_{i}" for i in range(num_players)]
