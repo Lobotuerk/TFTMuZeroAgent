@@ -49,13 +49,15 @@ async def training_mode(args):
 
 
 async def train_server_mode(args):
-    """GPU-bound Training Server process (Option A)."""
+    """GPU-bound Training Server process with HTTP API."""
     import os
-    import glob
     import pickle
+    import shutil
+    from datetime import datetime as dt
     import torch
+    from aiohttp import web
     
-    print("=== Training Server Mode (Option A) ===")
+    print("=== Training Server Mode (HTTP API) ===")
     cfg = _build_config(args)
     orch = TrainingOrchestrator(cfg)
     
@@ -83,10 +85,8 @@ async def train_server_mode(args):
     orch._train_executor = ThreadPoolExecutor(max_workers=1)
     orch.summary_writer = orch._build_logger()
     
-    # Create checkpoints, gameplay, and combat directories
+    # Create checkpoint directory
     os.makedirs("./checkpoint", exist_ok=True)
-    os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
-    os.makedirs(config.COMBAT_BUFFER_PATH, exist_ok=True)
     
     # If starting from a checkpoint, load it
     if args.starting_episode > 0:
@@ -96,7 +96,6 @@ async def train_server_mode(args):
             orch.training_step = args.starting_episode
             print(f"Resumed from checkpoint step {orch.training_step}")
     else:
-        # Auto-detect latest step if checkpoint files exist and latest_model.pth is present
         import glob
         checkpoints = glob.glob("./checkpoint/current_*")
         if checkpoints and os.path.isfile("./checkpoint/latest_model.pth"):
@@ -126,7 +125,7 @@ async def train_server_mode(args):
                 print("Found existing latest_model.pth checkpoint, loaded to training server.")
             except Exception:
                 pass
-            
+    
     # Override save_current_checkpoint to ALSO save latest_model.pth for worker sync
     original_save_current = orch.save_current_checkpoint
     def custom_save_current():
@@ -142,67 +141,97 @@ async def train_server_mode(args):
     torch.save(orch.current_model.model.state_dict(), "./checkpoint/latest_model.pth")
     if not os.path.isfile("./checkpoint/best_model.pth"):
         torch.save(orch.current_model.model.state_dict(), "./checkpoint/best_model.pth")
-            
-    print("Training server is listening for worker experience files...")
     
+    # ── HTTP API handlers ─────────────────────────────────────────
+    
+    async def handle_experience(request):
+        experience_type = request.headers.get("X-Experience-Type", "")
+        if experience_type not in ("gameplay", "combat"):
+            return web.Response(status=400, text="Invalid or missing X-Experience-Type header")
+        body = await request.read()
+        try:
+            data = pickle.loads(body)
+        except Exception:
+            return web.Response(status=400, text="Invalid pickle data")
+        if experience_type == "gameplay":
+            orch.global_buffer.gameplay_buffer.add(data)
+        else:
+            for sample in data:
+                orch.global_buffer.store_combat(sample)
+        return web.Response(status=200)
+    
+    async def handle_weights(request):
+        name = request.match_info["name"]
+        if name not in ("best", "latest"):
+            return web.Response(status=404, text="Invalid weight name")
+        path = f"./checkpoint/{name}_model.pth"
+        if not os.path.isfile(path):
+            return web.Response(status=404)
+        if_modified_since = request.headers.get("If-Modified-Since")
+        if if_modified_since:
+            try:
+                since = dt.fromisoformat(if_modified_since)
+                mtime = dt.fromtimestamp(os.path.getmtime(path))
+                if mtime <= since:
+                    return web.Response(status=304)
+            except (ValueError, OSError):
+                pass
+        with open(path, "rb") as f:
+            data = f.read()
+        last_modified = dt.fromtimestamp(os.path.getmtime(path)).isoformat()
+        return web.Response(body=data, content_type="application/octet-stream",
+                            headers={"Last-Modified": last_modified})
+    
+    async def handle_promote_best(request):
+        try:
+            shutil.copy("./checkpoint/latest_model.pth", "./checkpoint/best_model.pth")
+            return web.Response(status=200)
+        except Exception:
+            return web.Response(status=500, text="Failed to promote best model")
+    
+    # ── Start HTTP server ──────────────────────────────────────────
+    app = web.Application()
+    app.router.add_post("/api/v1/experience", handle_experience)
+    app.router.add_get("/api/v1/weights/{name}", handle_weights)
+    app.router.add_post("/api/v1/weights/promote_best", handle_promote_best)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, config.SERVER_HOST, config.SERVER_PORT)
+    await site.start()
+    print(f"HTTP API server listening on {config.SERVER_HOST}:{config.SERVER_PORT}")
+    
+    # ── Training loop (data arrives via HTTP, no file polling) ─────
     orch.training_active = True
     try:
         while orch.training_active:
-            # 1. Sweep gameplay buffer folder for pkl experience files
-            pattern = os.path.join(config.GAMEPLAY_BUFFER_PATH, "exp_*.pkl")
-            exp_files = glob.glob(pattern)
-            
-            for f_path in exp_files:
-                try:
-                    with open(f_path, "rb") as f:
-                        replay_set = pickle.load(f)
-                    orch.global_buffer.gameplay_buffer.add(replay_set)
-                    os.remove(f_path) # Delete consumed file
-                except Exception:
-                    # File might be partially written, try again next loop
-                    pass
-                    
-            # 2. Sweep combat buffer folder for pkl experience files
-            c_pattern = os.path.join(config.COMBAT_BUFFER_PATH, "combat_*.pkl")
-            combat_files = glob.glob(c_pattern)
-            
-            for c_path in combat_files:
-                try:
-                    with open(c_path, "rb") as f:
-                        combat_samples = pickle.load(f)
-                    for sample in combat_samples:
-                        orch.global_buffer.store_combat(sample)
-                    os.remove(c_path) # Delete consumed file
-                except Exception:
-                    # File might be partially written, try again next loop
-                    pass
-                    
-            # 3. Run training step if data is available
             trained = False
             while orch.training_active and orch.global_buffer.available_gameplay_batch() and orch.training_step < args.max_steps:
-                await orch._train_step() # Run 1 training update
+                await orch._train_step()
                 trained = True
                 await asyncio.sleep(0.001)
-                
             if not trained:
-                await asyncio.sleep(1.0) # Rest the CPU/GPU while waiting for data
-                
+                await asyncio.sleep(1.0)
     except KeyboardInterrupt:
         print("\nTraining server stopped.")
     finally:
+        await runner.cleanup()
         orch._train_executor.shutdown(wait=False)
     return True
 
 
 async def worker_mode(args):
-    """CPU-bound Game Collection or Evaluation Worker process (Option A)."""
+    """CPU-bound Game Collection or Evaluation Worker process (HTTP client)."""
     import os
     import pickle
+    import io
     import torch
     import sys
+    import aiohttp
     
     worker_id = getattr(args, "worker_id", 0)
     worker_role = getattr(args, "worker_role", "collector")
+    server_url = getattr(args, "server_url", "http://127.0.0.1:8080").rstrip("/")
     
     # Redirect stdout and stderr to a unique line-buffered file per worker
     log_file_path = f"log_n_{worker_id}.txt"
@@ -210,7 +239,7 @@ async def worker_mode(args):
     sys.stdout = log_file
     sys.stderr = log_file
     
-    print(f"=== Worker Process {worker_id} Mode: {worker_role} ===")
+    print(f"=== Worker Process {worker_id} Mode: {worker_role} (Server: {server_url}) ===")
     
     cfg = _build_config(args)
     
@@ -224,130 +253,129 @@ async def worker_mode(args):
         orch._build_logger = lambda: None
         
     orch.setup(is_collector=is_collector)
-            
-    os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
-    os.makedirs(config.COMBAT_BUFFER_PATH, exist_ok=True)
-    os.makedirs("./checkpoint", exist_ok=True)
     
     try:
-        if worker_role == "collector":
-            print(f"[Worker {worker_id}] Starting collection loop...")
-            while True:
-                # 1. Pull best weights if available (MuZero self-play is driven by current best weights)
-                best_weights_path = "./checkpoint/best_model.pth"
-                if os.path.isfile(best_weights_path):
-                    try:
-                        weights = torch.load(best_weights_path, map_location="cpu")
-                        if orch.current_model is not None:
-                            orch.current_model.model.load_state_dict(weights)
-                        # Sync weights to training agents
-                        for agent in orch._training_agents:
-                            agent.update_weights(weights)
-                    except Exception:
-                        # Might be writing, skip this iteration
-                        pass
+        async with aiohttp.ClientSession() as session:
+            if worker_role == "collector":
+                print(f"[Worker {worker_id}] Starting collection loop...")
+                while True:
+                    # 1. Pull best weights from server
+                    async with session.get(f"{server_url}/api/v1/weights/best") as resp:
+                        if resp.status == 200:
+                            try:
+                                weights_bytes = await resp.read()
+                                weights = torch.load(io.BytesIO(weights_bytes), map_location="cpu")
+                                if orch.current_model is not None:
+                                    orch.current_model.model.load_state_dict(weights)
+                                for agent in orch._training_agents:
+                                    agent.update_weights(weights)
+                            except Exception as e:
+                                print(f"[Worker {worker_id}] Error loading weights: {e}")
+                    
+                    # 2. Run fixed games to collect experiences
+                    print(f"[Worker {worker_id}] Starting a batch of {cfg.concurrent_games} game(s)...")
+                    await orch.env_manager.run_fixed_games(orch.agent_manager, cfg.concurrent_games)
+                    
+                    # 3. Send gameplay experiences to server
+                    samples = list(orch.global_buffer.gameplay_buffer)
+                    if samples:
+                        data = pickle.dumps(samples)
+                        async with session.post(
+                            f"{server_url}/api/v1/experience",
+                            data=data,
+                            headers={"Content-Type": "application/octet-stream",
+                                     "X-Experience-Type": "gameplay"}
+                        ) as resp:
+                            if resp.status == 200:
+                                print(f"[Worker {worker_id}] Sent {len(samples)} gameplay steps")
+                                orch.global_buffer.clear_gameplay_buffer()
+                            else:
+                                print(f"[Worker {worker_id}] Failed to send gameplay steps (status {resp.status})")
+                    
+                    # 4. Send combat experiences to server
+                    combat_buffer = orch.global_buffer.combat_buffer
+                    if combat_buffer._size > 0:
+                        combat_samples = combat_buffer._buffer[:combat_buffer._size]
+                        data = pickle.dumps(combat_samples)
+                        async with session.post(
+                            f"{server_url}/api/v1/experience",
+                            data=data,
+                            headers={"Content-Type": "application/octet-stream",
+                                     "X-Experience-Type": "combat"}
+                        ) as resp:
+                            if resp.status == 200:
+                                print(f"[Worker {worker_id}] Sent {len(combat_samples)} combat steps")
+                                combat_buffer._size = 0
+                                combat_buffer._pos = 0
+                            else:
+                                print(f"[Worker {worker_id}] Failed to send combat steps (status {resp.status})")
+                    
+                    await asyncio.sleep(1.0)
+                    
+            elif worker_role == "evaluator":
+                print(f"[Worker {worker_id}] Starting evaluator loop...")
+                last_modified = ""
                 
-                # 2. Run fixed games to collect experiences
-                print(f"[Worker {worker_id}] Starting a batch of {cfg.concurrent_games} game(s)...")
-                await orch.env_manager.run_fixed_games(orch.agent_manager, cfg.concurrent_games)
-                
-                # 3. Pull experiences from local gameplay buffer
-                samples = list(orch.global_buffer.gameplay_buffer)
-                if samples:
-                    # 4. Save to shared gameplay directory
-                    timestamp = time.time_ns()
-                    f_path = os.path.join(config.GAMEPLAY_BUFFER_PATH, f"exp_worker_{worker_id}_{timestamp}.pkl")
-                    with open(f_path, "wb") as f:
-                        pickle.dump(samples, f)
-                    print(f"[Worker {worker_id}] Saved {len(samples)} steps to {f_path}")
+                while True:
+                    # 1. Check if latest weights changed on server
+                    headers = {}
+                    if last_modified:
+                        headers["If-Modified-Since"] = last_modified
                     
-                    # 5. Clear local buffer
-                    orch.global_buffer.clear_gameplay_buffer()
-                    
-                # 6. Pull experiences from local combat buffer
-                combat_buffer = orch.global_buffer.combat_buffer
-                if combat_buffer._size > 0:
-                    combat_samples = combat_buffer._buffer[:combat_buffer._size]
-                    timestamp = time.time_ns()
-                    c_path = os.path.join(config.COMBAT_BUFFER_PATH, f"combat_worker_{worker_id}_{timestamp}.pkl")
-                    with open(c_path, "wb") as f:
-                        pickle.dump(combat_samples, f)
-                    print(f"[Worker {worker_id}] Saved {len(combat_samples)} combat steps to {c_path}")
-                    
-                    # 7. Clear local combat buffer
-                    combat_buffer._size = 0
-                    combat_buffer._pos = 0
-                    
-                await asyncio.sleep(1.0)
-                
-        elif worker_role == "evaluator":
-            print(f"[Worker {worker_id}] Starting evaluator loop...")
-            last_evaluated_mtime = 0
-            
-            latest_weights_path = "./checkpoint/latest_model.pth"
-            best_weights_path = "./checkpoint/best_model.pth"
-            
-            while True:
-                # Check if latest_model.pth was updated
-                if os.path.isfile(latest_weights_path):
-                    mtime = os.path.getmtime(latest_weights_path)
-                    if mtime > last_evaluated_mtime:
-                        last_evaluated_mtime = mtime
-                        print(f"[Worker {worker_id}] Detected updated latest_model.pth. Running evaluation...")
+                    async with session.get(f"{server_url}/api/v1/weights/latest", headers=headers) as resp:
+                        if resp.status == 304:
+                            await asyncio.sleep(5.0)
+                            continue
+                        if resp.status == 404:
+                            await asyncio.sleep(5.0)
+                            continue
+                        if resp.status != 200:
+                            await asyncio.sleep(5.0)
+                            continue
                         
-                        # Load latest model weights
+                        last_modified = resp.headers.get("Last-Modified", "")
+                        print(f"[Worker {worker_id}] Detected updated weights. Running evaluation...")
+                        
                         try:
-                            # Parse step from checkpoints to ensure correct TensorBoard plotting step
-                            import glob
-                            checkpoints = glob.glob("./checkpoint/current_*")
-                            if checkpoints:
-                                steps = []
-                                for ckpt in checkpoints:
-                                    try:
-                                        steps.append(int(ckpt.split("current_")[-1]))
-                                    except ValueError:
-                                        pass
-                                if steps:
-                                    orch.training_step = max(steps)
-                                    
-                            latest_weights = torch.load(latest_weights_path, map_location="cpu")
+                            latest_bytes = await resp.read()
+                            latest_weights = torch.load(io.BytesIO(latest_bytes), map_location="cpu")
                             orch.current_model.model.load_state_dict(latest_weights)
                         except Exception:
-                            # File might be mid-write, skip this iteration
-                            last_evaluated_mtime = 0 # Retry next loop
+                            print(f"[Worker {worker_id}] Error loading latest weights")
                             await asyncio.sleep(2.0)
                             continue
-                            
-                        # Load best model weights (if not exists, default to latest)
-                        if os.path.isfile(best_weights_path):
-                            try:
-                                best_weights = torch.load(best_weights_path, map_location="cpu")
-                                orch.best_model.model.load_state_dict(best_weights)
-                            except Exception:
-                                pass
-                        else:
-                            # If no best_model.pth exists, current latest is the best by default
-                            torch.save(latest_weights, best_weights_path)
-                            orch.best_model.model.load_state_dict(latest_weights)
-                            
-                        # Run Standalone Evaluation
-                        results = await orch.evaluate()
                         
-                        # Save evaluation results
+                        # 2. Load best weights from server
+                        async with session.get(f"{server_url}/api/v1/weights/best") as best_resp:
+                            if best_resp.status == 200:
+                                try:
+                                    best_bytes = await best_resp.read()
+                                    best_weights = torch.load(io.BytesIO(best_bytes), map_location="cpu")
+                                    orch.best_model.model.load_state_dict(best_weights)
+                                except Exception:
+                                    pass
+                            else:
+                                # No best weights yet on server; latest is best by default
+                                orch.best_model.model.load_state_dict(latest_weights)
+                        
+                        # 3. Run standalone evaluation
+                        results = await orch.evaluate()
                         current_mean = results["current_placement"]
                         best_mean = results["best_placement"]
                         
-                        # If current is strictly better (lower placement score)
+                        # 4. If current is strictly better, promote on server
                         if current_mean < best_mean:
                             print(f"[Evaluator] \u2713 Model improved! Placement: {current_mean:.2f} vs {best_mean:.2f}")
-                            # Save as new best weights
-                            torch.save(latest_weights, best_weights_path)
-                            print("[Evaluator] Saved new best_model.pth")
+                            async with session.post(f"{server_url}/api/v1/weights/promote_best") as prom_resp:
+                                if prom_resp.status == 200:
+                                    print("[Evaluator] Promoted latest to best on server")
+                                else:
+                                    print(f"[Evaluator] Failed to promote best (status {prom_resp.status})")
                         else:
                             print(f"[Evaluator] \u2717 No improvement. Placement: {current_mean:.2f} vs {best_mean:.2f}")
-                            
-                await asyncio.sleep(5.0)
-                
+                    
+                    await asyncio.sleep(5.0)
+                    
     except KeyboardInterrupt:
         print(f"\nWorker {worker_id} stopped.")
     finally:
@@ -444,6 +472,8 @@ async def async_main():
                         help="ID of this collection worker (worker mode)")
     parser.add_argument("--worker_role", choices=["collector", "evaluator"], default="collector",
                         help="Role of this worker process (worker mode)")
+    parser.add_argument("--server-url", type=str, default="http://127.0.0.1:8080",
+                        help="URL of the training server (worker mode)")
 
     # Training
     parser.add_argument("--concurrent_games", "-cg", type=int,
