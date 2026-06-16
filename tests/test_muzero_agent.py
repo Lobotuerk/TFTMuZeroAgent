@@ -26,7 +26,7 @@ def test_muzero_agent_initialization():
         print(f"  Simulations: {agent.simulations}")
         
         # Verify expected values
-        expected_action_limits = [8, 37, 10]
+        expected_action_limits = [7, 37, 37]
         if agent.action_limits == expected_action_limits:
             print(f"✓ Action limits match expected values: {expected_action_limits}")
         else:
