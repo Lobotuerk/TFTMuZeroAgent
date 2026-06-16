@@ -73,7 +73,7 @@ def _mock_thread_worker(env_id, loop, agent_manager, stop_event, pause_event,
             obs = {
                 p: {
                     "tensor": np.zeros((2504,), dtype=np.float32),
-                    "action_mask": np.ones(54, dtype=bool),
+                    "action_mask": np.ones(sum(config.ACTION_DIM), dtype=bool),
                 }
                 for p in player_ids
             }

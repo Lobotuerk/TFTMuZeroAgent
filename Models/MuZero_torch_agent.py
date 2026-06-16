@@ -70,7 +70,7 @@ class MuZeroAgent(BaseAgent):
             self.load_weights_from_state_dict(weights)
         
         # Initialize Enhanced MCTS with action dimensions from schema/config
-        # For TFTSet4Gym: ACTION_DIM = [7, 37, 10], so policy_size = sum(ACTION_DIM) = 54
+        # For TFTSet4Gym: ACTION_DIM = [7, 37, 37], so policy_size = sum(ACTION_DIM) = 81
         policy_size = sum(self.action_limits)
         
         self.mcts = EnhancedMCTS(
@@ -132,7 +132,7 @@ class MuZeroAgent(BaseAgent):
 
         def run_mcts_item(i):
             obs = observations[i]
-            mask = masks[i] if i < len(masks) else np.ones(54, dtype=bool)
+            mask = masks[i] if i < len(masks) else np.ones(sum(config.ACTION_DIM), dtype=bool)
             pc = precomputed_list[i]
 
             pid = player_ids[i] if player_ids and i < len(player_ids) else "default"

@@ -220,7 +220,7 @@ class TestCommonAgents(unittest.TestCase):
         self.mock_obs = np.random.random(config.OBSERVATION_SIZE)  # Flat observation
         self.mock_obs_dict = {
             'tensor': self.mock_obs,
-            'action_mask': np.ones((54,), dtype=np.int8)
+            'action_mask': np.ones((sum(config.ACTION_DIM),), dtype=np.int8)
         }
 
     def test_agent_initialization(self):
