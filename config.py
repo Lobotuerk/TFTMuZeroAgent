@@ -69,3 +69,7 @@ LOG_COMBAT = False
 LOGMESSAGES = True
 
 BATCHED_INFERENCE_THRESHOLD = 64
+
+# Networked Distributed Training
+SERVER_HOST = "0.0.0.0"
+SERVER_PORT = 8080
