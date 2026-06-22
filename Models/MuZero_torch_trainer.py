@@ -29,12 +29,12 @@ class Trainer(object):
         if self.optimizer is None:
             self.optimizer = self.create_optimizer(agent)
             self.scheduler = self.create_scheduler(self.optimizer)
-        observation, action, value, reward, policy = batch
+        observation, action, value, reward, policy, target_obs, bootstrap_depth = batch
         agent.train()
 
         self.optimizer.zero_grad()
 
-        loss = self.compute_loss(agent, observation, action, value, reward, policy, combats, train_step, summary_writer)
+        loss = self.compute_loss(agent, observation, action, value, reward, policy, target_obs, bootstrap_depth, combats, train_step, summary_writer)
 
         loss = loss.mean()
 
@@ -44,10 +44,11 @@ class Trainer(object):
         self.optimizer.step()
         self.scheduler.step()
 
-    def compute_loss(self, agent, observation, action, target_value, target_reward, target_policy, combats, train_step, summary_writer):
+    def compute_loss(self, agent, observation, action, target_value, target_reward, target_policy, target_obs, bootstrap_depth, combats, train_step, summary_writer):
 
         device = next(agent.parameters()).device
-        target_value = torch.from_numpy(target_value).to(device)
+        target_value = torch.from_numpy(target_value).float().to(device)
+        bootstrap_depth = torch.from_numpy(bootstrap_depth).float().to(device)
 
         # initial step
         output = agent.initial_inference(observation)
@@ -86,10 +87,25 @@ class Trainer(object):
         accs = collections.defaultdict(list)
         # Policy is a concatenation of 3 independent blocks per ACTION_DIM
         target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, config.ACTION_CONCAT_SIZE)).to(device)
-        
+
+        # Compute n-step bootstrap targets via recomputing
+        # Flatten target_obs for batched inference
+        if target_obs[0] is not None:
+            target_obs_array = np.array([t if t is not None else target_obs[0] for t in target_obs])
+            with torch.no_grad():
+                target_output = agent.initial_inference(target_obs_array)
+                v_t_plus_n = target_output["value"]
+
+            # Compute bootstrap targets: z_t = gamma^n * v_{t+n}
+            discount = torch.tensor(config.DISCOUNT, device=device)
+            gamma_n = discount ** bootstrap_depth
+            bootstrap_targets = gamma_n * v_t_plus_n.squeeze()
+            # Replace placeholder target_value with bootstrap targets
+            target_value = bootstrap_targets
+
         # Precompute split indices from ACTION_DIM
         dims = list(config.ACTION_DIM)
-        
+
         # Initialize losses as tensors with proper shape
         batch_size = target_value.shape[0]
         value_loss = torch.zeros(batch_size, device=device)
@@ -190,7 +206,7 @@ class Trainer(object):
         def get_mean(k):
             return torch.mean(sum_accs[k])
 
-        if summary_writer is not None:
+       if summary_writer is not None:
             summary_writer.add_scalar('prediction/value', get_mean('value'), train_step)
             summary_writer.add_scalar('prediction/value_variance', torch.mean(torch.var(accs['value'], dim=0)), train_step)
             summary_writer.add_scalar('prediction/policy_variance', torch.mean(torch.var(accs['policy'], dim=1)), train_step)
@@ -206,6 +222,21 @@ class Trainer(object):
             summary_writer.add_scalar('losses/total', torch.mean(mean_loss), train_step)
 
             summary_writer.add_scalar('accuracy/value', -get_mean('value_diff'), train_step)
+
+            # Policy entropy: H(p) = -sum(p * log(p))
+            policy_entropies = []
+            for tstep, prediction in enumerate(predictions):
+                logits = prediction.policy_logits
+                probs = torch.softmax(logits, dim=-1)
+                log_probs = torch.log(probs + 1e-10)
+                entropy = -(probs * log_probs).sum(dim=-1).mean()
+                policy_entropies.append(entropy)
+            summary_writer.add_scalar('metrics/policy_entropy', torch.mean(torch.stack(policy_entropies)), train_step)
+
+            # Value regression error (MAE)
+            value_mae = torch.mean(torch.abs(torch.squeeze(output["value"]) - target_value[:, 0]))
+            summary_writer.add_scalar('metrics/value_mae', value_mae, train_step)
+
             summary_writer.flush()
 
         return mean_loss
