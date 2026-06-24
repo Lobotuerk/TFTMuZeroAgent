@@ -4,6 +4,9 @@ import collections
 import numpy as np
 import time
 
+def get_device():
+    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 # TFT-182: Embedding-based observation schema constants
 # Embedding table sizes
 NUM_CHAMPIONS = 58
@@ -130,7 +133,7 @@ class MuZeroNetwork(AbstractNetwork):
             [config.HIDDEN_STATE_SIZE] * 5,
             config.HIDDEN_STATE_SIZE,
             1
-        ).cuda()
+        ).to(get_device())
 
         # self.action_encodings = mlp(config.ACTION_CONCAT_SIZE, [config.LAYER_HIDDEN_SIZE] * 0,
         #                             config.HIDDEN_STATE_SIZE)
@@ -140,14 +143,14 @@ class MuZeroNetwork(AbstractNetwork):
             [config.LAYER_HIDDEN_SIZE] * 6,
             config.HIDDEN_STATE_SIZE,
             config.ACTION_CONCAT_SIZE
-        ).cuda()
+        ).to(get_device())
 
         self.prediction_network = PredNetwork(
             config.HIDDEN_STATE_SIZE,
             [config.LAYER_HIDDEN_SIZE] * 6,
             1,
             self.full_support_size
-        ).cuda()
+        ).to(get_device())
 
     def prediction(self, encoded_state):
         policy_logits, value = self.prediction_network(encoded_state)
