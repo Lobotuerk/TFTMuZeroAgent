@@ -41,7 +41,7 @@ class TestPolicyEntropy:
         logits = torch.zeros(num_actions)
         ent = policy_entropy(logits)
         expected = np.log(num_actions)
-        assert torch.allclose(ent, torch.tensor(expected), atol=1e-4), \
+        assert torch.allclose(ent, torch.tensor(expected, dtype=torch.float32), atol=1e-4), \
             f"Uniform entropy {ent} should be ~{expected}"
 
     def test_entropy_deterministic_distribution(self):

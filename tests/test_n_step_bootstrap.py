@@ -41,15 +41,15 @@ def test_bootstrap_target_computation(trainer, bootstrap_depth, discount):
     """Verify z_t = gamma^n * v_{t+n} computation."""
     import torch
     device = torch.device('cpu')
-    v_t_plus_n = torch.tensor([[0.5], [0.3], [0.8], [0.1]], device=device)
-    gamma_n = discount ** bootstrap_depth
+    v_t_plus_n = torch.tensor([[0.5], [0.3], [0.8], [0.1]], device=device, dtype=torch.float32)
+    gamma_n = torch.tensor(discount ** bootstrap_depth, device=device, dtype=torch.float32)
     bootstrap_targets = gamma_n * v_t_plus_n.squeeze()
     expected = torch.tensor([
         discount ** 1 * 0.5,
         discount ** 2 * 0.3,
         discount ** 3 * 0.8,
         discount ** 5 * 0.1,
-    ], device=device)
+    ], device=device, dtype=torch.float32)
     assert torch.allclose(bootstrap_targets, expected, atol=1e-6), "bootstrap target mismatch"
 
 
@@ -57,11 +57,11 @@ def test_bootstrap_depth_one(trainer, discount):
     """Test bootstrap with depth=1 (single step)."""
     import torch
     device = torch.device('cpu')
-    bootstrap_depth_tensor = torch.tensor([1.0], device=device)
-    v_t_plus_n = torch.tensor([[0.5]], device=device)
+    bootstrap_depth_tensor = torch.tensor([1.0], device=device, dtype=torch.float32)
+    v_t_plus_n = torch.tensor([[0.5]], device=device, dtype=torch.float32)
     gamma_n = discount ** bootstrap_depth_tensor
     bootstrap_targets = gamma_n * v_t_plus_n.squeeze()
-    expected = torch.tensor([discount * 0.5], device=device)
+    expected = torch.tensor([discount * 0.5], device=device, dtype=torch.float32)
     assert torch.allclose(bootstrap_targets, expected), "depth=1 bootstrap target mismatch"
 
 
@@ -70,11 +70,11 @@ def test_bootstrap_depth_equals_unroll(trainer, bootstrap_depth, discount):
     import torch
     device = torch.device('cpu')
     full_depth = np.array([float(config.UNROLL_STEPS)], dtype=float)
-    bootstrap_depth_tensor = torch.tensor(full_depth, device=device)
-    v_t_plus_n = torch.tensor([[0.7]], device=device)
+    bootstrap_depth_tensor = torch.tensor(full_depth, device=device, dtype=torch.float32)
+    v_t_plus_n = torch.tensor([[0.7]], device=device, dtype=torch.float32)
     gamma_n = discount ** bootstrap_depth_tensor
     bootstrap_targets = gamma_n * v_t_plus_n.squeeze()
-    expected = torch.tensor([discount ** config.UNROLL_STEPS * 0.7], device=device)
+    expected = torch.tensor([discount ** config.UNROLL_STEPS * 0.7], device=device, dtype=torch.float32)
     assert torch.allclose(bootstrap_targets, expected, atol=1e-6), "full depth bootstrap mismatch"
 
 
