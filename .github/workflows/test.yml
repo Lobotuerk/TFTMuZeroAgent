@@ -1,0 +1,41 @@
+name: Test Suite
+
+on:
+  push:
+    branches:
+      - main
+      - 'sdd/**'
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest on new test files
+        run: |
+          pytest tests/test_n_step_bootstrap.py \
+                 tests/test_model_refactor.py \
+                 tests/test_metrics.py \
+                 tests/test_dynamics_zero_reward.py \
+                 -v --timeout=120
