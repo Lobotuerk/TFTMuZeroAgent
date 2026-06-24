@@ -543,7 +543,11 @@ class DynNetwork(torch.nn.Module):
         super().__init__()
         self.relu = torch.nn.LeakyReLU(inplace=True)
         layer_sizes = layer_sizes if layer_sizes else [input_size] * 6
-        self.dense1 = torch.nn.Linear(input_size, layer_sizes[0])
+        layer_sizes = list(layer_sizes)
+        hidden = config.HIDDEN_STATE_SIZE
+        if len(layer_sizes) > 0:
+            layer_sizes = [hidden] * len(layer_sizes)
+        self.dense1 = torch.nn.Linear(input_size, hidden)
         for i, size in enumerate(layer_sizes):
             prev_size = layer_sizes[i - 1] if i > 0 else layer_sizes[0]
             setattr(self, f'dense{i + 2}', torch.nn.Linear(prev_size, size))
