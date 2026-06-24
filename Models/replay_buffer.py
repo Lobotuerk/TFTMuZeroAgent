@@ -71,14 +71,25 @@ class ReplayBuffer:
         """Move buffer to global storage"""
         replay_set = []
         final_val = float(final_value)
+        max_obs = len(self.observations)
 
-        for current_start in range(config.UNROLL_STEPS, len(self.observations)):
+        for t in range(config.UNROLL_STEPS, max_obs):
+            unroll_steps = min(config.UNROLL_STEPS, max_obs - t)
+            start = t - config.UNROLL_STEPS
+            target_idx = t + unroll_steps - 1
+            if target_idx >= max_obs:
+                target_idx = max_obs - 1
+
+            target_obs = self.observations[target_idx]
+
             replay_set.append([
-                self.observations[current_start - config.UNROLL_STEPS],
-                self.actions[current_start - config.UNROLL_STEPS:current_start - 1],
-                [final_val] * config.UNROLL_STEPS,
-                self.rewards[current_start - config.UNROLL_STEPS:current_start],
-                self.policys[current_start - config.UNROLL_STEPS:current_start],
+                self.observations[start],
+                self.actions[start:t],
+                [final_val] * unroll_steps,
+                self.rewards[start:t],
+                self.policys[start:t],
+                target_obs,
+                unroll_steps,
             ])
 
         if hasattr(self.global_buffer, 'store_episode_sync'):
@@ -94,14 +105,25 @@ class ReplayBuffer:
         """Async version of move_buffer_to_global for better performance"""
         replay_set = []
         final_val = float(final_value)
+        max_obs = len(self.observations)
 
-        for current_start in range(config.UNROLL_STEPS, len(self.observations)):
+        for t in range(config.UNROLL_STEPS, max_obs):
+            unroll_steps = min(config.UNROLL_STEPS, max_obs - t)
+            start = t - config.UNROLL_STEPS
+            target_idx = t + unroll_steps - 1
+            if target_idx >= max_obs:
+                target_idx = max_obs - 1
+
+            target_obs = self.observations[target_idx]
+
             replay_set.append([
-                self.observations[current_start - config.UNROLL_STEPS],
-                self.actions[current_start - config.UNROLL_STEPS:current_start - 1],
-                [final_val] * config.UNROLL_STEPS,
-                self.rewards[current_start - config.UNROLL_STEPS:current_start],
-                self.policys[current_start - config.UNROLL_STEPS:current_start],
+                self.observations[start],
+                self.actions[start:t],
+                [final_val] * unroll_steps,
+                self.rewards[start:t],
+                self.policys[start:t],
+                target_obs,
+                unroll_steps,
             ])
 
         if hasattr(self.global_buffer, 'store_episode_async'):

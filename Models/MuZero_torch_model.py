@@ -127,18 +127,26 @@ class MuZeroNetwork(AbstractNetwork):
 
         self.representation_network = RepNetwork(
             config.OBSERVATION_SIZE,
-            [256] * 16, 1, config.HIDDEN_STATE_SIZE
+            [config.HIDDEN_STATE_SIZE] * 5,
+            config.HIDDEN_STATE_SIZE,
+            1
         ).cuda()
 
         # self.action_encodings = mlp(config.ACTION_CONCAT_SIZE, [config.LAYER_HIDDEN_SIZE] * 0,
         #                             config.HIDDEN_STATE_SIZE)
 
         self.dynamics_network = DynNetwork(
-            28, [256] * 16, 1, self.full_support_size
+            config.HIDDEN_STATE_SIZE + config.ACTION_ENCODING_SIZE,
+            [config.LAYER_HIDDEN_SIZE] * 6,
+            config.HIDDEN_STATE_SIZE,
+            self.full_support_size
         ).cuda()
 
         self.prediction_network = PredNetwork(
-            28, [256] * 16, 1, self.full_support_size
+            config.HIDDEN_STATE_SIZE,
+            [config.LAYER_HIDDEN_SIZE] * 6,
+            1,
+            self.full_support_size
         ).cuda()
 
     def prediction(self, encoded_state):
@@ -166,7 +174,10 @@ class MuZeroNetwork(AbstractNetwork):
 
         cube_action = torch.from_numpy(action_to_3d(action_np)).float().to(hidden_state.device)
 
-        next_hidden_state, reward = self.dynamics_network(hidden_state, cube_action)
+        next_hidden_state = self.dynamics_network(hidden_state, cube_action)
+
+        # Synthesize dummy zero reward (terminal-only environment)
+        reward = torch.zeros(next_hidden_state.shape[0], 1, device=next_hidden_state.device)
 
         # Scale encoded state between [0, 1] (See paper appendix Training)
         min_next_hidden_state = next_hidden_state.min(dim=1, keepdim=True)[0]
@@ -207,27 +218,6 @@ class MuZeroNetwork(AbstractNetwork):
         }
         return outputs
 
-    @staticmethod
-    def rnn_to_flat(state):
-        """Maps LSTM state to flat vector."""
-        states = []
-        for cell_state in state:
-            states.extend(cell_state)
-        return torch.cat(states, dim=-1)
-
-    @staticmethod
-    def flat_to_lstm_input(state):
-        """Maps flat vector to LSTM state."""
-        tensors = []
-        cur_idx = 0
-        for size in config.RNN_SIZES:
-            states = (state[Ellipsis, cur_idx:cur_idx + size],
-                      state[Ellipsis, cur_idx + size:cur_idx + 2 * size])
-
-            cur_idx += 2 * size
-            tensors.append(states)
-        return tensors
-
     def recurrent_inference(self, hidden_state, action):
         next_hidden_state, reward_logits = self.dynamics(hidden_state, action)
         policy_logits, value_logits = self.prediction(next_hidden_state)
@@ -267,54 +257,37 @@ class PredNetwork(torch.nn.Module):
 
         self.relu = torch.nn.LeakyReLU(inplace=True)
         self.sigmoid = torch.nn.Sigmoid()
-        hidden = config.HIDDEN_STATE_SIZE
-        layer_size = config.LAYER_HIDDEN_SIZE
 
-        self.dense1 = torch.nn.Linear(hidden, layer_size)
-        self.dense2 = torch.nn.Linear(layer_size, layer_size)
-        self.dense3 = torch.nn.Linear(layer_size, layer_size)
-        self.dense4 = torch.nn.Linear(layer_size, layer_size)
-        self.dense5 = torch.nn.Linear(layer_size, layer_size)
-        self.dense6 = torch.nn.Linear(layer_size, layer_size)
-        self.dense7 = torch.nn.Linear(layer_size, layer_size)
-        self.dense8 = torch.nn.Linear(layer_size, layer_size)
-        self.ln2 = torch.nn.LayerNorm(layer_size)
-        self.ln3 = torch.nn.LayerNorm(layer_size)
-        self.ln4 = torch.nn.LayerNorm(layer_size)
-        self.ln5 = torch.nn.LayerNorm(layer_size)
-        self.value_dense1 = torch.nn.Linear(layer_size, layer_size)
-        self.value_dense2 = torch.nn.Linear(layer_size, layer_size)
-        self.value_dense3 = torch.nn.Linear(layer_size, layer_size)
-        self.value_dense4 = torch.nn.Linear(layer_size, 1)
-        self.ln_v1 = torch.nn.LayerNorm(layer_size)
-        self.ln_v2 = torch.nn.LayerNorm(layer_size)
-        self.ln_v3 = torch.nn.LayerNorm(layer_size)
-        self.policy_dense1 = torch.nn.Linear(layer_size, layer_size)
-        self.policy_dense2 = torch.nn.Linear(layer_size, layer_size)
-        self.policy_dense3 = torch.nn.Linear(layer_size, layer_size)
-        self.policy_dense4 = torch.nn.Linear(layer_size, config.ACTION_CONCAT_SIZE)
-        self.ln_p1 = torch.nn.LayerNorm(layer_size)
-        self.ln_p2 = torch.nn.LayerNorm(layer_size)
-        self.ln_p3 = torch.nn.LayerNorm(layer_size)
-        self.softmax = torch.nn.Softmax(dim=1)
+        hidden = input_size
+        layer_sizes = layer_sizes if layer_sizes else [hidden] * 6
+
+        self.dense1 = torch.nn.Linear(hidden, layer_sizes[0])
+        self.res_layers = torch.nn.ModuleList()
+        self.res_lns = torch.nn.ModuleList()
+        for i in range(1, len(layer_sizes)):
+            self.res_layers.append(torch.nn.Linear(layer_sizes[i], layer_sizes[i]))
+            self.res_lns.append(torch.nn.LayerNorm(layer_sizes[i]))
+
+        self.value_head = torch.nn.Sequential(
+            torch.nn.Linear(layer_sizes[-1], layer_sizes[-1]),
+            self.relu,
+            torch.nn.Linear(layer_sizes[-1], 1)
+        )
+        self.policy_head = torch.nn.Sequential(
+            torch.nn.Linear(layer_sizes[-1], layer_sizes[-1]),
+            self.relu,
+            torch.nn.Linear(layer_sizes[-1], config.ACTION_CONCAT_SIZE)
+        )
 
     def forward(self, x):
         x = self.relu(self.dense1(x))
-        x = self.relu(self.ln2(self.dense2(x))) + x
-        x = self.relu(self.ln3(self.dense3(x))) + x
-        x = self.relu(self.ln4(self.dense4(x))) + x
-        x = self.relu(self.ln5(self.dense5(x))) + x
-        x = self.dense6(x)
+        for i in range(len(self.res_layers)):
+            residual = x
+            x = self.res_lns[i](self.res_layers[i](x))
+            x = self.relu(x) + residual
 
-        policy = self.relu(self.ln_p1(self.policy_dense1(x))) + x
-        policy = self.relu(self.ln_p2(self.policy_dense2(policy))) + policy
-        policy = self.relu(self.ln_p3(self.policy_dense3(policy))) + policy
-        policy = self.policy_dense4(policy)
-
-        value = self.relu(self.ln_v1(self.value_dense1(x))) + x
-        value = self.relu(self.ln_v2(self.value_dense2(value))) + value
-        value = self.relu(self.ln_v3(self.value_dense3(value))) + value
-        value = self.value_dense4(value)
+        policy = self.policy_head(x)
+        value = self.value_head(x)
 
         return policy, value
 
@@ -331,7 +304,7 @@ class RepNetwork(torch.nn.Module):
     """
     def __init__(self, input_size, layer_sizes, output_size, encoding_size) -> torch.nn.Module:
         super().__init__()
-        hidden = config.HIDDEN_STATE_SIZE
+        hidden = output_size
 
         self.relu = torch.nn.LeakyReLU(inplace=True)
 
@@ -375,15 +348,12 @@ class RepNetwork(torch.nn.Module):
 
         # First linear layer from embedded features to hidden state
         self.dense1 = torch.nn.Linear(self.embedded_dim, hidden)
-        self.dense2 = torch.nn.Linear(hidden, hidden)
-        self.dense3 = torch.nn.Linear(hidden, hidden)
-        self.dense4 = torch.nn.Linear(hidden, hidden)
-        self.dense5 = torch.nn.Linear(hidden, hidden)
-        self.dense6 = torch.nn.Linear(hidden, hidden)
-        self.ln2 = torch.nn.LayerNorm(hidden)
-        self.ln3 = torch.nn.LayerNorm(hidden)
-        self.ln4 = torch.nn.LayerNorm(hidden)
-        self.ln5 = torch.nn.LayerNorm(hidden)
+        layer_sizes = layer_sizes if layer_sizes else [hidden] * 5
+        self.res_layers = torch.nn.ModuleList()
+        self.res_lns = torch.nn.ModuleList()
+        for i, size in enumerate(layer_sizes):
+            self.res_layers.append(torch.nn.Linear(hidden, size))
+            self.res_lns.append(torch.nn.LayerNorm(size))
 
     def _extract_champion_id(self, slot_vector: torch.Tensor) -> torch.Tensor:
         """Extract champion ID from slot vector for a batch."""
@@ -557,11 +527,10 @@ class RepNetwork(torch.nn.Module):
 
         # Feed through residual MLP
         x = self.relu(self.dense1(embedded))
-        x = self.relu(self.ln2(self.dense2(x))) + x
-        x = self.relu(self.ln3(self.dense3(x))) + x
-        x = self.relu(self.ln4(self.dense4(x))) + x
-        x = self.relu(self.ln5(self.dense5(x))) + x
-        x = self.dense6(x)
+        for i in range(len(self.res_layers)):
+            residual = x
+            x = self.res_lns[i](self.res_layers[i](x))
+            x = self.relu(x) + residual
 
         return x
 
@@ -572,54 +541,28 @@ class RepNetwork(torch.nn.Module):
 class DynNetwork(torch.nn.Module):
     def __init__(self, input_size, layer_sizes, output_size, encoding_size) -> torch.nn.Module:
         super().__init__()
-        hidden = config.HIDDEN_STATE_SIZE
+        hidden = input_size
 
         self.relu = torch.nn.LeakyReLU(inplace=True)
-        self.dense1 = torch.nn.Linear(hidden + config.ACTION_ENCODING_SIZE, hidden)
-        self.dense2 = torch.nn.Linear(hidden, hidden)
-        self.dense3 = torch.nn.Linear(hidden, hidden)
-        self.dense4 = torch.nn.Linear(hidden, hidden)
-        self.dense5 = torch.nn.Linear(hidden, hidden)
-        self.dense6 = torch.nn.Linear(hidden, hidden)
-        self.single_reward = torch.nn.Linear(hidden, 1)
+        self.dense1 = torch.nn.Linear(input_size, hidden)
+        layer_sizes = layer_sizes if layer_sizes else [hidden] * 6
+        for i, size in enumerate(layer_sizes):
+            setattr(self, f'dense{i + 2}', torch.nn.Linear(hidden, size))
+        self.layer_sizes = layer_sizes
 
     def forward(self, x, action):
         action = torch.squeeze(action, dim=1)
         x = torch.cat((x, action), dim=1)
         x = self.relu(self.dense1(x))
-        x = self.relu(self.dense2(x)) + x
-        x = self.relu(self.dense3(x)) + x
-        x = self.relu(self.dense4(x)) + x
-        x = self.relu(self.dense5(x)) + x
-        new_state = self.dense6(x)
-
-        reward = self.relu(self.single_reward(x))
-
-        return new_state, reward
+        for i in range(len(self.layer_sizes)):
+            layer = getattr(self, f'dense{i + 2}')
+            residual = x
+            x = self.relu(layer(x))
+            x = x + residual
+        return x
 
     def __call__(self, x, action):
         return self.forward(x, action)
-
-    @staticmethod
-    def flat_to_lstm_input(state):
-        """Maps flat vector to LSTM state."""
-        tensors = []
-        cur_idx = 0
-        for size in config.RNN_SIZES:
-            states = (state[Ellipsis, cur_idx:cur_idx + size],
-                      state[Ellipsis, cur_idx + size:cur_idx + 2 * size])
-
-            cur_idx += 2 * size
-            tensors.append(states)
-        return tensors
-
-    @staticmethod
-    def rnn_to_flat(state):
-        """Maps LSTM state to flat vector."""
-        states = []
-        for cell_state in state:
-            states.extend(cell_state)
-        return torch.cat(states, dim=-1)
 
 def resnet(input_size,
         layer_sizes,

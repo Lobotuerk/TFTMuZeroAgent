@@ -95,19 +95,30 @@ class GameplayBuffer:
             value_batch = []
             reward_batch = []
             policy_batch = []
-            for observation, action, value, reward, policy in samples:
-                observation_batch.append(observation)
-                action_batch.append(action)
-                value_batch.append(value)
-                reward_batch.append(reward)
-                policy_batch.append(policy)
-            return [
+            target_obs_batch = []
+            bootstrap_depth_batch = []
+            for sample in samples:
+                observation_batch.append(sample[0])
+                action_batch.append(sample[1])
+                value_batch.append(sample[2])
+                reward_batch.append(sample[3])
+                policy_batch.append(sample[4])
+                if len(sample) >= 7:
+                    target_obs_batch.append(sample[5])
+                    bootstrap_depth_batch.append(sample[6])
+                else:
+                    target_obs_batch.append(None)
+                    bootstrap_depth_batch.append(config.UNROLL_STEPS)
+            result = [
                 np.array(observation_batch),
                 np.array(action_batch),
                 np.array(value_batch),
                 np.array(reward_batch),
                 np.array(policy_batch)
             ]
+            result.append(np.array(target_obs_batch))
+            result.append(np.array(bootstrap_depth_batch))
+            return result
 
     def clear(self):
         with self._lock:
@@ -144,11 +155,17 @@ class GlobalBuffer:
             return sample
         converted = []
         for item in sample:
-            obs, action, value, reward, policy = item
+            obs, action, value, reward, policy = item[:5]
             from Models.action_conversion import action_to_policy_if_needed, is_3d_action
             if is_3d_action(action):
                 policy = action_to_policy_if_needed(action, policy, self.action_to_policy)
-            converted.append((obs, action, value, reward, policy))
+            extended = list(item)
+            if len(extended) >= 7:
+                extended[5] = obs  # target_obs stays as-is
+                extended[6] = extended[6]  # bootstrap_depth stays as-is
+                converted.append(tuple(extended))
+            else:
+                converted.append((obs, action, value, reward, policy))
         return converted
 
     def store_episode(self, sample):
