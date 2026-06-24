@@ -17,7 +17,7 @@ class TestZeroRewardSynthesis:
 
     def test_dynamics_returns_hidden_state_only(self):
         """DynNetwork.forward should return only hidden state, no reward."""
-        input_size = config.HIDDEN_STATE_SIZE + config.ACTION_ENCODING_SIZE
+        input_size = config.HIDDEN_STATE_SIZE
         dyn = DynNetwork(
             input_size=input_size,
             layer_sizes=[config.LAYER_HIDDEN_SIZE] * 6,
@@ -34,7 +34,7 @@ class TestZeroRewardSynthesis:
         """MuZeroNetwork.dynamics should return zero reward."""
         model = MuZeroNetwork()
         batch_size = 4
-        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE)
+        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).cuda()
         action = np.random.randint(0, 10, (batch_size, 1, 3)).astype(np.float32)
         next_hidden, reward = model.dynamics(hidden, action)
         assert reward.shape == (batch_size, 1)
@@ -70,7 +70,7 @@ class TestZeroRewardSynthesis:
         """Reward tensor/device should match hidden state device."""
         model = MuZeroNetwork()
         batch_size = 4
-        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE)
+        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).cuda()
         action = np.random.randint(0, 10, (batch_size, 1, 3)).astype(np.float32)
         next_hidden, reward = model.dynamics(hidden, action)
         assert reward.device == next_hidden.device
@@ -79,7 +79,7 @@ class TestZeroRewardSynthesis:
         """Reward batch size should match hidden state batch size."""
         model = MuZeroNetwork()
         for batch_size in [1, 4, 16]:
-            hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE)
+            hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).cuda()
             action = np.random.randint(0, 10, (batch_size, 1, 3)).astype(np.float32)
             next_hidden, reward = model.dynamics(hidden, action)
             assert reward.shape[0] == batch_size
@@ -103,7 +103,7 @@ class TestTerminalOnlyEnvironment:
 
     def test_reward_head_removed_from_dyn_network(self):
         """DynNetwork should not have a reward output head."""
-        input_size = config.HIDDEN_STATE_SIZE + config.ACTION_ENCODING_SIZE
+        input_size = config.HIDDEN_STATE_SIZE
         dyn = DynNetwork(
             input_size=input_size,
             layer_sizes=[config.LAYER_HIDDEN_SIZE] * 6,

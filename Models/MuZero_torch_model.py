@@ -136,10 +136,10 @@ class MuZeroNetwork(AbstractNetwork):
         #                             config.HIDDEN_STATE_SIZE)
 
         self.dynamics_network = DynNetwork(
-            config.HIDDEN_STATE_SIZE + config.ACTION_ENCODING_SIZE,
+            config.HIDDEN_STATE_SIZE,
             [config.LAYER_HIDDEN_SIZE] * 6,
             config.HIDDEN_STATE_SIZE,
-            self.full_support_size
+            config.ACTION_CONCAT_SIZE
         ).cuda()
 
         self.prediction_network = PredNetwork(
@@ -544,10 +544,10 @@ class DynNetwork(torch.nn.Module):
         hidden = input_size
 
         self.relu = torch.nn.LeakyReLU(inplace=True)
-        self.dense1 = torch.nn.Linear(input_size, hidden)
+        self.dense1 = torch.nn.Linear(input_size + encoding_size, input_size)
         layer_sizes = layer_sizes if layer_sizes else [hidden] * 6
         for i, size in enumerate(layer_sizes):
-            setattr(self, f'dense{i + 2}', torch.nn.Linear(hidden, size))
+            setattr(self, f'dense{i + 2}', torch.nn.Linear(hidden, hidden))
         self.layer_sizes = layer_sizes
 
     def forward(self, x, action):

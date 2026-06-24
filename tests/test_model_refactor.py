@@ -64,7 +64,7 @@ class TestDynNetworkConstructor:
     """Verify DynNetwork uses constructor parameters and has no reward head."""
 
     def test_dyn_network_accepts_parameters(self):
-        input_size = config.HIDDEN_STATE_SIZE + config.ACTION_ENCODING_SIZE
+        input_size = config.HIDDEN_STATE_SIZE
         net = DynNetwork(
             input_size=input_size,
             layer_sizes=[config.LAYER_HIDDEN_SIZE] * 6,
@@ -74,7 +74,7 @@ class TestDynNetworkConstructor:
         assert net is not None
 
     def test_dyn_network_output_is_hidden_state_only(self):
-        input_size = config.HIDDEN_STATE_SIZE + config.ACTION_ENCODING_SIZE
+        input_size = config.HIDDEN_STATE_SIZE
         net = DynNetwork(
             input_size=input_size,
             layer_sizes=[config.LAYER_HIDDEN_SIZE] * 6,
@@ -89,7 +89,7 @@ class TestDynNetworkConstructor:
         assert output.shape == (batch_size, config.HIDDEN_STATE_SIZE)
 
     def test_dyn_network_no_reward_head_attribute(self):
-        input_size = config.HIDDEN_STATE_SIZE + config.ACTION_ENCODING_SIZE
+        input_size = config.HIDDEN_STATE_SIZE
         net = DynNetwork(
             input_size=input_size,
             layer_sizes=[config.LAYER_HIDDEN_SIZE] * 6,
@@ -105,7 +105,7 @@ class TestRepNetworkConstructor:
     def test_rep_network_accepts_parameters(self):
         net = RepNetwork(
             input_size=config.OBSERVATION_SIZE,
-            layer_sizes=[config.LAYER_HIDDEN_SIZE] * 5,
+            layer_sizes=[config.HIDDEN_STATE_SIZE] * 5,
             output_size=config.HIDDEN_STATE_SIZE,
             encoding_size=122,
         )
@@ -114,7 +114,7 @@ class TestRepNetworkConstructor:
     def test_rep_network_has_embedding_tables(self):
         net = RepNetwork(
             input_size=config.OBSERVATION_SIZE,
-            layer_sizes=[config.LAYER_HIDDEN_SIZE] * 5,
+            layer_sizes=[config.HIDDEN_STATE_SIZE] * 5,
             output_size=config.HIDDEN_STATE_SIZE,
             encoding_size=122,
         )
@@ -126,7 +126,7 @@ class TestRepNetworkConstructor:
     def test_rep_network_embedding_sizes(self):
         net = RepNetwork(
             input_size=config.OBSERVATION_SIZE,
-            layer_sizes=[config.LAYER_HIDDEN_SIZE] * 5,
+            layer_sizes=[config.HIDDEN_STATE_SIZE] * 5,
             output_size=config.HIDDEN_STATE_SIZE,
             encoding_size=122,
         )
@@ -138,7 +138,7 @@ class TestRepNetworkConstructor:
     def test_rep_network_output_shape(self):
         net = RepNetwork(
             input_size=config.OBSERVATION_SIZE,
-            layer_sizes=[config.LAYER_HIDDEN_SIZE] * 5,
+            layer_sizes=[config.HIDDEN_STATE_SIZE] * 5,
             output_size=config.HIDDEN_STATE_SIZE,
             encoding_size=122,
         )

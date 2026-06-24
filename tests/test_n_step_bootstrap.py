@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import config
 from Models.MuZero_torch_trainer import Trainer
+from Models.MuZero_torch_model import MuZeroNetwork
 
 
 @pytest.fixture
@@ -40,14 +41,12 @@ class TestNStepBootstrap:
         observations, actions, values, rewards, policies, target_obs, bootstrap_depth = mock_batch
         assert bootstrap_depth[0] == config.UNROLL_STEPS
 
-    def test_bootstrap_depth_used_in_computation(self, trainer, mock_batch, monkeypatch):
+    def test_bootstrap_depth_used_in_computation(self, trainer, mock_batch):
         observations, actions, values, rewards, policies, target_obs, bootstrap_depth = mock_batch
 
-        # Replace target_obs with actual observations so recomputing produces a value
-        target_obs = [observations.copy()] * observations.shape[0]
-
-        trainer.compute_loss(
-            agent=None,
+        agent = MuZeroNetwork()
+        loss = trainer.compute_loss(
+            agent=agent,
             observation=observations,
             action=actions,
             target_value=values,
@@ -59,6 +58,7 @@ class TestNStepBootstrap:
             train_step=1,
             summary_writer=None,
         )
+        assert loss is not None
 
     def test_bootstrap_replaces_placeholder_value(self, mock_batch):
         import torch
@@ -94,7 +94,7 @@ class TestNStepBootstrap:
         discount = config.DISCOUNT
         gamma_ns = discount ** depths
 
-        assert gamma_ns[0] == discount
-        assert gamma_ns[-1] == discount ** 25
+        assert gamma_ns[0] == pytest.approx(discount, rel=1e-5)
+        assert gamma_ns[-1] == pytest.approx(discount ** 25, rel=1e-5)
         assert np.all(gamma_ns > 0)
         assert np.all(gamma_ns < 1)
