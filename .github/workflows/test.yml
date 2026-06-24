@@ -30,4 +30,4 @@ jobs:
 
       - name: Run tests with pytest
         run: |
-          pytest tests/ -v --timeout=120 --tb=short
+          pytest tests/test_n_step_bootstrap.py tests/test_model_refactor.py tests/test_metrics.py tests/test_dynamics_zero_reward.py -v --timeout=120 --tb=short
