@@ -59,7 +59,7 @@ sleep 4
 echo "============================================================"
 echo "Starting Evaluator Worker (Worker 0)..."
 echo "============================================================"
-PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode worker --worker_id 0 --worker_role evaluator --eval_games 8 --eval_concurrent 2 $EXTRA_ARGS &
+PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode worker --worker_id 0 --worker_role evaluator --eval_games 9 --eval_concurrent 3 $EXTRA_ARGS &
 
 # Give the evaluator a second to spawn
 sleep 2

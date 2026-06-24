@@ -144,7 +144,8 @@ class GlobalBuffer:
         self.batch_size = batch_size or config.BATCH_SIZE
         self.action_to_policy = action_to_policy
 
-        combat_capacity = max(64000, self.batch_size * 2000)
+        default_combat_size = getattr(config, "COMBAT_BUFFER_SIZE", 12800)
+        combat_capacity = max(default_combat_size, self.batch_size * 10)
         combat_capacity = (combat_capacity // self.batch_size) * self.batch_size
 
         self.combat_buffer = CombatBuffer(capacity=combat_capacity, batch_size=self.batch_size)
