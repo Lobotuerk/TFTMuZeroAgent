@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import config
 import torch
-from Models.MuZero_torch_model import MuZeroNetwork, DynNetwork
+from Models.MuZero_torch_model import MuZeroNetwork, DynNetwork, get_device
 
 
 class TestZeroRewardSynthesis:
@@ -34,7 +34,7 @@ class TestZeroRewardSynthesis:
         """MuZeroNetwork.dynamics should return zero reward."""
         model = MuZeroNetwork()
         batch_size = 4
-        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).cuda()
+        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).to(get_device())
         action = np.random.randint(0, 10, (batch_size, 1, 3)).astype(np.float32)
         next_hidden, reward = model.dynamics(hidden, action)
         assert reward.shape == (batch_size, 1)
@@ -70,7 +70,7 @@ class TestZeroRewardSynthesis:
         """Reward tensor/device should match hidden state device."""
         model = MuZeroNetwork()
         batch_size = 4
-        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).cuda()
+        hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).to(get_device())
         action = np.random.randint(0, 10, (batch_size, 1, 3)).astype(np.float32)
         next_hidden, reward = model.dynamics(hidden, action)
         assert reward.device == next_hidden.device
@@ -79,7 +79,7 @@ class TestZeroRewardSynthesis:
         """Reward batch size should match hidden state batch size."""
         model = MuZeroNetwork()
         for batch_size in [1, 4, 16]:
-            hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).cuda()
+            hidden = torch.randn(batch_size, config.HIDDEN_STATE_SIZE).to(get_device())
             action = np.random.randint(0, 10, (batch_size, 1, 3)).astype(np.float32)
             next_hidden, reward = model.dynamics(hidden, action)
             assert reward.shape[0] == batch_size
