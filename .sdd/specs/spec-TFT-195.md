@@ -47,3 +47,11 @@ For configurations where `layer_sizes=None`, `hidden` was set to `input_size`, a
 ## 5. Verification
 - Validate the module instantiation by passing dummy tensors of shape `(batch_size, 2048)` for `x` and `(batch_size, 81)` for `action`. 
 - Ensure no dimension mismatch occurs during the forward pass.
+
+## 6. Integration Test
+As requested, an integration test must be added to verify the `recurrent_inference` of `MuZeroNetwork` since that exercises `DynNetwork` end-to-end and validates the fix.
+1. Create a new test file: `tests/test_muzero_recurrent_inference.py` (or add to an existing relevant test file).
+2. Instantiate `MuZeroNetwork`.
+3. Create dummy inputs (e.g. `obs` for initial inference, and dummy `actions` for recurrent inference).
+4. Run `initial_inference(obs)` to get the initial `hidden_state`.
+5. Run `recurrent_inference(hidden_state, action)` to verify that `DynNetwork` does not raise a dimension mismatch and that the returned output shapes match expectations.
