@@ -231,7 +231,7 @@ async def worker_mode(args):
     
     worker_id = getattr(args, "worker_id", 0)
     worker_role = getattr(args, "worker_role", "collector")
-    server_url = getattr(args, "server_url", "http://127.0.0.1:8080").rstrip("/")
+    server_url = getattr(args, "server_url", f"http://127.0.0.1:{config.SERVER_PORT}").rstrip("/")
     
     # Redirect stdout and stderr to a unique line-buffered file per worker
     log_file_path = f"log_n_{worker_id}.txt"
@@ -501,7 +501,7 @@ async def async_main():
                         help="ID of this collection worker (worker mode)")
     parser.add_argument("--worker_role", choices=["collector", "evaluator"], default="collector",
                         help="Role of this worker process (worker mode)")
-    parser.add_argument("--server-url", type=str, default="http://127.0.0.1:8080",
+    parser.add_argument("--server-url", type=str, default=f"http://127.0.0.1:{config.SERVER_PORT}",
                         help="URL of the training server (worker mode)")
 
     # Training
