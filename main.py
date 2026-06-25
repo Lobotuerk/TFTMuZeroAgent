@@ -166,7 +166,7 @@ async def train_server_mode(args):
             return web.Response(status=404, text="Invalid weight name")
         path = f"./checkpoint/{name}_model.pth"
         if not os.path.isfile(path):
-            return web.Response(status=404)
+            return web.Response(status=404, text=f"Weights file not found: {path}")
         if_modified_since = request.headers.get("If-Modified-Since")
         if if_modified_since:
             try:
@@ -190,7 +190,7 @@ async def train_server_mode(args):
             return web.Response(status=500, text="Failed to promote best model")
     
     # ── Start HTTP server ──────────────────────────────────────────
-    app = web.Application()
+    app = web.Application(client_max_size=0)
     app.router.add_post("/api/v1/experience", handle_experience)
     app.router.add_get("/api/v1/weights/{name}", handle_weights)
     app.router.add_post("/api/v1/weights/promote_best", handle_promote_best)
@@ -254,13 +254,27 @@ async def worker_mode(args):
         
     orch.setup(is_collector=is_collector)
     
+    timeout = aiohttp.ClientTimeout(total=30, connect=10)
+    
     try:
         async with aiohttp.ClientSession() as session:
+            
+            async def _request_with_retry(method, url, max_retries=3, **kwargs):
+                for attempt in range(max_retries):
+                    try:
+                        return await session.request(method, url, timeout=timeout, **kwargs)
+                    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                        print(f"[Worker {worker_id}] Request failed (attempt {attempt+1}/{max_retries}): {e}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(2 ** attempt)
+                        else:
+                            raise
             if worker_role == "collector":
                 print(f"[Worker {worker_id}] Starting collection loop...")
                 while True:
                     # 1. Pull best weights from server
-                    async with session.get(f"{server_url}/api/v1/weights/best") as resp:
+                    resp = await _request_with_retry("GET", f"{server_url}/api/v1/weights/best")
+                    async with resp:
                         if resp.status == 200:
                             try:
                                 weights_bytes = await resp.read()
@@ -271,6 +285,9 @@ async def worker_mode(args):
                                     agent.update_weights(weights)
                             except Exception as e:
                                 print(f"[Worker {worker_id}] Error loading weights: {e}")
+                        else:
+                            body = await resp.text()
+                            print(f"[Worker {worker_id}] Failed to fetch weights (status {resp.status}): {body[:200]}")
                     
                     # 2. Run fixed games to collect experiences
                     print(f"[Worker {worker_id}] Starting a batch of {cfg.concurrent_games} game(s)...")
@@ -280,35 +297,39 @@ async def worker_mode(args):
                     samples = list(orch.global_buffer.gameplay_buffer)
                     if samples:
                         data = pickle.dumps(samples)
-                        async with session.post(
-                            f"{server_url}/api/v1/experience",
+                        resp = await _request_with_retry(
+                            "POST", f"{server_url}/api/v1/experience",
                             data=data,
                             headers={"Content-Type": "application/octet-stream",
                                      "X-Experience-Type": "gameplay"}
-                        ) as resp:
+                        )
+                        async with resp:
                             if resp.status == 200:
                                 print(f"[Worker {worker_id}] Sent {len(samples)} gameplay steps")
                                 orch.global_buffer.clear_gameplay_buffer()
                             else:
-                                print(f"[Worker {worker_id}] Failed to send gameplay steps (status {resp.status})")
+                                body = await resp.text()
+                                print(f"[Worker {worker_id}] Failed to send gameplay steps (status {resp.status}): {body[:200]}")
                     
                     # 4. Send combat experiences to server
                     combat_buffer = orch.global_buffer.combat_buffer
                     if combat_buffer._size > 0:
                         combat_samples = combat_buffer._buffer[:combat_buffer._size]
                         data = pickle.dumps(combat_samples)
-                        async with session.post(
-                            f"{server_url}/api/v1/experience",
+                        resp = await _request_with_retry(
+                            "POST", f"{server_url}/api/v1/experience",
                             data=data,
                             headers={"Content-Type": "application/octet-stream",
                                      "X-Experience-Type": "combat"}
-                        ) as resp:
+                        )
+                        async with resp:
                             if resp.status == 200:
                                 print(f"[Worker {worker_id}] Sent {len(combat_samples)} combat steps")
                                 combat_buffer._size = 0
                                 combat_buffer._pos = 0
                             else:
-                                print(f"[Worker {worker_id}] Failed to send combat steps (status {resp.status})")
+                                body = await resp.text()
+                                print(f"[Worker {worker_id}] Failed to send combat steps (status {resp.status}): {body[:200]}")
                     
                     await asyncio.sleep(1.0)
                     
@@ -322,14 +343,19 @@ async def worker_mode(args):
                     if last_modified:
                         headers["If-Modified-Since"] = last_modified
                     
-                    async with session.get(f"{server_url}/api/v1/weights/latest", headers=headers) as resp:
+                    resp = await _request_with_retry("GET", f"{server_url}/api/v1/weights/latest", headers=headers)
+                    async with resp:
                         if resp.status == 304:
                             await asyncio.sleep(5.0)
                             continue
                         if resp.status == 404:
+                            body = await resp.text()
+                            print(f"[Worker {worker_id}] Latest weights not found (status 404): {body[:200]}")
                             await asyncio.sleep(5.0)
                             continue
                         if resp.status != 200:
+                            body = await resp.text()
+                            print(f"[Worker {worker_id}] Failed to fetch latest weights (status {resp.status}): {body[:200]}")
                             await asyncio.sleep(5.0)
                             continue
                         
@@ -344,35 +370,38 @@ async def worker_mode(args):
                             print(f"[Worker {worker_id}] Error loading latest weights")
                             await asyncio.sleep(2.0)
                             continue
-                        
-                        # 2. Load best weights from server
-                        async with session.get(f"{server_url}/api/v1/weights/best") as best_resp:
-                            if best_resp.status == 200:
-                                try:
-                                    best_bytes = await best_resp.read()
-                                    best_weights = torch.load(io.BytesIO(best_bytes), map_location="cpu")
-                                    orch.best_model.model.load_state_dict(best_weights)
-                                except Exception:
-                                    pass
-                            else:
-                                # No best weights yet on server; latest is best by default
-                                orch.best_model.model.load_state_dict(latest_weights)
-                        
-                        # 3. Run standalone evaluation
-                        results = await orch.evaluate()
-                        current_mean = results["current_placement"]
-                        best_mean = results["best_placement"]
-                        
-                        # 4. If current is strictly better, promote on server
-                        if current_mean < best_mean:
-                            print(f"[Evaluator] \u2713 Model improved! Placement: {current_mean:.2f} vs {best_mean:.2f}")
-                            async with session.post(f"{server_url}/api/v1/weights/promote_best") as prom_resp:
-                                if prom_resp.status == 200:
-                                    print("[Evaluator] Promoted latest to best on server")
-                                else:
-                                    print(f"[Evaluator] Failed to promote best (status {prom_resp.status})")
+                    
+                    # 2. Load best weights from server
+                    best_resp = await _request_with_retry("GET", f"{server_url}/api/v1/weights/best")
+                    async with best_resp:
+                        if best_resp.status == 200:
+                            try:
+                                best_bytes = await best_resp.read()
+                                best_weights = torch.load(io.BytesIO(best_bytes), map_location="cpu")
+                                orch.best_model.model.load_state_dict(best_weights)
+                            except Exception:
+                                pass
                         else:
-                            print(f"[Evaluator] \u2717 No improvement. Placement: {current_mean:.2f} vs {best_mean:.2f}")
+                            # No best weights yet on server; latest is best by default
+                            orch.best_model.model.load_state_dict(latest_weights)
+                    
+                    # 3. Run standalone evaluation
+                    results = await orch.evaluate()
+                    current_mean = results["current_placement"]
+                    best_mean = results["best_placement"]
+                    
+                    # 4. If current is strictly better, promote on server
+                    if current_mean < best_mean:
+                        print(f"[Evaluator] \u2713 Model improved! Placement: {current_mean:.2f} vs {best_mean:.2f}")
+                        prom_resp = await _request_with_retry("POST", f"{server_url}/api/v1/weights/promote_best")
+                        async with prom_resp:
+                            if prom_resp.status == 200:
+                                print("[Evaluator] Promoted latest to best on server")
+                            else:
+                                body = await prom_resp.text()
+                                print(f"[Evaluator] Failed to promote best (status {prom_resp.status}): {body[:200]}")
+                    else:
+                        print(f"[Evaluator] \u2717 No improvement. Placement: {current_mean:.2f} vs {best_mean:.2f}")
                     
                     await asyncio.sleep(5.0)
                     
