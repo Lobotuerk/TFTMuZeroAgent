@@ -96,12 +96,16 @@ class Trainer(object):
                 target_output = agent.initial_inference(target_obs_array)
                 v_t_plus_n = target_output["value"]
 
-            # Compute bootstrap targets: z_t = gamma^n * v_{t+n}
-            discount = torch.tensor(config.DISCOUNT, device=device)
-            gamma_n = discount ** bootstrap_depth
-            bootstrap_targets = gamma_n * v_t_plus_n.squeeze()
-            # Replace placeholder target_value with bootstrap targets
-            target_value = bootstrap_targets
+            # Backwards accumulation of n-step returns preserving (B, UNROLL_STEPS) shape
+            discount_tensor = torch.tensor(config.DISCOUNT, device=device)
+            gamma_n = discount_tensor ** (bootstrap_depth - 1)
+            z = gamma_n * v_t_plus_n.squeeze()
+            new_target_value = torch.zeros_like(target_value)
+            target_reward_tensor = torch.from_numpy(np.array(target_reward)).float().to(device)
+            for i in reversed(range(num_target_steps)):
+                z = target_reward_tensor[:, i] + config.DISCOUNT * z
+                new_target_value[:, i] = z
+            target_value = new_target_value
 
         # Precompute split indices from ACTION_DIM
         dims = list(config.ACTION_DIM)
