@@ -75,6 +75,9 @@ class ReplayBuffer:
 
         for t in range(config.UNROLL_STEPS, max_obs):
             unroll_steps = min(config.UNROLL_STEPS, max_obs - t)
+            if unroll_steps < config.UNROLL_STEPS:
+                continue
+
             start = t - config.UNROLL_STEPS
             target_idx = t + unroll_steps - 1
             if target_idx >= max_obs:
@@ -109,6 +112,9 @@ class ReplayBuffer:
 
         for t in range(config.UNROLL_STEPS, max_obs):
             unroll_steps = min(config.UNROLL_STEPS, max_obs - t)
+            if unroll_steps < config.UNROLL_STEPS:
+                continue
+
             start = t - config.UNROLL_STEPS
             target_idx = t + unroll_steps - 1
             if target_idx >= max_obs:
