@@ -59,7 +59,9 @@ def test_muzero_trainer():
         # Policies: (batch_size, unroll_steps, concat_size) - 3-block variable-dim policy
         policies = np.random.rand(batch_size, unroll_steps, config.ACTION_CONCAT_SIZE).astype(np.float32)
         
-        batch = (observations, actions, values, rewards, policies)
+        target_obs = [None] * batch_size
+        bootstrap_depth = np.array([unroll_steps] * batch_size)
+        batch = (observations, actions, values, rewards, policies, target_obs, bootstrap_depth)
         
         # Mock combat data (flat observation, first 1624 = board_champions)
         combat_obs = np.random.rand(2, config.OBSERVATION_SIZE).astype(np.float32)
@@ -101,6 +103,8 @@ def test_muzero_trainer():
                 target_value=values,
                 target_reward=rewards,
                 target_policy=policies,
+                target_obs=target_obs,
+                bootstrap_depth=bootstrap_depth,
                 combats=combats,
                 train_step=1,
                 summary_writer=summary_writer
