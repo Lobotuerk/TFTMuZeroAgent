@@ -130,7 +130,7 @@ class Trainer(object):
             value_loss_step = MSE_loss(value.squeeze(), target_value[:, tstep])
             value_loss += value_loss_step
 
-           # Split logits and targets into 3 independent blocks
+            # Split logits and targets into 3 independent blocks
             logits_flat = policy_logits.view(policy_logits.shape[0], -1)
             logits_blocks = torch.split(logits_flat, dims, dim=-1)
             target_blocks = torch.split(target_policy[:, tstep], dims, dim=-1)
