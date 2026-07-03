@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# Distributed Process-Level Training Orchestrator (Option A)
+# Distributed Worker Launcher (Evaluator + Collectors)
 # ---------------------------------------------------------------------------
 set -e
 
@@ -18,26 +18,17 @@ done
 EXTRA_ARGS=""
 if [ -n "$START_EPISODE" ]; then
     EXTRA_ARGS="--starting_episode $START_EPISODE"
-    echo "Configured cluster to load/resume from checkpoint step $START_EPISODE"
+    echo "Configured workers to load/resume from checkpoint step $START_EPISODE"
 else
-    echo "No explicit starting episode specified. Server will auto-detect the latest checkpoint under ./checkpoint if available."
+    echo "No explicit starting episode specified. Workers will use the latest checkpoint."
 fi
-
-# Ensure clean setup
-mkdir -p ./checkpoint
-mkdir -p ./data/gameplay
-mkdir -p ./data/combats
-
-echo "Clearing stale experience logs to prevent training data pollution..."
-rm -f ./data/gameplay/*.pkl
-rm -f ./data/combats/*.pkl
 
 # Gracefully terminate all child processes on exit/signals
 cleanup() {
     # Immediately disable traps to prevent recursive triggering
     trap - SIGINT SIGTERM EXIT
     echo "============================================================"
-    echo "Terminating all distributed training processes..."
+    echo "Terminating all distributed training workers..."
     echo "============================================================"
     kill 0 2>/dev/null
 }
@@ -45,17 +36,7 @@ cleanup() {
 # Trap Ctrl+C (SIGINT), SIGTERM, and EXIT to trigger cleanup
 trap cleanup SIGINT SIGTERM EXIT
 
-# 1. Start the GPU Training Server
-echo "============================================================"
-echo "Starting GPU Training Server..."
-echo "============================================================"
-PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode train_server --checkpoint_interval 200 $EXTRA_ARGS &
-SERVER_PID=$!
-
-# Allow the server a brief moment to initialize the weights file
-sleep 4
-
-# 2. Start the Evaluator Worker (Worker ID 0)
+# Start the Evaluator Worker (Worker ID 0)
 echo "============================================================"
 echo "Starting Evaluator Worker (Worker 0)..."
 echo "============================================================"
@@ -64,7 +45,7 @@ PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mo
 # Give the evaluator a second to spawn
 sleep 2
 
-# 3. Start 6 self-play Collection Workers
+# Start 6 self-play Collection Workers
 for i in {1..6}
 do
     echo "============================================================"
@@ -76,8 +57,8 @@ do
 done
 
 echo "============================================================"
-echo "Distributed Training Cluster is fully online!"
-echo "Press Ctrl+C to terminate the cluster."
+echo "Distributed Training Workers are fully online!"
+echo "Press Ctrl+C to terminate the workers."
 echo "============================================================"
 
 # Wait for background processes
