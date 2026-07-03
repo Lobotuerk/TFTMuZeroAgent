@@ -1,6 +1,6 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# Distributed Process-Level Training Orchestrator (Option A)
+# Distributed GPU Training Server Launcher
 # ---------------------------------------------------------------------------
 set -e
 
@@ -52,32 +52,9 @@ echo "============================================================"
 PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode train_server --checkpoint_interval 200 $EXTRA_ARGS &
 SERVER_PID=$!
 
-# Allow the server a brief moment to initialize the weights file
-sleep 4
-
-# 2. Start the Evaluator Worker (Worker ID 0)
 echo "============================================================"
-echo "Starting Evaluator Worker (Worker 0)..."
-echo "============================================================"
-PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode worker --worker_id 0 --worker_role evaluator --eval_games 9 --eval_concurrent 3 $EXTRA_ARGS &
-
-# Give the evaluator a second to spawn
-sleep 2
-
-# 3. Start 6 self-play Collection Workers
-for i in {1..6}
-do
-    echo "============================================================"
-    echo "Starting Collection Worker $i..."
-    echo "============================================================"
-    # Each worker runs 1 concurrent game locally
-    PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode worker --worker_id $i --worker_role collector --concurrent_games 2 &
-    sleep 1
-done
-
-echo "============================================================"
-echo "Distributed Training Cluster is fully online!"
-echo "Press Ctrl+C to terminate the cluster."
+echo "GPU Training Server is fully online!"
+echo "Press Ctrl+C to terminate the server."
 echo "============================================================"
 
 # Wait for background processes
