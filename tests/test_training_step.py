@@ -51,7 +51,10 @@ def test_training_step():
         rewards = np.random.rand(batch_size, unroll_steps).astype(np.float32)
         policies = np.random.rand(batch_size, unroll_steps, config.ACTION_CONCAT_SIZE).astype(np.float32)
         
-        batch = (observations, actions, values, rewards, policies)
+        target_obs = np.random.rand(batch_size, config.OBSERVATION_SIZE).astype(np.float32)
+        bootstrap_depth = np.random.rand(batch_size).astype(np.float32)
+
+        batch = (observations, actions, values, rewards, policies, target_obs, bootstrap_depth)
         
         # Mock combat data (flat observation)
         combat_obs = np.random.rand(batch_size, config.OBSERVATION_SIZE).astype(np.float32)
