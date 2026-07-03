@@ -162,8 +162,7 @@ class GlobalBuffer:
                 policy = action_to_policy_if_needed(action, policy, self.action_to_policy)
             extended = list(item)
             if len(extended) >= 7:
-                extended[5] = obs  # target_obs stays as-is
-                extended[6] = extended[6]  # bootstrap_depth stays as-is
+                extended[4] = policy
                 converted.append(tuple(extended))
             else:
                 converted.append((obs, action, value, reward, policy))
