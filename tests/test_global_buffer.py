@@ -155,3 +155,74 @@ def test_combat_buffer_uniform_sample(buffer):
         for obs in batch[0]:
             samples_seen.add(int(obs[0]))
     assert len(samples_seen) > 4
+
+
+def _make_3d_action():
+    return np.array([0, 0, 0])
+
+
+def _fake_action_to_policy(action):
+    return np.ones(81, dtype=np.float32)
+
+
+def test_convert_sample_target_obs_preserved_no_conversion():
+    buf = GlobalBuffer(batch_size=4)
+    target_obs = np.array([99.0, 99.0])
+    start_obs = np.array([1.0, 2.0])
+    sample = [(start_obs, np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]), target_obs, np.array([5]))]
+    result = buf._convert_sample_if_needed(sample)
+    assert len(result) == 1
+    assert result[0][5] is target_obs
+    assert np.array_equal(result[0][5], np.array([99.0, 99.0]))
+
+
+def test_convert_sample_target_obs_preserved_with_conversion():
+    buf = GlobalBuffer(batch_size=4, action_to_policy=_fake_action_to_policy)
+    target_obs = np.array([99.0, 99.0])
+    start_obs = np.array([1.0, 2.0])
+    sample = [(start_obs, _make_3d_action(), np.array([0.5]), np.array([0.1]), np.array([0.2]), target_obs, np.array([5]))]
+    result = buf._convert_sample_if_needed(sample)
+    assert len(result) == 1
+    assert result[0][5] is target_obs
+    assert np.array_equal(result[0][5], np.array([99.0, 99.0]))
+
+
+def test_convert_sample_policy_converted_in_extended():
+    buf = GlobalBuffer(batch_size=4, action_to_policy=_fake_action_to_policy)
+    target_obs = np.array([99.0, 99.0])
+    start_obs = np.array([1.0, 2.0])
+    original_policy = np.array([0.2])
+    sample = [(start_obs, _make_3d_action(), np.array([0.5]), np.array([0.1]), original_policy, target_obs, np.array([5]))]
+    result = buf._convert_sample_if_needed(sample)
+    assert len(result) == 1
+    converted_policy = result[0][4]
+    assert converted_policy.shape == (81,)
+    assert np.all(converted_policy == 1.0)
+
+
+def test_convert_sample_short_sample_no_conversion():
+    buf = GlobalBuffer(batch_size=4)
+    sample = [(np.array([1.0]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+    result = buf._convert_sample_if_needed(sample)
+    assert len(result) == 1
+    assert len(result[0]) == 5
+
+
+def test_convert_sample_short_sample_with_3d_action():
+    buf = GlobalBuffer(batch_size=4, action_to_policy=_fake_action_to_policy)
+    sample = [(np.array([1.0]), _make_3d_action(), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+    result = buf._convert_sample_if_needed(sample)
+    assert len(result) == 1
+    assert result[0][4].shape == (81,)
+
+
+def test_convert_sample_bootstrap_depth_preserved():
+    buf = GlobalBuffer(batch_size=4, action_to_policy=_fake_action_to_policy)
+    target_obs = np.array([99.0, 99.0])
+    start_obs = np.array([1.0, 2.0])
+    bootstrap_depth = np.array([3])
+    sample = [(start_obs, _make_3d_action(), np.array([0.5]), np.array([0.1]), np.array([0.2]), target_obs, bootstrap_depth)]
+    result = buf._convert_sample_if_needed(sample)
+    assert len(result) == 1
+    assert result[0][6] is bootstrap_depth
+    assert np.array_equal(result[0][6], np.array([3]))
