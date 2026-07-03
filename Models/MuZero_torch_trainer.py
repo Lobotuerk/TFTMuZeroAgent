@@ -88,7 +88,7 @@ class Trainer(object):
         # Policy is a concatenation of 3 independent blocks per ACTION_DIM
         target_policy = torch.reshape(torch.tensor(np.array(target_policy)), (-1, num_target_steps, config.ACTION_CONCAT_SIZE)).to(device)
 
-        # Compute n-step bootstrap targets via recomputing
+        # Compute n-step bootstrap targets via backward accumulation
         # Flatten target_obs for batched inference
         if target_obs[0] is not None:
             target_obs_array = np.array([t if t is not None else target_obs[0] for t in target_obs])
@@ -96,15 +96,20 @@ class Trainer(object):
                 target_output = agent.initial_inference(target_obs_array)
                 v_t_plus_n = target_output["value"]
 
-            # Backwards accumulation of n-step returns preserving (B, UNROLL_STEPS) shape
-            discount_tensor = torch.tensor(config.DISCOUNT, device=device)
-            gamma_n = discount_tensor ** (bootstrap_depth - 1)
-            z = gamma_n * v_t_plus_n.squeeze()
+            # Convert target_reward to tensor on correct device
+            target_reward = torch.from_numpy(target_reward).float().to(device)
+
+            discount = torch.tensor(config.DISCOUNT, device=device)
+            num_steps = target_value.shape[1]
             new_target_value = torch.zeros_like(target_value)
-            target_reward_tensor = torch.from_numpy(np.array(target_reward)).float().to(device)
-            for i in reversed(range(num_target_steps)):
-                z = target_reward_tensor[:, i] + config.DISCOUNT * z
-                new_target_value[:, i] = z
+
+            # Initialize current_z with bootstrap value
+            current_z = (discount ** bootstrap_depth) * v_t_plus_n.squeeze(-1)
+
+            # Backward accumulation through unroll steps
+            for t in reversed(range(num_steps)):
+                current_z = target_reward[:, t] + discount * current_z
+                new_target_value[:, t] = current_z
             target_value = new_target_value
 
         # Precompute split indices from ACTION_DIM
