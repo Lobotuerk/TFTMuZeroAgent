@@ -62,7 +62,7 @@ def test_read_gameplay_batch(buffer):
         buffer.store_episode(sample)
     batch = buffer.read_gameplay_batch()
     assert batch is not None
-    assert len(batch) == 5
+    assert len(batch) == 7
     assert buffer.get_gameplay_buffer_size() == 0
 
 
@@ -116,9 +116,11 @@ def test_sample_gameplay_batch_shape(buffer):
         buffer.store_episode(sample)
     batch = buffer.sample_gameplay_batch(4)
     assert batch is not None
-    obs, actions, values, rewards, policies = batch
+    obs, actions, values, rewards, policies, target_obs, bootstrap_depth = batch
     assert len(obs) == 4
     assert len(actions) == 4
+    assert len(target_obs) == 4
+    assert len(bootstrap_depth) == 4
     assert buffer.get_gameplay_buffer_size() == 4
 
 
