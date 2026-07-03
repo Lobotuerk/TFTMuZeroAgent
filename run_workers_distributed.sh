@@ -4,6 +4,12 @@
 # ---------------------------------------------------------------------------
 set -e
 
+if [ -n "$CONDA_PREFIX" ]; then
+    PYTHON_EXEC="$CONDA_PREFIX/bin/python"
+else
+    PYTHON_EXEC="$(which python)"
+fi
+
 START_EPISODE=""
 
 # Parse arguments
@@ -40,7 +46,7 @@ trap cleanup SIGINT SIGTERM EXIT
 echo "============================================================"
 echo "Starting Evaluator Worker (Worker 0)..."
 echo "============================================================"
-PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode worker --worker_id 0 --worker_role evaluator --eval_games 9 --eval_concurrent 3 $EXTRA_ARGS &
+PYTHON_GIL=0 ./run_tft.sh "$PYTHON_EXEC" main.py --mode worker --worker_id 0 --worker_role evaluator --eval_games 9 --eval_concurrent 3 $EXTRA_ARGS &
 
 # Give the evaluator a second to spawn
 sleep 2
@@ -52,7 +58,7 @@ do
     echo "Starting Collection Worker $i..."
     echo "============================================================"
     # Each worker runs 1 concurrent game locally
-    PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode worker --worker_id $i --worker_role collector --concurrent_games 2 &
+    PYTHON_GIL=0 ./run_tft.sh "$PYTHON_EXEC" main.py --mode worker --worker_id $i --worker_role collector --concurrent_games 2 &
     sleep 1
 done
 
