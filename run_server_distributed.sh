@@ -4,6 +4,12 @@
 # ---------------------------------------------------------------------------
 set -e
 
+if [ -n "$CONDA_PREFIX" ]; then
+    PYTHON_EXEC="$CONDA_PREFIX/bin/python"
+else
+    PYTHON_EXEC="$(which python)"
+fi
+
 START_EPISODE=""
 
 # Parse arguments
@@ -49,7 +55,7 @@ trap cleanup SIGINT SIGTERM EXIT
 echo "============================================================"
 echo "Starting GPU Training Server..."
 echo "============================================================"
-PYTHON_GIL=0 ./run_tft.sh /home/lobo/miniconda3/envs/TFT/bin/python main.py --mode train_server --checkpoint_interval 200 $EXTRA_ARGS &
+PYTHON_GIL=0 ./run_tft.sh "$PYTHON_EXEC" main.py --mode train_server --checkpoint_interval 200 $EXTRA_ARGS &
 SERVER_PID=$!
 
 echo "============================================================"
