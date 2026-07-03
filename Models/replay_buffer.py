@@ -85,7 +85,7 @@ class ReplayBuffer:
             replay_set.append([
                 self.observations[start],
                 self.actions[start:t],
-                [final_val] * unroll_steps,
+                [final_val] * config.UNROLL_STEPS,
                 self.rewards[start:t],
                 self.policys[start:t],
                 target_obs,
@@ -119,7 +119,7 @@ class ReplayBuffer:
             replay_set.append([
                 self.observations[start],
                 self.actions[start:t],
-                [final_val] * unroll_steps,
+                [final_val] * config.UNROLL_STEPS,
                 self.rewards[start:t],
                 self.policys[start:t],
                 target_obs,
