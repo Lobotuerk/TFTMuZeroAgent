@@ -1,5 +1,6 @@
 import config
 import collections
+import random
 import torch
 import numpy as np
 
@@ -159,54 +160,42 @@ class Trainer(object):
             else:
                 obs_flat = obs
 
-            # Ensure obs_flat has correct size for initial_inference
             target_size = config.OBSERVATION_SIZE
             if obs_flat.shape[1] != target_size:
                 raise ValueError(f"Combat observation size {obs_flat.shape[1]} does not match config.OBSERVATION_SIZE {target_size}!")
-            
+
             output = agent.initial_inference(obs_flat)
             hidden_states = output["hidden_state"]
             hidden_flat = hidden_states.view(hidden_states.size(0), -1)
-            
-            torch_results = torch.from_numpy(results).float().to(device)
-            torch_results = torch_results.view(-1)
-            
+
+            combat_board_loss = None
+            results_cpu = results.flatten()
             triplet_candidates = []
-            for i in range(len(torch_results)):
-                anchor_label = torch_results[i]
-                pos_indices = (torch_results == anchor_label).nonzero(as_tuple=True)[0]
-                neg_indices = (torch_results != anchor_label).nonzero(as_tuple=True)[0]
-                
+            for i in range(len(results_cpu)):
+                anchor_label = results_cpu[i]
+                pos_indices = np.where(results_cpu == anchor_label)[0]
+                neg_indices = np.where(results_cpu != anchor_label)[0]
+
                 pos_indices = pos_indices[pos_indices != i]
                 if len(pos_indices) > 0 and len(neg_indices) > 0:
-                    for p in pos_indices:
-                        for n in neg_indices:
-                            triplet_candidates.append((i, p.item(), n.item()))
-            
-            if len(triplet_candidates) > 0:
-                # Limit the number of triplets to prevent combinatorial memory explosion / CUDA OOM
-                max_triplets = 3000
-                if len(triplet_candidates) > max_triplets:
-                    import random
-                    # Seed random for deterministic execution within a single step if needed, or keep it stochastic
-                    sampled_indices = random.sample(range(len(triplet_candidates)), max_triplets)
-                    triplets = [triplet_candidates[idx] for idx in sampled_indices]
-                else:
-                    triplets = triplet_candidates
+                    p = random.choice(pos_indices)
+                    n = random.choice(neg_indices)
+                    triplet_candidates.append((i, int(p), int(n)))
 
-                anchors = torch.stack([hidden_flat[t[0]] for t in triplets])
-                positives = torch.stack([hidden_flat[t[1]] for t in triplets])
-                negatives = torch.stack([hidden_flat[t[2]] for t in triplets])
-                
+            if len(triplet_candidates) > 0:
+                triplets_tensor = torch.tensor(triplet_candidates, dtype=torch.long, device=device)
+
+                anchors = hidden_flat[triplets_tensor[:, 0]]
+                positives = hidden_flat[triplets_tensor[:, 1]]
+                negatives = hidden_flat[triplets_tensor[:, 2]]
+
                 triplet_loss_fn = torch.nn.TripletMarginLoss(margin=1.0, p=2)
                 combat_board_loss = triplet_loss_fn(anchors, positives, negatives)
-            else:
-                combat_board_loss = torch.tensor(0.0, device=device, requires_grad=True)
 
         accs = {k: torch.stack(v, -1) for k, v in accs.items()}
 
         mean_loss = value_loss.mean() + policy_loss.mean()
-        if len(combats) > 0:
+        if len(combats) > 0 and combat_board_loss is not None:
             mean_loss += combat_board_loss.mean()
         mean_loss.register_hook(lambda grad: grad * (1 / config.UNROLL_STEPS))
 
@@ -226,7 +215,7 @@ class Trainer(object):
 
             summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
             summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
-            if len(combats) > 0:
+            if len(combats) > 0 and combat_board_loss is not None:
                 summary_writer.add_scalar('losses/combat_contrastive', combat_board_loss.mean(), train_step)
             summary_writer.add_scalar('losses/total', torch.mean(mean_loss), train_step)
 
