@@ -52,7 +52,7 @@ PYTHON_GIL=0 ./run_tft.sh "$PYTHON_EXEC" main.py --mode worker --worker_id 0 --w
 sleep 2
 
 # 2. Start 6 self-play Collection Workers
-for i in {1..6}
+for i in {1..5}
 do
     echo "============================================================"
     echo "Starting Collection Worker $i..."
