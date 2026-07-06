@@ -206,6 +206,7 @@ class Trainer(object):
 
         if summary_writer is not None:
             summary_writer.add_scalar('prediction/value', get_mean('value'), train_step)
+            summary_writer.add_scalar('prediction/mean_abs_value', torch.mean(torch.abs(accs['value'])), train_step)
             summary_writer.add_scalar('prediction/value_variance', torch.mean(torch.var(accs['value'], dim=0)), train_step)
             summary_writer.add_scalar('prediction/policy_variance', torch.mean(torch.var(accs['policy'], dim=1)), train_step)
 
