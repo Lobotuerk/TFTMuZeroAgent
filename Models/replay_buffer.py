@@ -73,25 +73,27 @@ class ReplayBuffer:
         final_val = float(final_value)
         max_obs = len(self.observations)
 
+        returns = np.zeros(max_obs)
+        returns[-1] = final_val
+        for i in reversed(range(max_obs - 1)):
+            returns[i] = self.rewards[i] + config.DISCOUNT * returns[i + 1]
+
         for t in range(config.UNROLL_STEPS, max_obs):
             unroll_steps = min(config.UNROLL_STEPS, max_obs - t)
             if unroll_steps < config.UNROLL_STEPS:
                 continue
 
             start = t - config.UNROLL_STEPS
-            target_idx = t + unroll_steps - 1
-            if target_idx >= max_obs:
-                target_idx = max_obs - 1
 
-            target_obs = self.observations[target_idx]
+            unroll_returns = returns[start:start + unroll_steps]
 
             replay_set.append([
                 self.observations[start],
                 self.actions[start:t],
-                [final_val] * config.UNROLL_STEPS,
+                unroll_returns,
                 self.rewards[start:t],
                 self.policys[start:t],
-                target_obs,
+                None,
                 unroll_steps,
             ])
 
@@ -110,25 +112,27 @@ class ReplayBuffer:
         final_val = float(final_value)
         max_obs = len(self.observations)
 
+        returns = np.zeros(max_obs)
+        returns[-1] = final_val
+        for i in reversed(range(max_obs - 1)):
+            returns[i] = self.rewards[i] + config.DISCOUNT * returns[i + 1]
+
         for t in range(config.UNROLL_STEPS, max_obs):
             unroll_steps = min(config.UNROLL_STEPS, max_obs - t)
             if unroll_steps < config.UNROLL_STEPS:
                 continue
 
             start = t - config.UNROLL_STEPS
-            target_idx = t + unroll_steps - 1
-            if target_idx >= max_obs:
-                target_idx = max_obs - 1
 
-            target_obs = self.observations[target_idx]
+            unroll_returns = returns[start:start + unroll_steps]
 
             replay_set.append([
                 self.observations[start],
                 self.actions[start:t],
-                [final_val] * config.UNROLL_STEPS,
+                unroll_returns,
                 self.rewards[start:t],
                 self.policys[start:t],
-                target_obs,
+                None,
                 unroll_steps,
             ])
 
