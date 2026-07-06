@@ -50,6 +50,7 @@ async def training_mode(args):
 
 async def train_server_mode(args):
     """GPU-bound Training Server process with HTTP API."""
+    import base64
     import os
     import pickle
     import shutil
@@ -179,8 +180,12 @@ async def train_server_mode(args):
         with open(path, "rb") as f:
             data = f.read()
         last_modified = dt.fromtimestamp(os.path.getmtime(path)).isoformat()
-        return web.Response(body=data, content_type="application/octet-stream",
-                            headers={"Last-Modified": last_modified})
+        encoded_weights = base64.b64encode(data).decode('utf-8')
+        body = {
+            "step": orch.training_step,
+            "weights": encoded_weights,
+        }
+        return web.json_response(body, headers={"Last-Modified": last_modified})
     
     async def handle_promote_best(request):
         try:
@@ -222,6 +227,7 @@ async def train_server_mode(args):
 
 async def worker_mode(args):
     """CPU-bound Game Collection or Evaluation Worker process (HTTP client)."""
+    import base64
     import os
     import pickle
     import io
@@ -277,7 +283,8 @@ async def worker_mode(args):
                     async with resp:
                         if resp.status == 200:
                             try:
-                                weights_bytes = await resp.read()
+                                resp_json = await resp.json()
+                                weights_bytes = base64.b64decode(resp_json["weights"])
                                 weights = torch.load(io.BytesIO(weights_bytes), map_location="cpu")
                                 if orch.current_model is not None:
                                     orch.current_model.model.load_state_dict(weights)
@@ -363,8 +370,10 @@ async def worker_mode(args):
                         print(f"[Worker {worker_id}] Detected updated weights. Running evaluation...")
                         
                         try:
-                            latest_bytes = await resp.read()
-                            latest_weights = torch.load(io.BytesIO(latest_bytes), map_location="cpu")
+                            resp_json = await resp.json()
+                            step = resp_json.get("step", 0)
+                            weights_bytes = base64.b64decode(resp_json["weights"])
+                            latest_weights = torch.load(io.BytesIO(weights_bytes), map_location="cpu")
                             orch.current_model.model.load_state_dict(latest_weights)
                         except Exception:
                             print(f"[Worker {worker_id}] Error loading latest weights")
@@ -376,7 +385,8 @@ async def worker_mode(args):
                     async with best_resp:
                         if best_resp.status == 200:
                             try:
-                                best_bytes = await best_resp.read()
+                                best_json = await best_resp.json()
+                                best_bytes = base64.b64decode(best_json["weights"])
                                 best_weights = torch.load(io.BytesIO(best_bytes), map_location="cpu")
                                 orch.best_model.model.load_state_dict(best_weights)
                             except Exception:
@@ -386,7 +396,7 @@ async def worker_mode(args):
                             orch.best_model.model.load_state_dict(latest_weights)
                     
                     # 3. Run standalone evaluation
-                    results = await orch.evaluate()
+                    results = await orch.evaluate(step=step)
                     current_mean = results["current_placement"]
                     best_mean = results["best_placement"]
                     

@@ -1401,14 +1401,21 @@ class TrainingOrchestrator:
     # 4️⃣  EVALUATE phase
     # ------------------------------------------------------------------
 
-    async def evaluate(self) -> Dict[str, float]:
+    async def evaluate(self, step: Optional[int] = None) -> Dict[str, float]:
         """
         Run evaluation games between the current (new) model and the
         best model so far.  Keep the better-performing weights.
 
+        Parameters
+        ----------
+        step:
+            The training step from the server to use for logging.
+            Falls back to ``self.training_step`` when not provided.
+
         Returns a dict with ``current_placement`` and ``best_placement``.
         """
-        print(f"\nEVALUATE at step {self.training_step}")
+        current_step = step if step is not None else self.training_step
+        print(f"\nEVALUATE at step {current_step}")
 
         eval_current = MuZeroAgent(
             action_size=3,
@@ -1467,8 +1474,8 @@ class TrainingOrchestrator:
         best_mean = float(np.mean(best_placements)) if best_placements else 8.0
 
         if self.summary_writer:
-            self.summary_writer.add_scalar("evaluation/current_model", current_mean, self.training_step)
-            self.summary_writer.add_scalar("evaluation/best_model", best_mean, self.training_step)
+            self.summary_writer.add_scalar("evaluation/current_model", current_mean, current_step)
+            self.summary_writer.add_scalar("evaluation/best_model", best_mean, current_step)
 
         print(f"  Current model placement: {current_mean:.2f}  |  Best model: {best_mean:.2f}")
 
