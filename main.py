@@ -332,8 +332,7 @@ async def worker_mode(args):
                         async with resp:
                             if resp.status == 200:
                                 print(f"[Worker {worker_id}] Sent {len(combat_samples)} combat steps")
-                                combat_buffer._size = 0
-                                combat_buffer._pos = 0
+                                combat_buffer.clear()
                             else:
                                 body = await resp.text()
                                 print(f"[Worker {worker_id}] Failed to send combat steps (status {resp.status}): {body[:200]}")

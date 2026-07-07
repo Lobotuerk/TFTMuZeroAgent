@@ -30,6 +30,12 @@ class CombatBuffer:
             if self._size < self._capacity:
                 self._size += 1
 
+    def clear(self):
+        with self._lock:
+            self._buffer = [None] * self._capacity
+            self._size = 0
+            self._pos = 0
+
     def sample(self, batch_size):
         with self._lock:
             if self._size < batch_size:
@@ -202,7 +208,7 @@ class GlobalBuffer:
         self.gameplay_buffer.clear()
 
     def clear_combat_buffer(self):
-        pass
+        self.combat_buffer.clear()
 
     def get_gameplay_buffer_size(self):
         return len(self.gameplay_buffer)
