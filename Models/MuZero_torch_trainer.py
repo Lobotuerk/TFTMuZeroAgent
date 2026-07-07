@@ -202,27 +202,26 @@ class Trainer(object):
         sum_accs = {k: torch.sum(a, -1) for k, a in accs.items()}
 
         def get_mean(k):
-            return torch.mean(sum_accs[k])
+            return torch.mean(sum_accs[k]).detach().cpu().item()
 
         if summary_writer is not None:
             summary_writer.add_scalar('prediction/value', get_mean('value'), train_step)
-            summary_writer.add_scalar('prediction/mean_abs_value', torch.mean(torch.abs(accs['value'])), train_step)
-            summary_writer.add_scalar('prediction/value_variance', torch.mean(torch.var(accs['value'], dim=0)), train_step)
-            summary_writer.add_scalar('prediction/policy_variance', torch.mean(torch.var(accs['policy'], dim=1)), train_step)
+            summary_writer.add_scalar('prediction/mean_abs_value', torch.mean(torch.abs(accs['value'])).detach().cpu().item(), train_step)
+            summary_writer.add_scalar('prediction/value_variance', torch.mean(torch.var(accs['value'], dim=0)).detach().cpu().item(), train_step)
+            summary_writer.add_scalar('prediction/policy_variance', torch.mean(torch.var(accs['policy'], dim=1)).detach().cpu().item(), train_step)
 
             summary_writer.add_scalar('target/value', get_mean('target_value'), train_step)
-            summary_writer.add_scalar('target/value_variance', torch.mean(torch.var(accs['target_value'], dim=0)), train_step)
-            summary_writer.add_scalar('target/policy_variance', torch.mean(torch.var(accs['target_policy'], dim=0)), train_step)
+            summary_writer.add_scalar('target/value_variance', torch.mean(torch.var(accs['target_value'], dim=0)).detach().cpu().item(), train_step)
+            summary_writer.add_scalar('target/policy_variance', torch.mean(torch.var(accs['target_policy'], dim=0)).detach().cpu().item(), train_step)
 
-            summary_writer.add_scalar('losses/value', torch.mean(value_loss), train_step)
-            summary_writer.add_scalar('losses/policy', torch.mean(policy_loss), train_step)
+            summary_writer.add_scalar('losses/value', torch.mean(value_loss).detach().cpu().item(), train_step)
+            summary_writer.add_scalar('losses/policy', torch.mean(policy_loss).detach().cpu().item(), train_step)
             if len(combats) > 0 and combat_board_loss is not None:
-                summary_writer.add_scalar('losses/combat_contrastive', combat_board_loss.mean(), train_step)
-            summary_writer.add_scalar('losses/total', torch.mean(mean_loss), train_step)
+                summary_writer.add_scalar('losses/combat_contrastive', combat_board_loss.mean().detach().cpu().item(), train_step)
+            summary_writer.add_scalar('losses/total', torch.mean(mean_loss).detach().cpu().item(), train_step)
 
             summary_writer.add_scalar('accuracy/value', -get_mean('value_diff'), train_step)
 
-            # Policy entropy: H(p) = -sum(p * log(p))
             policy_entropies = []
             for tstep, prediction in enumerate(predictions):
                 logits = prediction.policy_logits
@@ -230,11 +229,10 @@ class Trainer(object):
                 log_probs = torch.log(probs + 1e-10)
                 entropy = -(probs * log_probs).sum(dim=-1).mean()
                 policy_entropies.append(entropy)
-            summary_writer.add_scalar('metrics/policy_entropy', torch.mean(torch.stack(policy_entropies)), train_step)
+            summary_writer.add_scalar('metrics/policy_entropy', torch.mean(torch.stack(policy_entropies)).detach().cpu().item(), train_step)
 
-            # Value regression error (MAE)
             value_mae = torch.mean(torch.abs(torch.squeeze(output["value"]) - target_value[:, 0]))
-            summary_writer.add_scalar('metrics/value_mae', value_mae, train_step)
+            summary_writer.add_scalar('metrics/value_mae', value_mae.detach().cpu().item(), train_step)
 
             summary_writer.flush()
 

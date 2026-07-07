@@ -94,10 +94,21 @@ def test_read_combat_batch(buffer):
     assert buffer.get_combat_buffer_size() == 4
 
 
-def test_clear_combat_buffer_is_noop(buffer):
-    buffer.store_combat((np.array([1.0]), np.array([0])))
-    buffer.clear_combat_buffer()
-    assert buffer.get_combat_buffer_size() == 1
+def test_combat_buffer_clear_resets_pointers(buffer):
+    for _ in range(4):
+        buffer.store_combat((np.array([1.0]), np.array([0])))
+    assert buffer.get_combat_buffer_size() > 0
+    buffer.combat_buffer.clear()
+    assert buffer.get_combat_buffer_size() == 0
+    assert buffer.combat_buffer._pos == 0
+
+
+def test_combat_buffer_clear_releases_references(buffer):
+    large_obs = np.ones((100, 100))
+    for _ in range(10):
+        buffer.store_combat((large_obs, np.array([0])))
+    buffer.combat_buffer.clear()
+    assert all(elem is None for elem in buffer.combat_buffer._buffer)
 
 
 def test_sample_gameplay_batch_insufficient(buffer):
