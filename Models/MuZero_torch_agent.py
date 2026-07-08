@@ -3,7 +3,6 @@ import numpy as np
 import asyncio
 import os
 from typing import List, Optional, Any, Union, Dict, Tuple
-from concurrent.futures import ThreadPoolExecutor
 import config
 
 # MCTS and Model imports
@@ -88,8 +87,7 @@ class MuZeroAgent(BaseAgent):
         if torch.cuda.is_available():
             self.model.to('cuda')
         
-        # Persistent thread pool for batch inference
-        self._executor = ThreadPoolExecutor(max_workers=getattr(self.config, 'BATCH_SIZE', 8))
+
 
         # Performance monitoring
         self.stats = {
@@ -150,7 +148,7 @@ class MuZeroAgent(BaseAgent):
                 value = float(v.item() if hasattr(v, 'item') else v)
             return env_move, action_vector, value
 
-        results = list(self._executor.map(run_mcts_item, range(batch_size)))
+        results = [run_mcts_item(i) for i in range(batch_size)]
 
         return results
 
@@ -234,6 +232,19 @@ class MuZeroAgent(BaseAgent):
         stats['active_players'] = 1  # For now
         stats['async_buffers_enabled'] = True
         return stats
+
+    def terminate(self, final_value, player_id=None):
+        super().terminate(final_value, player_id)
+        if hasattr(self, 'mcts') and self.mcts is not None:
+            if player_id is None and isinstance(final_value, dict):
+                game_ids = set()
+                for key in final_value.keys():
+                    if "thread_env_" in key:
+                        game_ids.add(key.split("_player")[0])
+                    elif "env_" in key:
+                        game_ids.add(key.split("_player")[0])
+                for g_id in game_ids:
+                    self.mcts.cleanup_game(g_id)
 
     def reset(self):
         """Reset agent state"""

@@ -276,10 +276,11 @@ async def worker_mode(args):
     # Only evaluator and trainer should write to TensorBoard. Disable for collectors
     # before calling setup() to avoid creating empty TensorBoard directories on disk.
     is_collector = (worker_role == "collector")
+    is_evaluator = (worker_role == "evaluator")
     if is_collector:
         orch._build_logger = lambda: None
         
-    orch.setup(is_collector=is_collector)
+    orch.setup(is_collector=is_collector, is_evaluator=is_evaluator)
     
     timeout = aiohttp.ClientTimeout(total=30, connect=10)
     

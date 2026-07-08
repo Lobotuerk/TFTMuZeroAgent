@@ -1145,11 +1145,17 @@ class TrainingOrchestrator:
     # Setup
     # ------------------------------------------------------------------
 
-    def setup(self, is_collector: bool = False):
+    def setup(self, is_collector: bool = False, is_evaluator: bool = False):
         """Create all components: buffer, agents, batch processor, trainer."""
         self.trainer = Trainer()
         self.summary_writer = self._build_logger()
-        self.global_buffer = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
+
+        # Use lightweight WorkerGlobalBuffer if running as a worker process
+        if is_collector or is_evaluator:
+            from Models.global_buffer import WorkerGlobalBuffer
+            self.global_buffer = WorkerGlobalBuffer(action_to_policy=action_3d_to_policy)
+        else:
+            self.global_buffer = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
 
         # --- agent config -------------------------------------------------
         if not is_collector:
@@ -1180,6 +1186,11 @@ class TrainingOrchestrator:
                     state = torch.load(ckpt)
                     self.best_model.model.load_state_dict(state)
                     self.current_model.model.load_state_dict(state)
+
+        # Evaluators do NOT need collection agents, agent manager, env manager, or benchmarking!
+        if is_evaluator:
+            print("Evaluator worker setup complete (skipping collection agent and environment manager).")
+            return
 
         # MuZero agents for *collection* – start with best model weights
         if is_collector:
@@ -1216,7 +1227,6 @@ class TrainingOrchestrator:
             metrics_collector=self.metrics_collector,
         )
 
-        # --- parallel env manager -----------------------------------------
         # --- parallel env manager -----------------------------------------
         self.env_manager = self._create_env_manager(
             self.cfg.concurrent_games,
