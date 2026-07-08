@@ -211,7 +211,7 @@ class GlobalBuffer:
     def sample_combat_batch(self, batch_size):
         return self.combat_buffer.sample(batch_size)
 
-    def add_gameplay_experience(self, samples):
+    def add_gameplay_experience(self, samples, skip_memory_buffer: bool = False):
         converted = self._convert_sample_if_needed(samples)
         batch_size = self.batch_size
         num_batches = len(converted) // batch_size
@@ -226,7 +226,7 @@ class GlobalBuffer:
                 with open(filepath, "wb") as f:
                     pickle.dump(batch_data, f)
 
-        if leftover > 0:
+        if leftover > 0 and not skip_memory_buffer:
             leftover_data = converted[num_batches * batch_size:]
             self.gameplay_buffer.add(leftover_data)
 

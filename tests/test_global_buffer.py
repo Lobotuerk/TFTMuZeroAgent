@@ -6,6 +6,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import config
 from Models.global_buffer import GlobalBuffer, create_global_buffer
 
 
@@ -239,3 +240,54 @@ def test_convert_sample_bootstrap_depth_preserved():
     assert len(result) == 1
     assert result[0][6] is bootstrap_depth
     assert np.array_equal(result[0][6], np.array([3]))
+
+
+@pytest.fixture
+def buffer_with_temp_path(tmp_path):
+    original_path = config.GAMEPLAY_BUFFER_PATH
+    config.GAMEPLAY_BUFFER_PATH = str(tmp_path / "gameplay")
+    buf = GlobalBuffer(batch_size=4)
+    yield buf
+    config.GAMEPLAY_BUFFER_PATH = original_path
+
+
+def _make_gameplay_sample(value=1.0):
+    return [(np.array([float(value)]), np.array([0]), np.array([0.5]), np.array([0.1]), np.array([0.2]))]
+
+
+def test_add_gameplay_experience_spill_to_disk(buffer_with_temp_path, tmp_path):
+    buf = buffer_with_temp_path
+    samples = _make_gameplay_sample() * 10
+    buf.add_gameplay_experience(samples, skip_memory_buffer=False)
+    pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
+    assert len(pkl_files) == 2
+    assert buf.get_gameplay_buffer_size() == 2
+
+
+def test_add_gameplay_experience_skip_memory_buffer(buffer_with_temp_path, tmp_path):
+    buf = buffer_with_temp_path
+    samples = _make_gameplay_sample() * 10
+    buf.add_gameplay_experience(samples, skip_memory_buffer=True)
+    pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
+    assert len(pkl_files) == 2
+    assert buf.get_gameplay_buffer_size() == 0
+
+
+def test_read_gameplay_batch_from_disk(buffer_with_temp_path, tmp_path):
+    buf = buffer_with_temp_path
+    samples = _make_gameplay_sample() * 10
+    buf.add_gameplay_experience(samples, skip_memory_buffer=True)
+    assert buf.available_gameplay_batch() is True
+    batch1 = buf.read_gameplay_batch()
+    assert batch1 is not None
+    assert len(batch1) == 7
+    assert len(batch1[0]) == 4
+    pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
+    assert len(pkl_files) == 1
+    assert buf.available_gameplay_batch() is True
+    batch2 = buf.read_gameplay_batch()
+    assert batch2 is not None
+    assert len(batch2[0]) == 4
+    pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
+    assert len(pkl_files) == 0
+    assert buf.available_gameplay_batch() is False

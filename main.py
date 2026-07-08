@@ -152,18 +152,27 @@ async def train_server_mode(args):
         experience_type = request.headers.get("X-Experience-Type", "")
         if experience_type not in ("gameplay", "combat"):
             return web.Response(status=400, text="Invalid or missing X-Experience-Type header")
+
         mem = psutil.virtual_memory()
         threshold = getattr(config, "MEMORY_THRESHOLD", 85.0)
+        critical_threshold = getattr(config, "CRITICAL_MEMORY_THRESHOLD", 95.0)
+
+        if mem.percent > critical_threshold:
+            print(f"[Server] Critical memory threshold exceeded ({mem.percent}% > {critical_threshold}%). Triggering backpressure (503).")
+            return web.Response(status=503, reason="Service Unavailable (Critical Memory)", text="Critical memory usage too high")
+
+        skip_memory_buffer = False
         if mem.percent > threshold:
-            print(f"[Server] Memory threshold exceeded ({mem.percent}% > {threshold}%). Triggering backpressure (503).")
-            return web.Response(status=503, reason="Service Unavailable (High Memory)", text="Memory usage too high")
+            skip_memory_buffer = True
+            print(f"[Server] Memory threshold exceeded ({mem.percent}% > {threshold}%). Spill-to-disk active (bypassing in-memory buffer).")
+
         body = await request.read()
         try:
             data = pickle.loads(body)
         except Exception:
             return web.Response(status=400, text="Invalid pickle data")
         if experience_type == "gameplay":
-            orch.global_buffer.add_gameplay_experience(data)
+            orch.global_buffer.add_gameplay_experience(data, skip_memory_buffer=skip_memory_buffer)
         else:
             for sample in data:
                 orch.global_buffer.store_combat(sample)
