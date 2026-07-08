@@ -1,3 +1,4 @@
+import asyncio
 import config
 import numpy as np
 import os
@@ -285,6 +286,103 @@ class GlobalBuffer:
     @property
     def combat_experiences(self):
         return self.combat_buffer
+
+
+class WorkerCombatBuffer:
+    def __init__(self):
+        self._size = 0
+        self._buffer = []
+
+    def clear(self):
+        pass
+
+
+class WorkerGlobalBuffer:
+    def __init__(self, action_to_policy: Optional[Callable] = None):
+        self.action_to_policy = action_to_policy
+        self.batch_size = config.BATCH_SIZE
+        self.gameplay_buffer = []
+        self.combat_buffer = WorkerCombatBuffer()
+
+    def _convert_sample_if_needed(self, sample):
+        if self.action_to_policy is None:
+            return sample
+        converted = []
+        for item in sample:
+            obs, action, value, reward, policy = item[:5]
+            from Models.action_conversion import action_to_policy_if_needed, is_3d_action
+            if is_3d_action(action):
+                policy = action_to_policy_if_needed(action, policy, self.action_to_policy)
+            extended = list(item)
+            if len(extended) >= 7:
+                extended[4] = policy
+                converted.append(tuple(extended))
+            else:
+                converted.append((obs, action, value, reward, policy))
+        return converted
+
+    async def store_episode_async(self, sample):
+        converted = self._convert_sample_if_needed(sample)
+        await self._post_to_server(converted, "gameplay")
+
+    def store_episode(self, sample):
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                loop.create_task(self.store_episode_async(sample))
+                return
+        except RuntimeError:
+            pass
+        asyncio.run(self.store_episode_async(sample))
+
+    def store_episode_sync(self, sample):
+        self.store_episode(sample)
+
+    def store_combat(self, sample):
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                loop.create_task(self._post_to_server([sample], "combat"))
+                return
+        except RuntimeError:
+            pass
+        asyncio.run(self._post_to_server([sample], "combat"))
+
+    def clear_gameplay_buffer(self):
+        pass
+
+    def clear_combat_buffer(self):
+        pass
+
+    async def _post_to_server(self, data, experience_type: str):
+        import aiohttp
+        import pickle
+        import random
+
+        url = f"http://{config.WORKERS_HOST}:{config.SERVER_PORT}/api/v1/experience"
+        payload = pickle.dumps(data)
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            for attempt in range(5):
+                try:
+                    async with session.post(url, data=payload, headers={
+                        "Content-Type": "application/octet-stream",
+                        "X-Experience-Type": experience_type
+                    }) as resp:
+                        if resp.status == 200:
+                            print(f"[WorkerGlobalBuffer] Successfully POSTed {len(data)} {experience_type} steps")
+                            return
+                        elif resp.status == 503:
+                            print(f"[WorkerGlobalBuffer] Server reported 503 on {experience_type} upload. Retrying in 10s...")
+                            await asyncio.sleep(10.0)
+                        else:
+                            body = await resp.text()
+                            print(f"[WorkerGlobalBuffer] Failed to upload {experience_type} (status {resp.status}): {body[:200]}")
+                            return
+                except Exception as e:
+                    print(f"[WorkerGlobalBuffer] Connection error on {experience_type} upload (attempt {attempt+1}): {e}")
+                    if attempt < 4:
+                        await asyncio.sleep(2.0 + random.random() * 2.0)
 
 
 def create_global_buffer(batch_size: Optional[int] = None, action_to_policy: Optional[Callable] = None) -> GlobalBuffer:

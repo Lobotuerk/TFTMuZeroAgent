@@ -182,6 +182,11 @@ class EnhancedMCTS:
         }
         return metadata
     
+    def cleanup_game(self, game_id: str):
+        with self.batch_queues_lock:
+            if game_id in self.batch_queues:
+                del self.batch_queues[game_id]
+
     def get_stats(self) -> Dict[str, Any]:
         """Get performance statistics"""
         state = self._get_local_state()
