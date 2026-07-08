@@ -337,6 +337,8 @@ async def worker_mode(args):
                                 body = await resp.text()
                                 print(f"[Worker {worker_id}] Failed to send combat steps (status {resp.status}): {body[:200]}")
                     
+                    import gc
+                    gc.collect()
                     await asyncio.sleep(1.0)
                     
             elif worker_role == "evaluator":
@@ -412,6 +414,8 @@ async def worker_mode(args):
                     else:
                         print(f"[Evaluator] \u2717 No improvement. Placement: {current_mean:.2f} vs {best_mean:.2f}")
                     
+                    import gc
+                    gc.collect()
                     await asyncio.sleep(5.0)
                     
     except KeyboardInterrupt:

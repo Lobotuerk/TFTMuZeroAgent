@@ -36,7 +36,12 @@ cleanup() {
     echo "============================================================"
     echo "Terminating all distributed training processes..."
     echo "============================================================"
-    kill 0 2>/dev/null
+    local pids=$(jobs -p)
+    if [ -n "$pids" ]; then
+        kill -INT $pids 2>/dev/null
+        sleep 1
+        kill -TERM $pids 2>/dev/null
+    fi
 }
 
 # Trap Ctrl+C (SIGINT), SIGTERM, and EXIT to trigger cleanup
