@@ -85,6 +85,37 @@ class GameplayBuffer:
             )
             self._tombstones = 0
 
+    def _format_batch(self, samples):
+        observation_batch = []
+        action_batch = []
+        value_batch = []
+        reward_batch = []
+        policy_batch = []
+        target_obs_batch = []
+        bootstrap_depth_batch = []
+        for sample in samples:
+            observation_batch.append(sample[0])
+            action_batch.append(sample[1])
+            value_batch.append(sample[2])
+            reward_batch.append(sample[3])
+            policy_batch.append(sample[4])
+            if len(sample) >= 7:
+                target_obs_batch.append(sample[5])
+                bootstrap_depth_batch.append(sample[6])
+            else:
+                target_obs_batch.append(None)
+                bootstrap_depth_batch.append(config.UNROLL_STEPS)
+        result = [
+            np.array(observation_batch),
+            np.array(action_batch),
+            np.array(value_batch),
+            np.array(reward_batch),
+            np.array(policy_batch)
+        ]
+        result.append(np.array(target_obs_batch))
+        result.append(np.array(bootstrap_depth_batch))
+        return result
+
     def sample(self, batch_size):
         with self._lock:
             if len(self._buffer) - self._tombstones < batch_size:
@@ -96,35 +127,7 @@ class GameplayBuffer:
                 self._buffer[i] = None
             self._tombstones += batch_size
             self._compact_if_needed()
-            observation_batch = []
-            action_batch = []
-            value_batch = []
-            reward_batch = []
-            policy_batch = []
-            target_obs_batch = []
-            bootstrap_depth_batch = []
-            for sample in samples:
-                observation_batch.append(sample[0])
-                action_batch.append(sample[1])
-                value_batch.append(sample[2])
-                reward_batch.append(sample[3])
-                policy_batch.append(sample[4])
-                if len(sample) >= 7:
-                    target_obs_batch.append(sample[5])
-                    bootstrap_depth_batch.append(sample[6])
-                else:
-                    target_obs_batch.append(None)
-                    bootstrap_depth_batch.append(config.UNROLL_STEPS)
-            result = [
-                np.array(observation_batch),
-                np.array(action_batch),
-                np.array(value_batch),
-                np.array(reward_batch),
-                np.array(policy_batch)
-            ]
-            result.append(np.array(target_obs_batch))
-            result.append(np.array(bootstrap_depth_batch))
-            return result
+            return self._format_batch(samples)
 
     def clear(self):
         with self._lock:
