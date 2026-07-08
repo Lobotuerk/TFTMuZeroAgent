@@ -1,7 +1,11 @@
 import config
 import numpy as np
+import os
+import pickle
 import threading
 import random
+import time
+import uuid
 from collections import deque
 from typing import Optional, List, Any, Callable
 
@@ -85,6 +89,37 @@ class GameplayBuffer:
             )
             self._tombstones = 0
 
+    def _format_batch(self, samples):
+        observation_batch = []
+        action_batch = []
+        value_batch = []
+        reward_batch = []
+        policy_batch = []
+        target_obs_batch = []
+        bootstrap_depth_batch = []
+        for sample in samples:
+            observation_batch.append(sample[0])
+            action_batch.append(sample[1])
+            value_batch.append(sample[2])
+            reward_batch.append(sample[3])
+            policy_batch.append(sample[4])
+            if len(sample) >= 7:
+                target_obs_batch.append(sample[5])
+                bootstrap_depth_batch.append(sample[6])
+            else:
+                target_obs_batch.append(None)
+                bootstrap_depth_batch.append(config.UNROLL_STEPS)
+        result = [
+            np.array(observation_batch),
+            np.array(action_batch),
+            np.array(value_batch),
+            np.array(reward_batch),
+            np.array(policy_batch)
+        ]
+        result.append(np.array(target_obs_batch))
+        result.append(np.array(bootstrap_depth_batch))
+        return result
+
     def sample(self, batch_size):
         with self._lock:
             if len(self._buffer) - self._tombstones < batch_size:
@@ -96,35 +131,7 @@ class GameplayBuffer:
                 self._buffer[i] = None
             self._tombstones += batch_size
             self._compact_if_needed()
-            observation_batch = []
-            action_batch = []
-            value_batch = []
-            reward_batch = []
-            policy_batch = []
-            target_obs_batch = []
-            bootstrap_depth_batch = []
-            for sample in samples:
-                observation_batch.append(sample[0])
-                action_batch.append(sample[1])
-                value_batch.append(sample[2])
-                reward_batch.append(sample[3])
-                policy_batch.append(sample[4])
-                if len(sample) >= 7:
-                    target_obs_batch.append(sample[5])
-                    bootstrap_depth_batch.append(sample[6])
-                else:
-                    target_obs_batch.append(None)
-                    bootstrap_depth_batch.append(config.UNROLL_STEPS)
-            result = [
-                np.array(observation_batch),
-                np.array(action_batch),
-                np.array(value_batch),
-                np.array(reward_batch),
-                np.array(policy_batch)
-            ]
-            result.append(np.array(target_obs_batch))
-            result.append(np.array(bootstrap_depth_batch))
-            return result
+            return self._format_batch(samples)
 
     def clear(self):
         with self._lock:
@@ -203,6 +210,61 @@ class GlobalBuffer:
 
     def sample_combat_batch(self, batch_size):
         return self.combat_buffer.sample(batch_size)
+
+    def add_gameplay_experience(self, samples):
+        converted = self._convert_sample_if_needed(samples)
+        batch_size = self.batch_size
+        num_batches = len(converted) // batch_size
+        leftover = len(converted) % batch_size
+
+        if num_batches > 0:
+            os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
+            for i in range(num_batches):
+                batch_data = converted[i * batch_size : (i + 1) * batch_size]
+                filename = f"batch_{time.time_ns()}_{uuid.uuid4().hex}.pkl"
+                filepath = os.path.join(config.GAMEPLAY_BUFFER_PATH, filename)
+                with open(filepath, "wb") as f:
+                    pickle.dump(batch_data, f)
+
+        if leftover > 0:
+            leftover_data = converted[num_batches * batch_size:]
+            self.gameplay_buffer.add(leftover_data)
+
+    def available_gameplay_batch(self):
+        if os.path.exists(config.GAMEPLAY_BUFFER_PATH):
+            files = [f for f in os.listdir(config.GAMEPLAY_BUFFER_PATH) if f.endswith(".pkl")]
+            if len(files) > 0:
+                return True
+        return len(self.gameplay_buffer) >= self.batch_size
+
+    def read_gameplay_batch(self):
+        if os.path.exists(config.GAMEPLAY_BUFFER_PATH):
+            files = sorted([f for f in os.listdir(config.GAMEPLAY_BUFFER_PATH) if f.endswith(".pkl")])
+            if len(files) > 0:
+                filepath = os.path.join(config.GAMEPLAY_BUFFER_PATH, files[0])
+                try:
+                    with open(filepath, "rb") as f:
+                        batch_samples = pickle.load(f)
+                    os.remove(filepath)
+                    return self.gameplay_buffer._format_batch(batch_samples)
+                except Exception as e:
+                    print(f"Error reading/deleting batch file {filepath}: {e}")
+                    if os.path.exists(filepath):
+                        try:
+                            os.remove(filepath)
+                        except Exception:
+                            pass
+        return self.gameplay_buffer.sample(self.batch_size)
+
+    def clear_all_gameplay_data(self):
+        self.clear_gameplay_buffer()
+        if os.path.exists(config.GAMEPLAY_BUFFER_PATH):
+            for f in os.listdir(config.GAMEPLAY_BUFFER_PATH):
+                if f.endswith(".pkl"):
+                    try:
+                        os.remove(os.path.join(config.GAMEPLAY_BUFFER_PATH, f))
+                    except Exception as e:
+                        print(f"Error deleting file {f}: {e}")
 
     def clear_gameplay_buffer(self):
         self.gameplay_buffer.clear()

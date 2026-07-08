@@ -9,6 +9,7 @@ the TrainingOrchestrator with the explicit RL lifecycle:
 
 import asyncio
 import argparse
+import random
 import sys
 import time
 from typing import Optional
@@ -53,6 +54,7 @@ async def train_server_mode(args):
     import base64
     import os
     import pickle
+    import psutil
     import shutil
     from datetime import datetime as dt
     import torch
@@ -68,6 +70,7 @@ async def train_server_mode(args):
     from Models.MuZero_torch_agent import MuZeroAgent
     from Models.MuZero_torch_trainer import Trainer as MuZeroTrainer
     
+    orch.promotion_count = 0
     orch.global_buffer = create_global_buffer(cfg.max_batch_size)
     
     # Initialize active model (current_model)
@@ -149,13 +152,18 @@ async def train_server_mode(args):
         experience_type = request.headers.get("X-Experience-Type", "")
         if experience_type not in ("gameplay", "combat"):
             return web.Response(status=400, text="Invalid or missing X-Experience-Type header")
+        mem = psutil.virtual_memory()
+        threshold = getattr(config, "MEMORY_THRESHOLD", 85.0)
+        if mem.percent > threshold:
+            print(f"[Server] Memory threshold exceeded ({mem.percent}% > {threshold}%). Triggering backpressure (503).")
+            return web.Response(status=503, reason="Service Unavailable (High Memory)", text="Memory usage too high")
         body = await request.read()
         try:
             data = pickle.loads(body)
         except Exception:
             return web.Response(status=400, text="Invalid pickle data")
         if experience_type == "gameplay":
-            orch.global_buffer.gameplay_buffer.add(data)
+            orch.global_buffer.add_gameplay_experience(data)
         else:
             for sample in data:
                 orch.global_buffer.store_combat(sample)
@@ -184,11 +192,15 @@ async def train_server_mode(args):
         body = {
             "step": orch.training_step,
             "weights": encoded_weights,
+            "promotion_count": getattr(orch, "promotion_count", 0),
         }
         return web.json_response(body, headers={"Last-Modified": last_modified})
     
     async def handle_promote_best(request):
         try:
+            orch.global_buffer.clear_all_gameplay_data()
+            orch.promotion_count += 1
+            print(f"[Server] Model promoted. Cleared gameplay data. promotion_count={orch.promotion_count}")
             shutil.copy("./checkpoint/latest_model.pth", "./checkpoint/best_model.pth")
             return web.Response(status=200)
         except Exception:
@@ -272,7 +284,8 @@ async def worker_mode(args):
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         print(f"[Worker {worker_id}] Request failed (attempt {attempt+1}/{max_retries}): {e}")
                         if attempt < max_retries - 1:
-                            await asyncio.sleep(2 ** attempt)
+                            delay = (2 ** attempt) * (0.5 + random.random() * 0.5)
+                            await asyncio.sleep(delay)
                         else:
                             raise
             if worker_role == "collector":
@@ -290,6 +303,14 @@ async def worker_mode(args):
                                     orch.current_model.model.load_state_dict(weights)
                                 for agent in orch._training_agents:
                                     agent.update_weights(weights)
+                                server_promo_count = resp_json.get("promotion_count", 0)
+                                if not hasattr(orch, "last_promotion_count"):
+                                    orch.last_promotion_count = server_promo_count
+                                elif server_promo_count > orch.last_promotion_count:
+                                    print(f"[Worker {worker_id}] New best model promoted. Clearing local buffers.")
+                                    orch.global_buffer.clear_gameplay_buffer()
+                                    orch.global_buffer.clear_combat_buffer()
+                                    orch.last_promotion_count = server_promo_count
                             except Exception as e:
                                 print(f"[Worker {worker_id}] Error loading weights: {e}")
                         else:
@@ -300,42 +321,54 @@ async def worker_mode(args):
                     print(f"[Worker {worker_id}] Starting a batch of {cfg.concurrent_games} game(s)...")
                     await orch.env_manager.run_fixed_games(orch.agent_manager, cfg.concurrent_games)
                     
-                    # 3. Send gameplay experiences to server
+                    # 3. Send gameplay experiences to server (with 503 backpressure retry)
                     samples = list(orch.global_buffer.gameplay_buffer)
                     if samples:
                         data = pickle.dumps(samples)
-                        resp = await _request_with_retry(
-                            "POST", f"{server_url}/api/v1/experience",
-                            data=data,
-                            headers={"Content-Type": "application/octet-stream",
-                                     "X-Experience-Type": "gameplay"}
-                        )
-                        async with resp:
-                            if resp.status == 200:
-                                print(f"[Worker {worker_id}] Sent {len(samples)} gameplay steps")
-                                orch.global_buffer.clear_gameplay_buffer()
-                            else:
-                                body = await resp.text()
-                                print(f"[Worker {worker_id}] Failed to send gameplay steps (status {resp.status}): {body[:200]}")
+                        while True:
+                            resp = await _request_with_retry(
+                                "POST", f"{server_url}/api/v1/experience",
+                                data=data,
+                                headers={"Content-Type": "application/octet-stream",
+                                         "X-Experience-Type": "gameplay"}
+                            )
+                            async with resp:
+                                if resp.status == 200:
+                                    print(f"[Worker {worker_id}] Sent {len(samples)} gameplay steps")
+                                    orch.global_buffer.clear_gameplay_buffer()
+                                    break
+                                elif resp.status == 503:
+                                    print(f"[Worker {worker_id}] Server reported high memory (503). Retrying in 10s...")
+                                    await asyncio.sleep(10.0)
+                                else:
+                                    body = await resp.text()
+                                    print(f"[Worker {worker_id}] Failed to send gameplay steps (status {resp.status}): {body[:200]}")
+                                    break
                     
-                    # 4. Send combat experiences to server
+                    # 4. Send combat experiences to server (with 503 backpressure retry)
                     combat_buffer = orch.global_buffer.combat_buffer
                     if combat_buffer._size > 0:
                         combat_samples = combat_buffer._buffer[:combat_buffer._size]
                         data = pickle.dumps(combat_samples)
-                        resp = await _request_with_retry(
-                            "POST", f"{server_url}/api/v1/experience",
-                            data=data,
-                            headers={"Content-Type": "application/octet-stream",
-                                     "X-Experience-Type": "combat"}
-                        )
-                        async with resp:
-                            if resp.status == 200:
-                                print(f"[Worker {worker_id}] Sent {len(combat_samples)} combat steps")
-                                combat_buffer.clear()
-                            else:
-                                body = await resp.text()
-                                print(f"[Worker {worker_id}] Failed to send combat steps (status {resp.status}): {body[:200]}")
+                        while True:
+                            resp = await _request_with_retry(
+                                "POST", f"{server_url}/api/v1/experience",
+                                data=data,
+                                headers={"Content-Type": "application/octet-stream",
+                                         "X-Experience-Type": "combat"}
+                            )
+                            async with resp:
+                                if resp.status == 200:
+                                    print(f"[Worker {worker_id}] Sent {len(combat_samples)} combat steps")
+                                    combat_buffer.clear()
+                                    break
+                                elif resp.status == 503:
+                                    print(f"[Worker {worker_id}] Server reported high memory (503). Retrying in 10s...")
+                                    await asyncio.sleep(10.0)
+                                else:
+                                    body = await resp.text()
+                                    print(f"[Worker {worker_id}] Failed to send combat steps (status {resp.status}): {body[:200]}")
+                                    break
                     
                     import gc
                     gc.collect()
