@@ -9,6 +9,7 @@ the TrainingOrchestrator with the explicit RL lifecycle:
 
 import asyncio
 import argparse
+import random
 import sys
 import time
 from typing import Optional
@@ -283,7 +284,8 @@ async def worker_mode(args):
                     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                         print(f"[Worker {worker_id}] Request failed (attempt {attempt+1}/{max_retries}): {e}")
                         if attempt < max_retries - 1:
-                            await asyncio.sleep(2 ** attempt)
+                            delay = (2 ** attempt) * (0.5 + random.random() * 0.5)
+                            await asyncio.sleep(delay)
                         else:
                             raise
             if worker_role == "collector":
