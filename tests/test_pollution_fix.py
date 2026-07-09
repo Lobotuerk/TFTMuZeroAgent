@@ -53,12 +53,12 @@ def test_muzero_agent_with_buffer_pollution():
     obs = np.zeros(config.OBSERVATION_SIZE)
     mask = np.ones(sum(config.ACTION_DIM), dtype=bool)
     
-    # Simulate enough steps to fill the unroll buffer
-    for _ in range(config.UNROLL_STEPS + 5):
+    # Simulate enough steps to fill the unroll buffer (need >= 2*UNROLL_STEPS for move to produce entries)
+    for _ in range(config.UNROLL_STEPS * 2 + 5):
         action = agent.select_action(obs, mask, reward=1.0, terminated=False, player_id="test_player")
     
     assert "test_player" in agent.replay_buffers
-    assert agent.replay_buffers["test_player"].get_len() > config.UNROLL_STEPS
+    assert agent.replay_buffers["test_player"].get_len() > config.UNROLL_STEPS * 2
     
     # Move to global buffer
     agent.terminate(final_value=1.0, player_id="test_player")

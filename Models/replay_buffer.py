@@ -69,9 +69,12 @@ class ReplayBuffer:
 
     def move_buffer_to_global(self, final_value):
         """Move buffer to global storage"""
+        max_obs = len(self.observations)
+        if max_obs == 0:
+            return
+
         replay_set = []
         final_val = float(final_value)
-        max_obs = len(self.observations)
 
         returns = np.zeros(max_obs)
         returns[-1] = final_val
@@ -108,9 +111,12 @@ class ReplayBuffer:
 
     async def move_buffer_to_global_async(self, final_value):
         """Async version of move_buffer_to_global for better performance"""
+        max_obs = len(self.observations)
+        if max_obs == 0:
+            return
+
         replay_set = []
         final_val = float(final_value)
-        max_obs = len(self.observations)
 
         returns = np.zeros(max_obs)
         returns[-1] = final_val
