@@ -3,11 +3,12 @@ import os
 import asyncio
 import pytest
 import numpy as np
+from unittest.mock import patch, AsyncMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import config
-from Models.global_buffer import GlobalBuffer, create_global_buffer
+from Models.global_buffer import GlobalBuffer, WorkerGlobalBuffer, WorkerCombatBuffer, create_global_buffer
 
 
 @pytest.fixture
@@ -291,3 +292,45 @@ def test_read_gameplay_batch_from_disk(buffer_with_temp_path, tmp_path):
     pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
     assert len(pkl_files) == 0
     assert buf.available_gameplay_batch() is False
+
+
+def test_worker_combat_buffer_accumulation():
+    buf = WorkerCombatBuffer(batch_size=4)
+    assert buf.size == 0
+
+    assert buf.add("a") is False
+    assert buf.add("b") is False
+    assert buf.add("c") is False
+    assert buf.size == 3
+
+    assert buf.add("d") is True
+    assert buf.size == 4
+
+    batch = buf.pop()
+    assert batch == ["a", "b", "c", "d"]
+    assert buf.size == 0
+
+    for i in range(5):
+        buf.add(f"s{i}")
+    assert buf.size == 5
+
+    batch = buf.pop()
+    assert batch == ["s0", "s1", "s2", "s3"]
+    assert buf.size == 1
+
+    buf.clear()
+    assert buf.size == 0
+
+
+def test_worker_global_buffer_store_combat_batching():
+    buf = WorkerGlobalBuffer(action_to_policy=None)
+    buf.batch_size = 4
+    buf.combat_buffer = WorkerCombatBuffer(batch_size=4)
+
+    with patch.object(buf, '_post_to_server', new_callable=AsyncMock) as mock_post:
+        for i in range(3):
+            buf.store_combat(f"sample{i}")
+        mock_post.assert_not_called()
+
+        buf.store_combat("sample3")
+        mock_post.assert_awaited_once_with(["sample0", "sample1", "sample2", "sample3"], "combat")
