@@ -17,7 +17,6 @@ async def test_non_blocking_training_loop():
          patch('training_orchestrator.GlobalBuffer') as MockBuffer, \
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
          patch('training_orchestrator.create_custom_agent_setup') as MockSetup, \
-         patch('training_orchestrator._ThreadEnvManager') as MockEnvMgr, \
          patch('training_orchestrator._MultiProcessEnvManager') as MockMPEnvMgr, \
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
@@ -34,9 +33,8 @@ async def test_non_blocking_training_loop():
         mock_buffer.available_combat_batch.return_value = False
         
         mock_trainer = MockTrainer.return_value
-        
-        mock_env_mgr = MockEnvMgr.return_value
-        MockMPEnvMgr.return_value = mock_env_mgr
+
+        mock_env_mgr = MockMPEnvMgr.return_value
         
         first_call = True
         async def mock_run_fixed_games(agent_mgr, concurrent_games):
@@ -78,7 +76,6 @@ async def test_run_non_blocking():
          patch('training_orchestrator.GlobalBuffer') as MockBuffer, \
          patch('training_orchestrator.MuZeroAgent') as MockAgent, \
          patch('training_orchestrator.create_custom_agent_setup') as MockSetup, \
-         patch('training_orchestrator._ThreadEnvManager') as MockEnvMgr, \
          patch('training_orchestrator._MultiProcessEnvManager') as MockMPEnvMgr, \
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
@@ -94,8 +91,7 @@ async def test_run_non_blocking():
         mock_buffer.available_combat_batch.return_value = False
         
         mock_trainer = MockTrainer.return_value
-        mock_env_mgr = MockEnvMgr.return_value
-        MockMPEnvMgr.return_value = mock_env_mgr
+        mock_env_mgr = MockMPEnvMgr.return_value
         
         first_call = True
         async def mock_run_fixed_games(agent_mgr, concurrent_games):

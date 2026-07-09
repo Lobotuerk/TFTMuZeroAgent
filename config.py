@@ -1,13 +1,5 @@
-import sys
 import numpy as np
 # AI RELATED VALUES START HERE
-
-# GIL / Free-Threading detection (Python 3.13+)
-IS_GIL_DISABLED: bool = not getattr(sys, '_is_gil_enabled', lambda: True)()
-"""True when running on a free-threaded (no-GIL) Python build."""
-
-FORCE_THREADING_ENV_MANAGER: bool = True
-"""Set to True to prefer thread-based env managers even when GIL is active."""
 
 #### MODEL SET UP ####
 HIDDEN_STATE_SIZE = 2048
