@@ -289,12 +289,30 @@ class GlobalBuffer:
 
 
 class WorkerCombatBuffer:
-    def __init__(self):
-        self._size = 0
-        self._buffer = []
+    def __init__(self, batch_size: int = config.BATCH_SIZE):
+        self._buffer: List[Any] = []
+        self.batch_size = batch_size
+        self._lock = threading.Lock()
+
+    def add(self, sample: Any) -> bool:
+        with self._lock:
+            self._buffer.append(sample)
+            return len(self._buffer) >= self.batch_size
+
+    def pop(self) -> List[Any]:
+        with self._lock:
+            batch = self._buffer[:self.batch_size]
+            self._buffer = self._buffer[self.batch_size:]
+            return batch
 
     def clear(self):
-        pass
+        with self._lock:
+            self._buffer.clear()
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._buffer)
 
 
 class WorkerGlobalBuffer:
@@ -302,7 +320,7 @@ class WorkerGlobalBuffer:
         self.action_to_policy = action_to_policy
         self.batch_size = config.BATCH_SIZE
         self.gameplay_buffer = []
-        self.combat_buffer = WorkerCombatBuffer()
+        self.combat_buffer = WorkerCombatBuffer(batch_size=self.batch_size)
 
     def _convert_sample_if_needed(self, sample):
         if self.action_to_policy is None:
@@ -339,20 +357,25 @@ class WorkerGlobalBuffer:
         self.store_episode(sample)
 
     def store_combat(self, sample):
+        if self.combat_buffer.add(sample):
+            self._flush_combat()
+
+    def _flush_combat(self):
+        batch = self.combat_buffer.pop()
         try:
             loop = asyncio.get_running_loop()
             if loop.is_running():
-                loop.create_task(self._post_to_server([sample], "combat"))
+                loop.create_task(self._post_to_server(batch, "combat"))
                 return
         except RuntimeError:
             pass
-        asyncio.run(self._post_to_server([sample], "combat"))
+        asyncio.run(self._post_to_server(batch, "combat"))
 
     def clear_gameplay_buffer(self):
         pass
 
     def clear_combat_buffer(self):
-        pass
+        self.combat_buffer.clear()
 
     async def _post_to_server(self, data, experience_type: str):
         import aiohttp
