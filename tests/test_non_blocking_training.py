@@ -33,7 +33,7 @@ async def test_non_blocking_training_loop():
         mock_buffer.available_combat_batch.return_value = False
         
         mock_trainer = MockTrainer.return_value
-        
+
         mock_env_mgr = MockMPEnvMgr.return_value
         
         first_call = True

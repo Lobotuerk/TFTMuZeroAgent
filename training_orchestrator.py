@@ -410,7 +410,6 @@ class _GameWorker:
 
 # ---------------------------------------------------------------------------
 # Multi-process environment manager (bypasses GIL)
-# ---------------------------------------------------------------------------
 
 class _MultiProcessEnvManager:
     """

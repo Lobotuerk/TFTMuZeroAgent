@@ -52,8 +52,7 @@ async def test_benchmark_runs_without_error():
          patch('training_orchestrator.SummaryWriter') as MockWriter, \
          patch('training_orchestrator.torch.save') as mock_torch_save:
 
-        mock_env_mgr = MockEnvMgr.return_value
-        MockMPEnvMgr.return_value = mock_env_mgr
+        mock_env_mgr = MockMPEnvMgr.return_value
 
         async def mock_run_fixed_games(agent_mgr, num_games):
             return []

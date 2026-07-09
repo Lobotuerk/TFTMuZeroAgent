@@ -78,6 +78,8 @@ The primary entry point is `main.py`, which supports several modes of operation:
    ./run_tft.sh python main.py --mode debug --debug_single_episode
    ```
 
+Running `python main.py` or `python benchmark_training.py` directly will run the default training pipeline.
+
 ### Benchmarking
 A standalone benchmark script is provided to profile the training pipeline's performance:
 
@@ -105,6 +107,10 @@ Hyperparameters, training settings, and environment constants are located in `co
 - `BATCH_SIZE`: Training batch size.
 - `NUM_SIMULATIONS`: Number of MCTS simulations per move.
 - `CHECKPOINT_STEPS`: Interval for saving models and running evaluations.
+
+## Architecture
+
+CPU parallelism during environment simulation uses separate OS processes via `multiprocessing` (`_MultiProcessEnvManager`). Each environment runs in a dedicated subprocess, bypassing the Python GIL for CPU-bound game simulation while inference runs asynchronously on the main process.
 
 ## Community and Contributions
 This project aims to push the boundaries of AI in complex games like TFT. Contributions, questions, and discussions are welcome!
