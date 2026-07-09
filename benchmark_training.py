@@ -49,8 +49,7 @@ async def run_benchmark(args):
 
     print(f"\nStarting Collection Benchmark: {num_games} games, "
           f"{cfg.concurrent_games} concurrent games")
-    print(f"Environment manager: "
-          f"{'ThreadEnvManager' if config.FORCE_THREADING_ENV_MANAGER else 'MultiProcessEnvManager'}")
+    print(f"Environment manager: MultiProcessEnvManager")
     print("-" * 60)
 
     try:
@@ -86,14 +85,7 @@ async def run_benchmark(args):
     return True
 
 
-def _check_gil():
-    if not config.IS_GIL_DISABLED and config.FORCE_THREADING_ENV_MANAGER:
-        print("ERROR: GIL is enabled but FORCE_THREADING_ENV_MANAGER is True.", file=sys.stderr)
-        print("Run via ./run_tft.sh to use the free-threaded Python build in the TFT conda environment.", file=sys.stderr)
-        sys.exit(1)
-
 def main():
-    _check_gil()
     parser = argparse.ArgumentParser(
         description="Benchmark the TFT MuZero collection process (environment and inference)",
         formatter_class=argparse.RawDescriptionHelpFormatter,

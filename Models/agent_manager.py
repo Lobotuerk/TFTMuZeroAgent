@@ -91,8 +91,7 @@ class BatchInferenceServer:
         self._processing_tasks: Dict[Any, asyncio.Task] = {}
 
         self.agent_instances: Dict[Any, Any] = {}
-        max_workers = 8 if config.IS_GIL_DISABLED else 1
-        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.executor = ThreadPoolExecutor(max_workers=1)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._setup_gpu()

@@ -78,7 +78,7 @@ The primary entry point is `main.py`, which supports several modes of operation:
   ./run_tft.sh python main.py --mode debug --debug_single_episode
   ```
 
-Running `python main.py` or `python benchmark_training.py` directly will trigger a fail-fast error if `FORCE_THREADING_ENV_MANAGER` is `True` but the GIL is still enabled.
+Running `python main.py` or `python benchmark_training.py` directly will run the default training pipeline.
 
 ### Benchmarking
 A standalone benchmark script is provided to profile the training pipeline's performance:
@@ -108,35 +108,9 @@ Hyperparameters, training settings, and environment constants are located in `co
 - `NUM_SIMULATIONS`: Number of MCTS simulations per move.
 - `CHECKPOINT_STEPS`: Interval for saving models and running evaluations.
 
-## Migration to Python 3.13+ Free-Threading
+## Architecture
 
-A design for migrating from `multiprocessing`-based parallelism to Python 3.13+ free-threading (PEP 703) is available.
-
-### Overview
-
-Currently, CPU parallelism during environment simulation uses separate OS processes via `multiprocessing` (`_MultiProcessEnvManager`). This introduces IPC overhead from pickling NumPy arrays across pipes, complexity in process management, and higher memory footprint.
-
-With Python 3.13+ Free-Threading (GIL disabled), we can replace heavy multiprocessing workers with lightweight threads sharing the same memory address space, eliminating serialization overhead.
-
-### Architecture
-
-A thread-based environment manager `_ThreadEnvManager` mirrors the public API of `_MultiProcessEnvManager`. It uses `asyncio.run_coroutine_threadsafe` to bridge synchronous CPU-bound simulation threads with the async inference server on the main thread:
-
-1. **Background Thread (CPU Simulation):** Runs synchronous game loops, scheduling async action selection on the main event loop via `asyncio.run_coroutine_threadsafe`.
-2. **Main Thread (Async Event Loop):** Awaits and batches GPU inference, then resolves the future, unblocking the simulator thread.
-
-### Thread Safety
-
-- PyTorch model execution and `EnhancedAgentManager` async states run on the main event loop thread only.
-- `GameplayBuffer` and `CombatBuffer` already use `threading.Lock()` for thread-safe access.
-- Each background thread has its own isolated environment instance with no shared state.
-
-### Migration Tasks
-
-1. **GIL Check & Config Toggle:** Programmatic detection of free-threading status (`sys._is_gil_enabled()`).
-2. **Implement `_ThreadEnvManager` & Worker Loop:** Thread-based manager with pause/resume/drain support.
-3. **Integrate into `TrainingOrchestrator`:** Auto-select `_ThreadEnvManager` when free-threading is active.
-4. **Comprehensive Testing:** Unit and integration tests for the thread-based manager.
+CPU parallelism during environment simulation uses separate OS processes via `multiprocessing` (`_MultiProcessEnvManager`). Each environment runs in a dedicated subprocess, bypassing the Python GIL for CPU-bound game simulation while inference runs asynchronously on the main process.
 
 ## Community and Contributions
 This project aims to push the boundaries of AI in complex games like TFT. Contributions, questions, and discussions are welcome!
