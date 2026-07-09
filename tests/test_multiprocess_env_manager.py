@@ -9,6 +9,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import config
+
 from training_orchestrator import (
     _MultiProcessEnvManager,
     GameResult,

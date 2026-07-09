@@ -51,55 +51,21 @@ The project is structured around a central **Training Orchestrator** that drives
    cd ..
    ```
 
-### Running the System (Free-Threading)
+### Running the System (Distributed Workflow)
+
 Always run the project via the `run_tft.sh` wrapper script. It activates the `TFT` conda environment (with the free-threaded Python build) and sets up `PYTHONPATH` automatically.
 
-```bash
-./run_tft.sh python main.py --mode training --run_name "my_experiment"
-```
+The primary entry point is `main.py`, which supports two modes of operation:
 
-The primary entry point is `main.py`, which supports several modes of operation:
-
-- **Training**: Run the full RL lifecycle.
+- **Run the HTTP Training Server** (GPU-bound process that trains the model and serves an HTTP API):
   ```bash
-  ./run_tft.sh python main.py --mode training --run_name "my_experiment"
+  ./run_server_distributed.sh
   ```
-- **Evaluation**: Pit the agent against baselines.
+
+- **Run the cluster workers** (CPU-bound processes for game collection and evaluation):
   ```bash
-  ./run_tft.sh python main.py --mode eval --eval_games 10
+  ./run_workers_distributed.sh
   ```
-- **Demo**: Run parallel games without training to observe agent behavior.
-  ```bash
-  ./run_tft.sh python main.py --mode demo --demo_episodes 5
-  ```
-- **Debug**: Test neural network architecture or run a single debug episode.
-  ```bash
-  ./run_tft.sh python main.py --mode debug --debug_network
-   ./run_tft.sh python main.py --mode debug --debug_single_episode
-   ```
-
-Running `python main.py` or `python benchmark_training.py` directly will run the default training pipeline.
-
-### Benchmarking
-A standalone benchmark script is provided to profile the training pipeline's performance:
-
-```bash
-./run_tft.sh python benchmark_training.py
-```
-
-This runs the `TrainingOrchestrator` for 100 training steps with 18 concurrent games and 10 evaluation games, then outputs a detailed performance breakdown:
-
-- **Environment stepping time**: time spent executing game logic in the simulation
-- **Inference wait time**: time spent waiting for batched GPU inference
-- **Training time**: time spent updating model weights
-- **Idle time**: time waiting for sufficient experience to be collected
-
-Advanced options:
-```bash
-./run_tft.sh python benchmark_training.py --steps 200 --concurrent 8 --eval-games 5
-```
-
-Run `python benchmark_training.py --help` for all options.
 
 ### Configuration
 Hyperparameters, training settings, and environment constants are located in `config.py`. Key settings include:
