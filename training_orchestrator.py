@@ -46,32 +46,10 @@ from utils.profiling import EnvironmentBenchmark, MetricsCollector
 import multiprocessing as mp
 import threading
 
-# Default multiprocessing context (fork on Linux 3.13-).
-# Subprocesses only run CPU-bound env logic and do not touch GPU tensors,
-# however, fork can cause deadlocks if PyTorch threads are active. Use spawn.
 MP_CONTEXT = mp.get_context('spawn')
 
 
-# ---------------------------------------------------------------------------
-# Subprocess target – runs a game in its own process (bypasses GIL)
-# ---------------------------------------------------------------------------
-
 def _env_worker_main(env_id: int, conn):
-    """
-    Target function for an environment subprocess.
-
-    Runs a continuous game loop in this subprocess, sending inference
-    requests to the main process via *conn* and receiving actions back.
-    Uses :func:`conn.poll` so the loop can be interrupted cleanly.
-
-    Protocol (tuples over ``multiprocessing.Connection``):
-
-    * env → main: ``('infer', observations, rewards, terminated)``
-    * main → env: ``('actions', actions_dict)``
-    * env → main: ``('done', scores_dict)``
-    * main → env: ``('restart', None)`` or ``('stop', None)``
-    """
-    # Ensure the project root is on sys.path in the subprocess
     _root = os.path.dirname(os.path.abspath(__file__))
     if _root not in sys.path:
         sys.path.insert(0, _root)
@@ -105,7 +83,6 @@ def _env_worker_main(env_id: int, conn):
 
             actions = msg[1]
 
-            # --- process actions (mirrors _GameWorker.run_game) ----------
             processed = {}
             for pid, action in actions.items():
                 if terminated.get(pid, True):
@@ -124,7 +101,6 @@ def _env_worker_main(env_id: int, conn):
 
             observations, rewards, terminated, _, infos = env.step(processed)
 
-            # Track round progression
             try:
                 game_round_obj = getattr(env, 'game_round', None)
                 if game_round_obj is not None:
@@ -148,7 +124,6 @@ def _env_worker_main(env_id: int, conn):
             if step_count > 1000:
                 break
 
-        # Record the last round's duration at the end of the game
         if last_round is not None:
             round_durations.append(time.time() - round_start_time)
 
@@ -170,15 +145,7 @@ def _env_worker_main(env_id: int, conn):
                     break
                 elif msg2[0] == 'stop':
                     return
-        # 'restart' → fall through to outer loop
 
-
-
-
-
-# ---------------------------------------------------------------------------
-# Data objects
-# ---------------------------------------------------------------------------
 
 @dataclass
 class TrainingConfig:
@@ -272,10 +239,6 @@ class ProfilingTracker:
         }
 
 
-# ---------------------------------------------------------------------------
-# Game worker – runs one async game
-# ---------------------------------------------------------------------------
-
 class _GameWorker:
     """
     Async game worker that replaces the legacy Ray DataWorker.
@@ -345,7 +308,6 @@ class _GameWorker:
                 if self.metrics_collector:
                     self.metrics_collector.record("worker_env_step", time.perf_counter() - t0_metrics)
 
-                # Track round progression
                 try:
                     game_round_obj = getattr(env, 'game_round', None)
                     if game_round_obj is not None:
@@ -370,7 +332,6 @@ class _GameWorker:
                 if step_count > 1000:
                     break
 
-            # Record the last round's duration at the end of the game
             if last_round is not None:
                 round_duration = time.time() - round_start_time
                 if self.profiling:
@@ -383,14 +344,12 @@ class _GameWorker:
                     placements[pid] = i + 1
 
             agent_mapping = agent_manager.get_player_agent_mapping() if return_placements else {}
-            
-            # Flush all agent buffers with final scores
+
             await agent_manager.flush_all_buffers(final_values=scores, game_id=game_id)
-            
+
             duration = time.time() - start_time
             self.games_completed += 1
 
-            # Record total game duration
             if self.profiling:
                 self.profiling.record_game(duration)
 
@@ -407,24 +366,10 @@ class _GameWorker:
             raise
 
 
-
-# ---------------------------------------------------------------------------
-# Multi-process environment manager (bypasses GIL)
-
 class _MultiProcessEnvManager:
     """
-    Manages N concurrent game workers running in **separate OS processes**
+    Manages N concurrent game workers running in separate OS processes
     to bypass the Python GIL.
-
-    Each environment runs its game loop (``env.step`` / ``env.reset``) in a
-    dedicated subprocess.  Inference requests are forwarded to the main
-    process where the GPU-resident model lives; batched GPU inference and
-    experience storage happen in the main (async) process while the
-    subprocesses are free to execute the CPU-bound game logic in parallel.
-
-    API intentionally mirrors :class:`_ParallelEnvManager` so that
-    :class:`TrainingOrchestrator` can swap implementations with minimal
-    changes.
     """
 
     def __init__(self, num_workers: int, worker_fn=None,
@@ -440,8 +385,6 @@ class _MultiProcessEnvManager:
 
         self._game_barrier_counter = mp.Value('i', 0)
         self._game_barrier_event = mp.Event()
-
-    # ── lifecycle ────────────────────────────────────────────────
 
     def stop(self):
         """Signal all workers to stop and release subprocess resources."""
@@ -462,8 +405,6 @@ class _MultiProcessEnvManager:
         if self._tasks:
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
 
-    # ── start workers ────────────────────────────────────────────
-
     def _start_workers(self):
         """Launch all subprocesses and create async handlers for each."""
         for i in range(self.num_workers):
@@ -474,10 +415,8 @@ class _MultiProcessEnvManager:
                 daemon=True,
             )
             proc.start()
-            child_conn.close()  # parent does not need the child's end
+            child_conn.close()
             self._processes[i] = (proc, parent_conn)
-
-    # ── continuous execution (collection) ────────────────────────
 
     async def run_continuously(self,
                                agent_manager: EnhancedAgentManager,
@@ -501,17 +440,10 @@ class _MultiProcessEnvManager:
         finally:
             self._cleanup()
 
-    # ── fixed-run execution (evaluation) ─────────────────────────
-
     async def run_fixed_games(self,
                               agent_manager: EnhancedAgentManager,
                               num_games: int) -> List[GameResult]:
-        """Run exactly *num_games* evaluation games and return their results.
-
-        Workers are kept alive across calls (started once, paused between
-        batches) instead of being killed and re-created every batch.
-        Call :meth:`stop` to release subprocess resources.
-        """
+        """Run exactly num_games evaluation games and return their results."""
         if not self._started:
             self._start_workers()
             self._started = True
@@ -551,14 +483,12 @@ class _MultiProcessEnvManager:
 
         return results
 
-    # ── per-env async handlers ───────────────────────────────────
-
     async def _handle_env(self,
                           env_id: int,
                           conn: mp.connection.Connection,
                           agent_manager: EnhancedAgentManager,
                           on_game_done: Optional[Callable] = None) -> None:
-        """Continuously handle messages from *env_id* (collection mode)."""
+        """Continuously handle messages from env_id (collection mode)."""
         game_start_time = time.time()
 
         while self.should_continue:
@@ -647,7 +577,7 @@ class _MultiProcessEnvManager:
                                 agent_manager: EnhancedAgentManager,
                                 num_games: int,
                                 on_game_done: Callable) -> None:
-        """Handle exactly *num_games* games from *env_id* (eval mode)."""
+        """Handle exactly num_games games from env_id (eval mode)."""
         games_done = 0
         game_start_time = time.time()
 
@@ -710,14 +640,8 @@ class _MultiProcessEnvManager:
                     conn.send(('pause', None))
                     break
 
-    # ── cleanup ──────────────────────────────────────────────────
-
     def _cleanup(self):
-        """Terminate all subprocesses and close connections (non-blocking).
-
-        Sends a ``('stop', None)`` signal to each worker (waking paused ones)
-        before closing the pipe and killing the process.
-        """
+        """Terminate all subprocesses and close connections (non-blocking)."""
         for env_id, (proc, conn) in self._processes.items():
             try:
                 conn.send(('stop', None))
@@ -736,27 +660,11 @@ class _MultiProcessEnvManager:
         self._started = False
 
 
-# ---------------------------------------------------------------------------
-# TrainingOrchestrator
-# ---------------------------------------------------------------------------
-
 class TrainingOrchestrator:
     """
     Central orchestrator that drives the RL lifecycle:
 
         Collect -> Train -> Sync -> Evaluate
-
-    Usage::
-
-        orch = TrainingOrchestrator(config)
-        orch.setup()
-        await orch.run(max_steps=100_000)
-
-    For single-episode debugging::
-
-        result = await orch.run_single_episode()
-
-    For a parallel demo (no training) see :meth:`run_parallel_demo`.
     """
 
     def __init__(self, training_config: Optional[TrainingConfig] = None):
@@ -764,53 +672,40 @@ class TrainingOrchestrator:
 
         self.profiling = ProfilingTracker()
 
-        # Components (created in setup)
         self.trainer: Optional[Trainer] = None
         self.global_buffer: Optional[GlobalBuffer] = None
         self.agent_manager: Optional[EnhancedAgentManager] = None
         self.env_manager: Any = None
         self.summary_writer: Optional[SummaryWriter] = None
 
-        # Training state
         self.training_step: int = self.cfg.starting_train_step
         self.games_completed: int = 0
         self.training_active: bool = False
 
-        # Model / weights
         self.best_model: Optional[MuZeroAgent] = None
         self.current_model: Optional[MuZeroAgent] = None
         self._training_agents: List[MuZeroAgent] = []
 
-        # Profiling
         self.metrics_collector = MetricsCollector(window_size=2000)
         self.benchmark: Optional[EnvironmentBenchmark] = None
         self._last_benchmark_step: int = 0
         self._last_metric_log_step: int = 0
 
-        # Dedicated single-thread executor for training steps, isolated from
-        # the inference server's executor to avoid state corruption.
         from concurrent.futures import ThreadPoolExecutor
         self._train_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
 
-    # ------------------------------------------------------------------
-    # Setup
-    # ------------------------------------------------------------------
-
     def setup(self, is_collector: bool = False, is_evaluator: bool = False):
         """Create all components: buffer, agents, batch processor, trainer."""
+        if not is_collector and not is_evaluator:
+            raise ValueError("setup() requires either is_collector or is_evaluator to be True.")
+
         self.trainer = Trainer()
         self.summary_writer = self._build_logger()
 
-        # Use lightweight WorkerGlobalBuffer if running as a worker process
-        if is_collector or is_evaluator:
-            from Models.global_buffer import WorkerGlobalBuffer
-            self.global_buffer = WorkerGlobalBuffer(action_to_policy=action_3d_to_policy)
-        else:
-            self.global_buffer = GlobalBuffer(config.BATCH_SIZE, action_to_policy=action_3d_to_policy)
+        from Models.global_buffer import WorkerGlobalBuffer
+        self.global_buffer = WorkerGlobalBuffer(action_to_policy=action_3d_to_policy)
 
-        # --- agent config -------------------------------------------------
-        if not is_collector:
-            # best_model: the best performing model — only updated when evaluation beats it
+        if is_evaluator:
             self.best_model = MuZeroAgent(
                 action_size=3,
                 action_limits=config.ACTION_DIM,
@@ -820,7 +715,6 @@ class TrainingOrchestrator:
                 config_obj=self.cfg,
             )
 
-            # current_model: the model actively being trained
             self.current_model = MuZeroAgent(
                 action_size=3,
                 action_limits=config.ACTION_DIM,
@@ -838,38 +732,23 @@ class TrainingOrchestrator:
                     self.best_model.model.load_state_dict(state)
                     self.current_model.model.load_state_dict(state)
 
-        # Evaluators do NOT need collection agents, agent manager, env manager, or benchmarking!
-        if is_evaluator:
             print("Evaluator worker setup complete (skipping collection agent and environment manager).")
             return
 
-        # MuZero agents for *collection* – start with best model weights
-        if is_collector:
-            collection_agent = MuZeroAgent(
-                action_size=3,
-                action_limits=config.ACTION_DIM,
-                obs_size=config.OBSERVATION_SIZE,
-                simulations=config.NUM_SIMULATIONS,
-                global_buffer=self.global_buffer,
-                config_obj=self.cfg,
-            )
-        else:
-            collection_agent = MuZeroAgent(
-                action_size=3,
-                action_limits=config.ACTION_DIM,
-                obs_size=config.OBSERVATION_SIZE,
-                simulations=config.NUM_SIMULATIONS,
-                global_buffer=self.global_buffer,
-                weights=copy.deepcopy(self.best_model.get_weights()),
-                config_obj=self.cfg,
-            )
+        collection_agent = MuZeroAgent(
+            action_size=3,
+            action_limits=config.ACTION_DIM,
+            obs_size=config.OBSERVATION_SIZE,
+            simulations=config.NUM_SIMULATIONS,
+            global_buffer=self.global_buffer,
+            config_obj=self.cfg,
+        )
         self._training_agents = [collection_agent]
 
         agent_configs: List[Tuple[Any, int]] = [
             (collection_agent, 8)
         ]
 
-        # --- batch processor + agent manager -------------------------------
         self.agent_manager, _ = create_custom_agent_setup(
             agent_configs,
             max_batch_size=self.cfg.max_batch_size,
@@ -878,14 +757,12 @@ class TrainingOrchestrator:
             metrics_collector=self.metrics_collector,
         )
 
-        # --- parallel env manager -----------------------------------------
         self.env_manager = self._create_env_manager(
             self.cfg.concurrent_games,
             profiling=self.profiling,
             metrics_collector=self.metrics_collector
         )
 
-        # --- benchmark ----------------------------------------------------
         self.benchmark = EnvironmentBenchmark(parallel_env)
         self._run_benchmark()
 
@@ -929,78 +806,19 @@ class TrainingOrchestrator:
         log_dir = f"logs/{self.cfg.run_name}{ts}"
         return SummaryWriter(log_dir)
 
-    # ------------------------------------------------------------------
-    # 1️⃣  COLLECT phase
-    # ------------------------------------------------------------------
-
-    async def collect(self) -> None:
-        """
-        Start the sequential Collect -> Train loop.
-        Runs until :meth:`stop_training` is called.
-        """
-        self.training_active = True
-        print("COLLECT phase started – sequential Collect -> Train loop active.")
-
-        while self.training_active:
-            results = []
-            remaining = self.cfg.collect_games_per_batch
-            while remaining > 0 and self.training_active:
-                count = min(remaining, self.cfg.concurrent_games)
-                batch = await self.env_manager.run_fixed_games(
-                    self.agent_manager, count
-                )
-                results.extend(batch)
-                remaining -= count
-            self.games_completed += len(results)
-
-            if not self.training_active:
-                break
-
-            trained = False
-            while self.training_active and self.global_buffer.available_gameplay_batch():
-                t0 = time.time()
-                await self._train_step()
-                self.profiling.record_train_step(time.time() - t0)
-                await asyncio.sleep(0.01)
-                trained = True
-
-            if not trained:
-                await asyncio.sleep(1.0)
-
-    async def _training_loop(self) -> None:
-        """
-        Dedicated, non-blocking background task that handles continuous 
-        training from the GlobalBuffer.
-        """
-        print("TRAIN phase started – background training loop active.")
-        while self.training_active:
-            if self.global_buffer and self.global_buffer.available_gameplay_batch():
-                t0 = time.time()
-                await self._train_step()
-                self.profiling.record_train_step(time.time() - t0)
-                await asyncio.sleep(0.01)
-            else:
-                t0 = time.time()
-                await asyncio.sleep(0.5)
-                self.profiling.record_idle(time.time() - t0)
-
-    # ------------------------------------------------------------------
-    # 2️⃣  TRAIN phase
-    # ------------------------------------------------------------------
-
     async def _train_step(self) -> None:
-        """Perform a single training step (called automatically during collect)."""
+        """Perform a single training step."""
         try:
             if not self.global_buffer or not self.global_buffer.available_gameplay_batch():
                 return
-    
+
             batch = self.global_buffer.read_gameplay_batch()
             combat_batch = []
             if hasattr(self.global_buffer, "available_combat_batch") and self.global_buffer.available_combat_batch():
                 cb = self.global_buffer.read_combat_batch()
                 if cb is not None:
                     combat_batch = cb
-    
+
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 self._train_executor,
@@ -1013,16 +831,13 @@ class TrainingOrchestrator:
             )
             self.training_step += 1
 
-            # Periodic saving of current model
             if self.training_step % self.cfg.sync_steps == 0:
                 self.save_current_checkpoint()
-    
-            # Periodic benchmarking (every 200 steps)
+
             if self.training_step - self._last_benchmark_step >= 200:
                 self._last_benchmark_step = self.training_step
                 self._run_benchmark(num_steps=100)
 
-            # Periodic metrics logging (every 100 steps)
             if self.training_step - self._last_metric_log_step >= 100:
                 self._last_metric_log_step = self.training_step
                 self._log_metrics()
@@ -1032,25 +847,8 @@ class TrainingOrchestrator:
             print(f"Error in _train_step: {e}")
             raise
 
-    def train_step(self) -> bool:
-        """
-        Explicit TRAIN step.  Useful when driving the lifecycle manually.
-        Returns True if training actually occurred.
-        """
-        if not self.global_buffer or not self.global_buffer.available_gameplay_batch():
-            return False
-        asyncio.create_task(self._train_step())
-        return True
-
-    # ------------------------------------------------------------------
-    # 3️⃣  SYNC phase
-    # ------------------------------------------------------------------
-
     def sync_weights(self) -> None:
-        """
-        Distribute the latest trained weights from the best model to the
-        active collection agents so they generate data using the best policy.
-        """
+        """Distribute the latest trained weights to the active collection agents."""
         if not self.best_model:
             return
         new_weights = self.best_model.get_weights()
@@ -1058,23 +856,8 @@ class TrainingOrchestrator:
             agent.update_weights(new_weights)
         print(f"SYNC: distributed BEST weights to {len(self._training_agents)} agent(s)")
 
-    # ------------------------------------------------------------------
-    # 4️⃣  EVALUATE phase
-    # ------------------------------------------------------------------
-
     async def evaluate(self, step: Optional[int] = None) -> Dict[str, float]:
-        """
-        Run evaluation games between the current (new) model and the
-        best model so far.  Keep the better-performing weights.
-
-        Parameters
-        ----------
-        step:
-            The training step from the server to use for logging.
-            Falls back to ``self.training_step`` when not provided.
-
-        Returns a dict with ``current_placement`` and ``best_placement``.
-        """
+        """Run evaluation games between current and best model."""
         current_step = step if step is not None else self.training_step
         print(f"\nEVALUATE at step {current_step}")
 
@@ -1141,7 +924,7 @@ class TrainingOrchestrator:
         print(f"  Current model placement: {current_mean:.2f}  |  Best model: {best_mean:.2f}")
 
         if current_mean < best_mean:
-            print("  ✓ Model improved – updating best model & clearing buffers.")
+            print("  Model improved – updating best model & clearing buffers.")
             self.best_model.model.load_state_dict(self.current_model.get_weights())
             self.sync_weights()
             self.save_best_checkpoint()
@@ -1149,15 +932,10 @@ class TrainingOrchestrator:
                 if hasattr(self.global_buffer, "clear_gameplay_buffer"):
                     self.global_buffer.clear_gameplay_buffer()
 
-        # Clean up temporary evaluation agents and environment manager to prevent asyncio task leaks
         eval_mgr.shutdown()
         eval_env_mgr.stop()
 
         return {"current_placement": current_mean, "best_placement": best_mean}
-
-    # ------------------------------------------------------------------
-    # Persistence
-    # ------------------------------------------------------------------
 
     def save_current_checkpoint(self) -> None:
         """Save the current (actively-trained) model to disk."""
@@ -1187,127 +965,10 @@ class TrainingOrchestrator:
         self.training_step = step
         return True
 
-    # ------------------------------------------------------------------
-    # High-level modes
-    # ------------------------------------------------------------------
-
-    async def run(self, max_steps: int = 1_000_000) -> None:
-        """
-        Full training loop orchestrating all lifecycle phases.
-
-        Sequential Collect -> Train loop:
-        1. Collect data by running concurrent games.
-        2. Train on the collected data.
-        3. Repeat.
-        """
-        if self.env_manager is None:
-            self.setup()
-
-        self.training_active = True
-        self.num_evaluations = self.training_step // self.cfg.evaluation_interval
-
-        last_logged_step = -1
-        try:
-            while self.training_active and self.training_step < max_steps:
-                results = []
-                remaining = self.cfg.collect_games_per_batch
-                while remaining > 0 and self.training_active and self.training_step < max_steps:
-                    count = min(remaining, self.cfg.concurrent_games)
-                    batch = await self.env_manager.run_fixed_games(
-                        self.agent_manager, count
-                    )
-                    results.extend(batch)
-                    remaining -= count
-                self.games_completed += len(results)
-                print(f'Finished {self.games_completed} games.')
-
-                if not self.training_active or self.training_step >= max_steps:
-                    break
-
-                trained = False
-                while (self.training_active and self.training_step < max_steps
-                       and self.global_buffer.available_gameplay_batch()):
-                    t0 = time.time()
-                    await self._train_step()
-                    self.profiling.record_train_step(time.time() - t0)
-                    await asyncio.sleep(0.01)
-                    trained = True
-
-                if trained and self.training_step - (self.num_evaluations * self.cfg.evaluation_interval) > self.cfg.evaluation_interval:
-                    self.env_manager.pause()
-                    await self.env_manager.wait_for_drain()
-                    await self.evaluate()
-                    self.env_manager.resume()
-                    self.num_evaluations += 1
-
-
-                if not trained:
-                    await asyncio.sleep(1.0)
-
-                if self.training_step % 100 == 0 and self.training_step > 0 and self.training_step != last_logged_step:
-                    print(f"  step={self.training_step}  games={self.games_completed}")
-                    last_logged_step = self.training_step
-        except asyncio.CancelledError:
-            pass
-        finally:
-            self.training_active = False
-            if self.summary_writer:
-                self.summary_writer.close()
-
-    def stop_training(self):
-        """Gracefully stop the training loop."""
-        self.training_active = False
-        if hasattr(self, '_train_executor'):
-            self._train_executor.shutdown(wait=False)
-        if self.env_manager:
-            self.env_manager.stop()
-
-    async def run_single_episode(self) -> GameResult:
-        """
-        Run a single episode for debugging.
-
-        Replaces the old ``train_single.py`` workflow.
-        """
-        if self.agent_manager is None:
-            self.setup()
-        worker = _GameWorker(0, profiling=self.profiling, metrics_collector=self.metrics_collector)
-        return await worker.run_game(self.agent_manager, return_placements=True)
-
-    async def run_parallel_demo(self, num_episodes: int = 5) -> List[GameResult]:
-        """
-        Run *num_episodes* games in parallel.
-
-        Replaces the old ``train_parallel.py`` demo workflow.
-        """
-        if self.agent_manager is None:
-            self.setup()
-        mgr = self._create_env_manager(
-            min(self.cfg.concurrent_games, num_episodes),
-            profiling=self.profiling,
-            metrics_collector=self.metrics_collector
-        )
-        return await mgr.run_fixed_games(self.agent_manager, num_episodes)
-
-    async def run_evaluation(self, num_games: int) -> List[GameResult]:
-        """Run a standalone evaluation session."""
-        if self.agent_manager is None:
-            self.setup()
-        mgr = self._create_env_manager(
-            self.cfg.evaluation_concurrent,
-            profiling=self.profiling,
-            metrics_collector=self.metrics_collector
-        )
-        return await mgr.run_fixed_games(self.agent_manager, num_games)
-
     @staticmethod
     def _create_env_manager(num_workers: int,
                             profiling: Optional[ProfilingTracker] = None,
                             metrics_collector: Optional[MetricsCollector] = None):
-        """Factory: returns _MultiProcessEnvManager for process-level isolation
-        required by TFTSet4Gym's global state.
-
-        When *profiling* is provided the returned manager will record per-step
-        timings for environment stepping and inference wait."""
         mgr = _MultiProcessEnvManager(num_workers, metrics_collector=metrics_collector)
         mgr._profiling = profiling
         return mgr
@@ -1349,7 +1010,6 @@ class TrainingOrchestrator:
         print(f"  {'Idle':<35} {s['idle_pct']:>11.1f}%")
         print("=" * 60)
 
-        # Also include agent-level inference stats from the batch processor if available
         if self.agent_manager is not None:
             agent_stats = self.agent_manager.get_performance_stats()
             if agent_stats:
@@ -1360,37 +1020,3 @@ class TrainingOrchestrator:
                           f"avg_batch={st.get('avg_batch_size', 0):.1f}")
 
         return s
-
-
-# ---------------------------------------------------------------------------
-# Convenience factory / helpers
-# ---------------------------------------------------------------------------
-
-def create_orchestrator(config: Optional[TrainingConfig] = None) -> TrainingOrchestrator:
-    return TrainingOrchestrator(config)
-
-
-async def quick_evaluation(num_games: int = 8, concurrent: int = 2) -> List[GameResult]:
-    """Quick evaluation with default agents."""
-    cfg = TrainingConfig(
-        concurrent_games=concurrent,
-        evaluation_games=num_games,
-        evaluation_concurrent=concurrent,
-        max_batch_size=8,
-    )
-    orch = TrainingOrchestrator(cfg)
-    orch.setup()
-    mgr = TrainingOrchestrator._create_env_manager(concurrent)
-    results = await mgr.run_fixed_games(orch.agent_manager, num_games)
-
-    agent_stats: Dict[str, List[int]] = defaultdict(list)
-    for r in results:
-        for pid, placement in r.placements.items():
-            at = r.agent_mapping.get(pid)
-            name = at.__name__ if at and hasattr(at, "__name__") else str(at)
-            agent_stats[name].append(placement)
-
-    print(f"\n=== Evaluation Summary ({len(results)} games) ===")
-    for name, placements in agent_stats.items():
-        print(f"  {name}: {np.mean(placements):.2f} avg placement ({len(placements)} games)")
-    return results

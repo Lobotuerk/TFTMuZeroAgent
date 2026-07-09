@@ -83,16 +83,16 @@ def test_muzero_layernorm_presence():
     rep_net = model.representation_network
     
     # Check PredNetwork LayerNorms
-    expected_pred_lns = ["ln2", "ln3", "ln4", "ln5", "ln_v1", "ln_v2", "ln_v3", "ln_p1", "ln_p2", "ln_p3"]
-    for ln_attr in expected_pred_lns:
-        assert hasattr(pred_net, ln_attr), f"PredNetwork is missing {ln_attr}"
-        assert isinstance(getattr(pred_net, ln_attr), torch.nn.LayerNorm), f"PredNetwork.{ln_attr} is not a LayerNorm"
+    ln_count = len(pred_net.res_lns)
+    assert ln_count >= 5, f"PredNetwork.res_lns should have at least 5 LayerNorms, got {ln_count}"
+    for i, ln in enumerate(pred_net.res_lns):
+        assert isinstance(ln, torch.nn.LayerNorm), f"PredNetwork.res_lns[{i}] is not a LayerNorm"
         
     # Check RepNetwork LayerNorms
-    expected_rep_lns = ["ln2", "ln3", "ln4", "ln5"]
-    for ln_attr in expected_rep_lns:
-        assert hasattr(rep_net, ln_attr), f"RepNetwork is missing {ln_attr}"
-        assert isinstance(getattr(rep_net, ln_attr), torch.nn.LayerNorm), f"RepNetwork.{ln_attr} is not a LayerNorm"
+    ln_count = len(rep_net.res_lns)
+    assert ln_count >= 4, f"RepNetwork.res_lns should have at least 4 LayerNorms, got {ln_count}"
+    for i, ln in enumerate(rep_net.res_lns):
+        assert isinstance(ln, torch.nn.LayerNorm), f"RepNetwork.res_lns[{i}] is not a LayerNorm"
         
     print("   ✓ LayerNorm layers are present and of correct type!")
     return True

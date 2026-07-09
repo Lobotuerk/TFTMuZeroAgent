@@ -7,7 +7,7 @@ from dataclasses import fields
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from training_orchestrator import TrainingConfig, _GameWorker, GameResult
+from training_orchestrator import TrainingConfig, _GameWorker, GameResult, TrainingOrchestrator
 import config
 
 
@@ -108,3 +108,10 @@ class TestGameResult:
         )
         assert result.placements == {}
         assert result.scores == {}
+
+
+class TestTrainingOrchestratorSetup:
+    def test_setup_raises_value_error_when_neither_collector_nor_evaluator(self):
+        orch = TrainingOrchestrator(TrainingConfig())
+        with pytest.raises(ValueError, match="setup\\(\\) requires either is_collector or is_evaluator to be True"):
+            orch.setup(is_collector=False, is_evaluator=False)
