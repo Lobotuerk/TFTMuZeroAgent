@@ -325,8 +325,8 @@ async def worker_mode(args):
                                     break
 
                     combat_buffer = orch.global_buffer.combat_buffer
-                    if combat_buffer._size > 0:
-                        combat_samples = combat_buffer._buffer[:combat_buffer._size]
+                    if combat_buffer.size > 0:
+                        combat_samples = combat_buffer.get_all()
                         data = pickle.dumps(combat_samples)
                         while True:
                             resp = await _request_with_retry(
@@ -338,7 +338,7 @@ async def worker_mode(args):
                             async with resp:
                                 if resp.status == 200:
                                     print(f"[Worker {worker_id}] Sent {len(combat_samples)} combat steps")
-                                    combat_buffer.clear()
+                                    combat_buffer.remove_front(len(combat_samples))
                                     break
                                 elif resp.status == 503:
                                     print(f"[Worker {worker_id}] Server reported high memory (503). Retrying in 10s...")

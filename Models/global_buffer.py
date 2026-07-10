@@ -309,6 +309,15 @@ class WorkerCombatBuffer:
         with self._lock:
             self._buffer.clear()
 
+    def get_all(self):
+        with self._lock:
+            return list(self._buffer)
+
+    def remove_front(self, count: int):
+        with self._lock:
+            if count > 0:
+                self._buffer = self._buffer[count:]
+
     @property
     def size(self) -> int:
         with self._lock:

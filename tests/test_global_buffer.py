@@ -334,3 +334,48 @@ def test_worker_global_buffer_store_combat_batching():
 
         buf.store_combat("sample3")
         mock_post.assert_awaited_once_with(["sample0", "sample1", "sample2", "sample3"], "combat")
+
+
+def test_worker_combat_buffer_get_all():
+    buf = WorkerCombatBuffer(batch_size=4)
+    assert buf.get_all() == []
+
+    buf.add("a")
+    buf.add("b")
+    buf.add("c")
+    assert buf.get_all() == ["a", "b", "c"]
+    assert buf.size == 3
+
+
+def test_worker_combat_buffer_remove_front():
+    buf = WorkerCombatBuffer(batch_size=4)
+    for i in range(5):
+        buf.add(f"s{i}")
+    assert buf.size == 5
+
+    buf.remove_front(2)
+    assert buf.size == 3
+    assert buf.get_all() == ["s2", "s3", "s4"]
+
+    buf.remove_front(0)
+    assert buf.size == 3
+    assert buf.get_all() == ["s2", "s3", "s4"]
+
+    buf.remove_front(3)
+    assert buf.size == 0
+    assert buf.get_all() == []
+
+
+def test_worker_combat_buffer_concurrency_simulation():
+    buf = WorkerCombatBuffer(batch_size=4)
+    for i in range(3):
+        buf.add(f"initial{i}")
+    initial_samples = buf.get_all()
+    assert initial_samples == ["initial0", "initial1", "initial2"]
+
+    buf.add("late_arrival")
+
+    buf.remove_front(len(initial_samples))
+
+    assert buf.size == 1
+    assert buf.get_all() == ["late_arrival"]
