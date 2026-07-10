@@ -38,4 +38,39 @@ jobs:
                  tests/test_model_refactor.py \
                  tests/test_metrics.py \
                  tests/test_dynamics_zero_reward.py \
+                 tests/test_benchmark_suite.py \
                  -v --timeout=120
+
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run benchmark suite (mock env)
+        run: |
+          python -m benchmarks.run_benchmark \
+            --num-games 1 \
+            --steps-per-game 20 \
+            --agent-setup muzero_vs_random \
+            --mcts-simulations 5 \
+            --output benchmarks/results/ci-benchmark.json
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmarks/results/ci-benchmark.json
