@@ -4,6 +4,11 @@ import collections
 import numpy as np
 import time
 
+
+def _get_device():
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 # TFT-182: Embedding-based observation schema constants
 # Embedding table sizes
 NUM_CHAMPIONS = 58
@@ -130,7 +135,7 @@ class MuZeroNetwork(AbstractNetwork):
             [config.HIDDEN_STATE_SIZE] * 5,
             config.HIDDEN_STATE_SIZE,
             1
-        ).cuda()
+        ).to(_get_device())
 
         # self.action_encodings = mlp(config.ACTION_CONCAT_SIZE, [config.LAYER_HIDDEN_SIZE] * 0,
         #                             config.HIDDEN_STATE_SIZE)
@@ -140,14 +145,14 @@ class MuZeroNetwork(AbstractNetwork):
             [config.LAYER_HIDDEN_SIZE] * 6,
             config.HIDDEN_STATE_SIZE,
             self.full_support_size
-        ).cuda()
+        ).to(_get_device())
 
         self.prediction_network = PredNetwork(
             config.HIDDEN_STATE_SIZE,
             [config.LAYER_HIDDEN_SIZE] * 6,
             1,
             self.full_support_size
-        ).cuda()
+        ).to(_get_device())
 
     def prediction(self, encoded_state):
         policy_logits, value = self.prediction_network(encoded_state)
@@ -248,7 +253,7 @@ def mlp(input_size,
     for i in range(len(sizes) - 1):
         act = activation if i < len(sizes) - 2 else output_activation
         layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), act()]
-    return torch.nn.Sequential(*layers).cuda()
+    return torch.nn.Sequential(*layers).to(_get_device())
 
 
 class PredNetwork(torch.nn.Module):
@@ -575,7 +580,7 @@ def resnet(input_size,
     for i in range(0, len(sizes) - 1):
         layers += [ResLayer(sizes[i], sizes[i + 1])]
 
-    return torch.nn.Sequential(*layers).cuda()
+    return torch.nn.Sequential(*layers).to(_get_device())
 
 class MultiMlp(torch.nn.Module):
     def __init__(self,
@@ -591,11 +596,11 @@ class MultiMlp(torch.nn.Module):
         for i in range(len(sizes) - 1):
             act = activation
             layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), act()]
-        self.encoding_layer = torch.nn.Sequential(*layers).cuda()
+        self.encoding_layer = torch.nn.Sequential(*layers).to(_get_device())
 
         self.head_0 = torch.nn.Sequential(
                 torch.nn.Linear(layer_sizes[-1], output_sizes[0])
-            ).cuda()
+            ).to(_get_device())
 
     def forward(self, x):
         x = self.encoding_layer(x)

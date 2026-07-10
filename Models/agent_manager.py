@@ -168,6 +168,9 @@ class BatchInferenceServer:
             self._distribute_results(requests, results)
         except Exception as e:
             print(f"Error in concurrent inference: {e}")
+            for req in requests:
+                if req.future and not req.future.done():
+                    req.future.set_exception(e)
 
     async def _collect_batch(self, agent_type: Any) -> List[InferenceRequest]:
         requests: List[InferenceRequest] = []

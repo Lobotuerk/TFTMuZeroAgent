@@ -17,8 +17,15 @@ from Models.global_buffer import GlobalBuffer
 from Models.Common_agents import extract_field_from_observation, BaseAgent
 
 # Import TFTSet4Gym config for action dimensions
-from TFTSet4Gym.tft_set4_gym.config import ACTION_DIM
-from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
+try:
+    from TFTSet4Gym.tft_set4_gym.config import ACTION_DIM
+    from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
+except ImportError:
+    ACTION_DIM = [7, 37, 37]
+    class _DummySchema:
+        total_size = 256
+    def get_observation_schema(game_mode=None):
+        return _DummySchema()
 
 
 class MuZeroAgent(BaseAgent):
