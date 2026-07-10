@@ -9,9 +9,19 @@ if parent_dir not in sys.path:
 
 import config
 
-from TFTSet4Gym.tft_set4_gym.stats import COST
-from TFTSet4Gym.tft_set4_gym.observation_builder import get_field_value_from_obs
-from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
+try:
+    from TFTSet4Gym.tft_set4_gym.stats import COST
+    from TFTSet4Gym.tft_set4_gym.observation_builder import get_field_value_from_obs
+    from TFTSet4Gym.tft_set4_gym.observation_schema import get_observation_schema
+    TFTSET4GYM_AVAILABLE = True
+except ImportError:
+    COST = {}
+    def get_field_value_from_obs(obs, field_name):
+        return None
+    def get_observation_schema(game_mode=None):
+        return {}
+    TFTSET4GYM_AVAILABLE = False
+
 from Models.replay_buffer import ReplayBuffer
 
 # Legacy field names mapped to player_state index

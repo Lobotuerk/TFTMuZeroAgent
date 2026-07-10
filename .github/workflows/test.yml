@@ -31,10 +31,11 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          if [ -d "TFTSet4Gym" ] && [ -f "TFTSet4Gym/setup.py" ]; then pip install -e TFTSet4Gym; fi
 
       - name: Run pytest on new test files
         run: |
-          pytest tests/test_n_step_bootstrap.py \
+          PYTHONPATH=. pytest tests/test_n_step_bootstrap.py \
                  tests/test_model_refactor.py \
                  tests/test_metrics.py \
                  tests/test_dynamics_zero_reward.py \
@@ -59,10 +60,11 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          if [ -d "TFTSet4Gym" ] && [ -f "TFTSet4Gym/setup.py" ]; then pip install -e TFTSet4Gym; fi
 
       - name: Run benchmark suite (mock env)
         run: |
-          python -m benchmarks.run_benchmark \
+          PYTHONPATH=. python -m benchmarks.run_benchmark \
             --num-games 1 \
             --steps-per-game 20 \
             --agent-setup muzero_vs_random \
