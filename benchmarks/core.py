@@ -352,10 +352,18 @@ class BenchmarkRunner:
         from Models.agent_manager import create_enhanced_setup, create_muzero_vs_random_setup, create_buying_agents_setup
 
         if self.agent_setup == "muzero_vs_random":
-            return create_muzero_vs_random_setup(
-                num_muzero=1,
-                num_random=7,
-            )
+            try:
+                return create_muzero_vs_random_setup(
+                    num_muzero=1,
+                    num_random=7,
+                )
+            except RuntimeError as e:
+                if "PyMCTS" in str(e) or "MonteCarloTreeSearch" in str(e):
+                    print("Warning: PyMCTS not available, falling back to all-random agent setup")
+                    from Models.agent_manager import create_custom_agent_setup
+                    from Models.Common_agents import RandomAgent
+                    return create_custom_agent_setup([(RandomAgent(f"Random_{i}"), 1) for i in range(8)])
+                raise
         elif self.agent_setup == "buying_agents":
             return create_buying_agents_setup()
         elif self.agent_setup == "tournament":

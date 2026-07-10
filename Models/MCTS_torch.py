@@ -21,7 +21,9 @@ try:
     MCTS_MoveBase = pymcts.MCTS_move
     MCTS_StateBase = pymcts.MCTS_state
 except ImportError:
-    raise ImportError("PyMCTS is required for this MCTS implementation. Please install the MonteCarloTreeSearch library and build the Python bindings.")
+    PYMCTS_AVAILABLE = False
+    MCTS_MoveBase = object
+    MCTS_StateBase = object
 
 # Import new observation schema system
 from Models.Common_agents import extract_field_from_observation
@@ -122,6 +124,12 @@ class EnhancedMCTS:
         Returns:
             Tuple of (actions, target_policies)
         """
+        if not PYMCTS_AVAILABLE:
+            raise RuntimeError(
+                "PyMCTS is not available. Cannot generate MCTS actions. "
+                "Install the MonteCarloTreeSearch library and build the Python bindings."
+            )
+        
         state = self._get_local_state()
         state.obs_queue.append(observation)
         state.num_simulations = n_simulations
