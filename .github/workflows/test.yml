@@ -43,7 +43,7 @@ jobs:
                  -v --timeout=120
 
   benchmark:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, gpu]
     timeout-minutes: 10
     steps:
       - name: Checkout repository
@@ -51,20 +51,32 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
+      - name: Verify CUDA availability
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          if [ -d "TFTSet4Gym" ] && [ -f "TFTSet4Gym/setup.py" ]; then pip install -e TFTSet4Gym; fi
+          CONDA=/home/lobo/miniconda3/bin/conda
+          NVIDIA_SMI=/usr/lib/wsl/lib/nvidia-smi
+          echo "Checking CUDA availability..."
+          $NVIDIA_SMI || (echo "ERROR: nvidia-smi failed - GPU not accessible" && exit 1)
+          $CONDA run -n TFT python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'; print(f'GPU: {torch.cuda.get_device_name(0)}')"
 
-      - name: Run benchmark suite (mock env)
+      - name: Link submodule dependencies
         run: |
-          PYTHONPATH=. python -m benchmarks.run_benchmark \
+          CONDA=/home/lobo/miniconda3/bin/conda
+          if [ -d "TFTSet4Gym" ] && [ -f "TFTSet4Gym/setup.py" ]; then
+            $CONDA run -n TFT pip install --no-deps -e TFTSet4Gym
+          fi
+          if [ -d "MonteCarloTreeSearch" ] && [ -f "MonteCarloTreeSearch/setup.py" ]; then
+            cd MonteCarloTreeSearch && $CONDA run -n TFT python setup.py build_ext --inplace
+          fi
+
+      - name: Run GPU speedup benchmark test
+        run: |
+          /home/lobo/miniconda3/bin/conda run -n TFT pytest tests/test_batch_benchmark.py -v
+
+      - name: Run benchmark suite
+        run: |
+          mkdir -p benchmarks/results
+          /home/lobo/miniconda3/bin/conda run -n TFT python -m benchmarks.run_benchmark \
             --num-games 1 \
             --steps-per-game 20 \
             --agent-setup muzero_vs_random \

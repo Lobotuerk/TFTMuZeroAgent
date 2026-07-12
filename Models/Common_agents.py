@@ -45,6 +45,8 @@ def extract_field_from_observation(observation, field_name):
             observation['tensor'] if isinstance(observation, dict) and 'tensor' in observation else observation,
             'player_state'
         )
+        if player_state is None:
+            return 0.0
         idx = PLAYER_STATE_LEGACY_MAP[field_name]
         val = player_state.flat[idx]
         return float(val)
