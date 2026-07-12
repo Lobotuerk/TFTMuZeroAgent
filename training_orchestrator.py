@@ -694,6 +694,8 @@ class TrainingOrchestrator:
         from concurrent.futures import ThreadPoolExecutor
         self._train_executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=1)
 
+        self._next_batch_task: Optional["asyncio.Task"] = None
+
     def setup(self, is_collector: bool = False, is_evaluator: bool = False):
         """Create all components: buffer, agents, batch processor, trainer."""
         if not is_collector and not is_evaluator:
@@ -806,18 +808,41 @@ class TrainingOrchestrator:
         log_dir = f"logs/{self.cfg.run_name}{ts}"
         return SummaryWriter(log_dir)
 
-    async def _train_step(self) -> None:
-        """Perform a single training step."""
-        try:
-            if not self.global_buffer or not self.global_buffer.available_gameplay_batch():
-                return
+    def _prepare_batch_sync(self):
+        if not self.global_buffer or not self.global_buffer.available_gameplay_batch():
+            return None
 
-            batch = self.global_buffer.read_gameplay_batch()
-            combat_batch = []
-            if hasattr(self.global_buffer, "available_combat_batch") and self.global_buffer.available_combat_batch():
-                cb = self.global_buffer.read_combat_batch()
-                if cb is not None:
-                    combat_batch = cb
+        batch = self.global_buffer.read_gameplay_batch()
+        combat_batch = []
+        if hasattr(self.global_buffer, "available_combat_batch") and self.global_buffer.available_combat_batch():
+            cb = self.global_buffer.read_combat_batch()
+            if cb is not None:
+                combat_batch = cb
+        return batch, combat_batch
+
+    async def _fetch_next_batch_task(self):
+        await asyncio.sleep(0)
+        return self._prepare_batch_sync()
+
+    def has_batch_ready(self) -> bool:
+        if getattr(self, "_next_batch_task", None) is not None:
+            return True
+        return bool(self.global_buffer and self.global_buffer.available_gameplay_batch())
+
+    async def _train_step(self) -> bool:
+        """Perform a single training step using double-buffered batch pre-fetching."""
+        try:
+            if getattr(self, "_next_batch_task", None) is None:
+                self._next_batch_task = asyncio.create_task(self._fetch_next_batch_task())
+
+            batch_data = await self._next_batch_task
+            if batch_data is None:
+                self._next_batch_task = None
+                return False
+
+            batch, combat_batch = batch_data
+
+            self._next_batch_task = asyncio.create_task(self._fetch_next_batch_task())
 
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
@@ -841,6 +866,8 @@ class TrainingOrchestrator:
             if self.training_step - self._last_metric_log_step >= 100:
                 self._last_metric_log_step = self.training_step
                 self._log_metrics()
+
+            return True
         except Exception as e:
             import traceback
             traceback.print_exc()

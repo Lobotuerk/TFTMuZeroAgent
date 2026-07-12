@@ -3,7 +3,6 @@ import config
 import numpy as np
 import os
 import pickle
-import threading
 import random
 import time
 import uuid
@@ -26,36 +25,32 @@ class CombatBuffer:
         self._buffer = [None] * capacity
         self._size = 0
         self._pos = 0
-        self._lock = threading.Lock()
 
     def add(self, sample):
-        with self._lock:
-            self._buffer[self._pos] = sample
-            self._pos = (self._pos + 1) % self._capacity
-            if self._size < self._capacity:
-                self._size += 1
+        self._buffer[self._pos] = sample
+        self._pos = (self._pos + 1) % self._capacity
+        if self._size < self._capacity:
+            self._size += 1
 
     def clear(self):
-        with self._lock:
-            self._buffer = [None] * self._capacity
-            self._size = 0
-            self._pos = 0
+        self._buffer = [None] * self._capacity
+        self._size = 0
+        self._pos = 0
 
     def sample(self, batch_size):
-        with self._lock:
-            if self._size < batch_size:
-                return None
-            indices = random.sample(range(self._size), batch_size)
-            samples = [self._buffer[i] for i in indices]
-            observation_batch = []
-            result_batch = []
-            for observation, result in samples:
-                observation_batch.append(observation)
-                result_batch.append(result)
-            return [
-                np.array(observation_batch),
-                np.array(result_batch)
-            ]
+        if self._size < batch_size:
+            return None
+        indices = random.sample(range(self._size), batch_size)
+        samples = [self._buffer[i] for i in indices]
+        observation_batch = []
+        result_batch = []
+        for observation, result in samples:
+            observation_batch.append(observation)
+            result_batch.append(result)
+        return [
+            np.array(observation_batch),
+            np.array(result_batch)
+        ]
 
     @property
     def size(self):
@@ -75,12 +70,10 @@ class GameplayBuffer:
     """Deque-based buffer for gameplay experiences. Retains clear/pop capabilities."""
     def __init__(self, maxlen: int = 10000):
         self._buffer = deque(maxlen=maxlen)
-        self._lock = threading.Lock()
         self._tombstones = 0
 
     def add(self, sample):
-        with self._lock:
-            self._buffer.extend(sample)
+        self._buffer.extend(sample)
 
     def _compact_if_needed(self):
         if self._tombstones > len(self._buffer) // 2:
@@ -122,22 +115,20 @@ class GameplayBuffer:
         return result
 
     def sample(self, batch_size):
-        with self._lock:
-            if len(self._buffer) - self._tombstones < batch_size:
-                return None
-            valid_indices = [i for i in range(len(self._buffer)) if self._buffer[i] is not None]
-            indices = random.sample(valid_indices, batch_size)
-            samples = [self._buffer[i] for i in indices]
-            for i in indices:
-                self._buffer[i] = None
-            self._tombstones += batch_size
-            self._compact_if_needed()
-            return self._format_batch(samples)
+        if len(self._buffer) - self._tombstones < batch_size:
+            return None
+        valid_indices = [i for i in range(len(self._buffer)) if self._buffer[i] is not None]
+        indices = random.sample(valid_indices, batch_size)
+        samples = [self._buffer[i] for i in indices]
+        for i in indices:
+            self._buffer[i] = None
+        self._tombstones += batch_size
+        self._compact_if_needed()
+        return self._format_batch(samples)
 
     def clear(self):
-        with self._lock:
-            self._buffer.clear()
-            self._tombstones = 0
+        self._buffer.clear()
+        self._tombstones = 0
 
     def __len__(self):
         return len(self._buffer) - self._tombstones
@@ -292,36 +283,29 @@ class WorkerCombatBuffer:
     def __init__(self, batch_size: int = config.BATCH_SIZE):
         self._buffer: List[Any] = []
         self.batch_size = batch_size
-        self._lock = threading.Lock()
 
     def add(self, sample: Any) -> bool:
-        with self._lock:
-            self._buffer.append(sample)
-            return len(self._buffer) >= self.batch_size
+        self._buffer.append(sample)
+        return len(self._buffer) >= self.batch_size
 
     def pop(self) -> List[Any]:
-        with self._lock:
-            batch = self._buffer[:self.batch_size]
-            self._buffer = self._buffer[self.batch_size:]
-            return batch
+        batch = self._buffer[:self.batch_size]
+        self._buffer = self._buffer[self.batch_size:]
+        return batch
 
     def clear(self):
-        with self._lock:
-            self._buffer.clear()
+        self._buffer.clear()
 
     def get_all(self):
-        with self._lock:
-            return list(self._buffer)
+        return list(self._buffer)
 
     def remove_front(self, count: int):
-        with self._lock:
-            if count > 0:
-                self._buffer = self._buffer[count:]
+        if count > 0:
+            self._buffer = self._buffer[count:]
 
     @property
     def size(self) -> int:
-        with self._lock:
-            return len(self._buffer)
+        return len(self._buffer)
 
 
 class WorkerGlobalBuffer:

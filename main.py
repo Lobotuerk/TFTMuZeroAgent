@@ -208,10 +208,13 @@ async def train_server_mode(args):
     try:
         while orch.training_active:
             trained = False
-            while orch.training_active and orch.global_buffer.available_gameplay_batch() and orch.training_step < args.max_steps:
-                await orch._train_step()
-                trained = True
-                await asyncio.sleep(0.001)
+            while orch.training_active and orch.has_batch_ready() and orch.training_step < args.max_steps:
+                trained_this_step = await orch._train_step()
+                if trained_this_step:
+                    trained = True
+                    await asyncio.sleep(0.001)
+                else:
+                    break
             if not trained:
                 await asyncio.sleep(1.0)
     except KeyboardInterrupt:
