@@ -63,10 +63,10 @@ jobs:
         run: |
           CONDA=/home/lobo/miniconda3/bin/conda
           if [ -d "TFTSet4Gym" ] && [ -f "TFTSet4Gym/setup.py" ]; then
-            $CONDA run -n TFT pip install -e TFTSet4Gym
+            $CONDA run -n TFT pip install --no-deps -e TFTSet4Gym
           fi
           if [ -d "MonteCarloTreeSearch" ] && [ -f "MonteCarloTreeSearch/setup.py" ]; then
-            $CONDA run -n TFT pip install -e MonteCarloTreeSearch || (cd MonteCarloTreeSearch && $CONDA run -n TFT python setup.py build_ext --inplace)
+            cd MonteCarloTreeSearch && $CONDA run -n TFT python setup.py build_ext --inplace
           fi
 
       - name: Run GPU speedup benchmark test
