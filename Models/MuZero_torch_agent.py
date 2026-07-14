@@ -155,7 +155,15 @@ class MuZeroAgent(BaseAgent):
                 value = float(v.item() if hasattr(v, 'item') else v)
             return env_move, action_vector, value
 
-        results = [run_mcts_item(i) for i in range(batch_size)]
+        import concurrent.futures
+
+        # Use ThreadPoolExecutor to run PyMCTS searches concurrently.
+        # Since we use python-freethreading (GIL disabled), this allows all 
+        # games in the batch to hit the BlockingBatchInferenceQueue simultaneously, 
+        # creating massive GPU batch sizes and eliminating the sequential bottleneck.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
+            # Map returns an iterator, converting to list forces execution and gathers results in order
+            results = list(executor.map(run_mcts_item, range(batch_size)))
 
         return results
 
