@@ -8,53 +8,13 @@ implements the same interface as the local MuZeroNetwork.
 
 import os
 import pickle
+import random
 import socket
 import struct
+import time
 import torch
 import numpy as np
 from typing import Dict, Any
-
-
-class _TensorEncoder(pickle.Pickler):
-    """Custom pickle pickler that serializes tensors as (dtype, shape, bytes) tuples."""
-
-    def save_tensor(self, obj):
-        state = obj.state()
-        self.save_reduce(_reconstruct_tensor, (state["dtype"], state["shape"], state["data"]), obj=obj)
-
-    dispatch = pickle.Pickler.dispatch.copy()
-    dispatch[torch.Tensor] = save_tensor
-
-
-def _reconstruct_tensor(dtype, shape, data):
-    return torch.frombuffer(bytearray(data), dtype=dtype).reshape(shape)
-
-
-def _dumps_request(data: Any) -> bytes:
-    """Serialize a request payload using pickle with tensor support."""
-    buf = bytearray()
-    _TensorEncoder(buf).dump(data)
-    return buf
-
-
-def _loads_request(data: bytes) -> Any:
-    """Deserialize a request payload."""
-    return pickle.loads(data)
-
-
-def _pack_frame(payload: bytes) -> bytes:
-    """Pack a length-prefixed frame: 4-byte big-endian length + payload."""
-    return struct.pack("!I", len(payload)) + payload
-
-
-def _unpack_frame(data: bytes) -> bytes:
-    """Unpack a length-prefixed frame, returning the payload."""
-    if len(data) < 4:
-        raise ValueError("Incomplete frame header")
-    length = struct.unpack("!I", data[:4])[0]
-    if len(data) < 4 + length:
-        raise ValueError(f"Incomplete frame: expected {length} bytes, got {len(data) - 4}")
-    return data[4:4 + length]
 
 
 def _tensor_to_bytes(t):
@@ -88,6 +48,31 @@ def _bytes_to_tensor(obj):
     return obj
 
 
+def _dumps_request(data: Any) -> bytes:
+    """Serialize a request payload using pickle."""
+    return pickle.dumps(data)
+
+
+def _loads_request(data: bytes) -> Any:
+    """Deserialize a request payload."""
+    return pickle.loads(data)
+
+
+def _pack_frame(payload: bytes) -> bytes:
+    """Pack a length-prefixed frame: 4-byte big-endian length + payload."""
+    return struct.pack("!I", len(payload)) + payload
+
+
+def _unpack_frame(data: bytes) -> bytes:
+    """Unpack a length-prefixed frame, returning the payload."""
+    if len(data) < 4:
+        raise ValueError("Incomplete frame header")
+    length = struct.unpack("!I", data[:4])[0]
+    if len(data) < 4 + length:
+        raise ValueError(f"Incomplete frame: expected {length} bytes, got {len(data) - 4}")
+    return data[4:4 + length]
+
+
 class RemoteMuZeroNetwork:
     """Synchronous proxy for a remote GPU inference server.
 
@@ -95,16 +80,30 @@ class RemoteMuZeroNetwork:
     recurrent_inference) by forwarding requests over a Unix Domain
     Socket to a centralized inference server.
 
+    Uses retry with exponential backoff + jitter on connection failures
+    to handle transient network issues under heavy concurrency.
+
     Args:
         socket_path: Path to the UDS socket on the server.
         model_version: Which model to use ("latest" or "best").
         timeout: Per-request timeout in seconds.
+        max_retries: Maximum number of retry attempts.
+        base_delay: Base delay between retries in seconds.
     """
 
-    def __init__(self, socket_path: str, model_version: str = "latest", timeout: float = 30.0):
+    def __init__(
+        self,
+        socket_path: str,
+        model_version: str = "latest",
+        timeout: float = 30.0,
+        max_retries: int = 3,
+        base_delay: float = 0.1,
+    ):
         self.socket_path = socket_path
         self.model_version = model_version
         self.timeout = timeout
+        self.max_retries = max_retries
+        self.base_delay = base_delay
 
     def initial_inference(self, observation):
         """Run initial inference via the remote server.
@@ -131,7 +130,7 @@ class RemoteMuZeroNetwork:
         payload = _dumps_request(request)
         frame = _pack_frame(payload)
 
-        response_data = self._send_request(frame)
+        response_data = self._send_request_with_retry(frame)
         response = _loads_request(response_data)
 
         if "error" in response:
@@ -169,13 +168,30 @@ class RemoteMuZeroNetwork:
         payload = _dumps_request(request)
         frame = _pack_frame(payload)
 
-        response_data = self._send_request(frame)
+        response_data = self._send_request_with_retry(frame)
         response = _loads_request(response_data)
 
         if "error" in response:
             raise ConnectionError(f"Remote inference error: {response['error']}")
 
         return _bytes_to_tensor(response)
+
+    def _send_request_with_retry(self, frame: bytes) -> bytes:
+        """Send a request frame and receive the response, with retry and exponential backoff."""
+        last_exception = None
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self._send_request(frame)
+            except (ConnectionError, OSError, socket.timeout) as e:
+                last_exception = e
+                if attempt < self.max_retries:
+                    delay = self.base_delay * (2 ** attempt) * (0.5 + random.random())
+                    time.sleep(delay)
+
+        raise ConnectionError(
+            f"Failed to connect to inference server after {self.max_retries + 1} attempts: {last_exception}"
+        ) from last_exception
 
     def _send_request(self, frame: bytes) -> bytes:
         """Send a request frame and receive the response."""
@@ -184,7 +200,6 @@ class RemoteMuZeroNetwork:
             sock.connect(self.socket_path)
             sock.sendall(frame)
 
-            # Read response: 4-byte header + payload
             header = self._recv_exact(sock, 4)
             length = struct.unpack("!I", header)[0]
 
