@@ -433,52 +433,40 @@ class RepNetwork(torch.nn.Module):
         # TFT-182: Apply embedding lookups and build embedded representation
         offset = 0
 
-        # 1. Board: (batch, 28, 122) -> (batch, 28, 122) embedded
+        # 1. Board: vectorized across all slots
         board_shape = x[:, offset:offset + BOARD_DIM].view(-1, BOARD_SLOTS, PER_SLOT_DIM)
         offset += BOARD_DIM
-        board_embedded = []
-        for slot in range(BOARD_SLOTS):
-            slot_vec = board_shape[:, slot, :]  # (batch, 122)
-            slot_embed = self._encode_slot(slot_vec)  # (batch, 122)
-            board_embedded.append(slot_embed)
-        board_repr = torch.cat(board_embedded, dim=1)  # (batch, 28*122=3416)
+        board_flat = board_shape.view(-1, PER_SLOT_DIM)
+        board_embed = self._encode_slot(board_flat)
+        board_repr = board_embed.view(-1, BOARD_SLOTS * 122)
 
-        # 2. Bench champions: (batch, 9, 122) -> (batch, 9*122=1098) embedded
+        # 2. Bench champions: vectorized across all slots
         bench_champ_shape = x[:, offset:offset + BENCH_CHAMP_DIM].view(
             -1, BENCH_CHAMP_SLOTS, PER_SLOT_DIM)
         offset += BENCH_CHAMP_DIM
-        bench_champ_embedded = []
-        for slot in range(BENCH_CHAMP_SLOTS):
-            slot_vec = bench_champ_shape[:, slot, :]
-            slot_embed = self._encode_slot(slot_vec)
-            bench_champ_embedded.append(slot_embed)
-        bench_champ_repr = torch.cat(bench_champ_embedded, dim=1)
+        bench_champ_flat = bench_champ_shape.view(-1, PER_SLOT_DIM)
+        bench_champ_embed = self._encode_slot(bench_champ_flat)
+        bench_champ_repr = bench_champ_embed.view(-1, BENCH_CHAMP_SLOTS * 122)
 
-        # 3. Bench items: (batch, 10, 24) - item indices in first dim, embed
+        # 3. Bench items: vectorized across all slots
         bench_item_shape = x[:, offset:offset + BENCH_ITEM_DIM].view(
             -1, BENCH_ITEM_SLOTS, ITEM_EMBED_DIM)
         offset += BENCH_ITEM_DIM
-        bench_item_embeds = []
-        for slot in range(BENCH_ITEM_SLOTS):
-            slot_vec = bench_item_shape[:, slot, :]  # (batch, 24)
-            active_mask = (slot_vec.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
-            item_id = torch.clamp(torch.round(slot_vec[:, 0]).long(), 0, NUM_ITEMS - 1)
-            item_embed = self.item_embedding(item_id) * active_mask  # (batch, 24)
-            bench_item_embeds.append(item_embed)
-        bench_items_repr = torch.cat(bench_item_embeds, dim=1)  # (batch, 10*24=240)
+        bench_item_flat = bench_item_shape.view(-1, ITEM_EMBED_DIM)
+        active_mask = (bench_item_flat.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
+        item_id = torch.clamp(torch.round(bench_item_flat[:, 0]).long(), 0, NUM_ITEMS - 1)
+        item_embed = self.item_embedding(item_id) * active_mask
+        bench_items_repr = item_embed.view(-1, BENCH_ITEM_SLOTS * ITEM_EMBED_DIM)
 
-        # 4. Shop champions: (batch, 5, 32) - champion indices in first dim, embed
+        # 4. Shop champions: vectorized across all slots
         shop_shape = x[:, offset:offset + SHOP_CHAMP_DIM].view(
             -1, SHOP_CHAMP_SLOTS, CHAMPION_EMBED_DIM)
         offset += SHOP_CHAMP_DIM
-        shop_champ_embeds = []
-        for slot in range(SHOP_CHAMP_SLOTS):
-            slot_vec = shop_shape[:, slot, :]  # (batch, 32)
-            active_mask = (slot_vec.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
-            champ_id = torch.clamp(torch.round(slot_vec[:, 0]).long(), 0, NUM_CHAMPIONS - 1)
-            champ_embed = self.champion_embedding(champ_id) * active_mask  # (batch, 32)
-            shop_champ_embeds.append(champ_embed)
-        shop_champs_repr = torch.cat(shop_champ_embeds, dim=1)  # (batch, 5*32=160)
+        shop_flat = shop_shape.view(-1, CHAMPION_EMBED_DIM)
+        active_mask = (shop_flat.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
+        champ_id = torch.clamp(torch.round(shop_flat[:, 0]).long(), 0, NUM_CHAMPIONS - 1)
+        champ_embed = self.champion_embedding(champ_id) * active_mask
+        shop_champs_repr = champ_embed.view(-1, SHOP_CHAMP_SLOTS * CHAMPION_EMBED_DIM)
 
         # 5. Shop chosen: scalar
         shop_chosen = x[:, offset:offset + SHOP_CHOSEN_DIM]
@@ -496,21 +484,13 @@ class RepNetwork(torch.nn.Module):
         player_state = x[:, offset:offset + PLAYER_STATE_DIM]
         offset += PLAYER_STATE_DIM
 
-        # 9. Opponent boards: (batch, 7, 28, 122) -> (batch, 7*28*122=23912) embedded
+        # 9. Opponent boards: vectorized across opponents and slots
         opp_boards_shape = x[:, offset:offset + OPPONENT_BOARDS_DIM].view(
             -1, NUM_OPPONENTS, BOARD_SLOTS, PER_SLOT_DIM)
         offset += OPPONENT_BOARDS_DIM
-        opp_boards_list = []
-        for opp in range(NUM_OPPONENTS):
-            opp_board = opp_boards_shape[:, opp, :, :]  # (batch, 28, 122)
-            opp_embedded = []
-            for slot in range(BOARD_SLOTS):
-                slot_vec = opp_board[:, slot, :]
-                slot_embed = self._encode_slot(slot_vec)
-                opp_embedded.append(slot_embed)
-            opp_board_repr = torch.cat(opp_embedded, dim=1)
-            opp_boards_list.append(opp_board_repr)
-        opp_boards_repr = torch.cat(opp_boards_list, dim=1)
+        opp_flat = opp_boards_shape.view(-1, BOARD_SLOTS, PER_SLOT_DIM)
+        opp_embed = self._encode_slot(opp_flat)
+        opp_boards_repr = opp_embed.view(-1, NUM_OPPONENTS * BOARD_SLOTS * 122)
 
         # 10. Opponent info: (batch, 7, 4) - scalars
         opp_info = x[:, offset:offset + OPPONENT_INFO_DIM]
