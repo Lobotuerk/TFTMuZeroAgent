@@ -152,8 +152,6 @@ class TrainingConfig:
     """Configuration for training parameters"""
     starting_train_step: int = 0
     run_name: str = ""
-    save_interval: int = config.CHECKPOINT_STEPS
-    evaluation_interval: int = config.CHECKPOINT_STEPS
     concurrent_games: int = config.CONCURRENT_GAMES
     collect_games_per_batch: int = config.COLLECT_GAMES_PER_BATCH
     evaluation_games: int = config.EVALUATION_GAMES

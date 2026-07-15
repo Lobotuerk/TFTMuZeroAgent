@@ -72,7 +72,7 @@ Hyperparameters, training settings, and environment constants are located in `co
 - `CONCURRENT_GAMES`: Number of games to run in parallel.
 - `BATCH_SIZE`: Training batch size.
 - `NUM_SIMULATIONS`: Number of MCTS simulations per move.
-- `CHECKPOINT_STEPS`: Interval for saving models and running evaluations.
+- `SYNC_STEPS`: Interval (in training steps) for saving model checkpoints.
 
 ## Architecture
 

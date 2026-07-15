@@ -27,11 +27,9 @@ def _build_config(args) -> TrainingConfig:
     cfg = TrainingConfig()
     cfg.concurrent_games = getattr(args, "concurrent_games", config.CONCURRENT_GAMES)
     cfg.collect_games_per_batch = getattr(args, "collect_games", config.COLLECT_GAMES_PER_BATCH)
-    cfg.evaluation_interval = getattr(args, "eval_interval", config.CHECKPOINT_STEPS)
     cfg.evaluation_games = getattr(args, "eval_games", config.EVALUATION_GAMES)
     cfg.evaluation_concurrent = getattr(args, "eval_concurrent", config.EVALUATION_CONCURRENT_GAMES)
     cfg.max_batch_size = getattr(args, "batch_size", config.BATCH_SIZE)
-    cfg.save_interval = getattr(args, "checkpoint_interval", config.CHECKPOINT_STEPS)
     cfg.starting_train_step = getattr(args, "starting_episode", 0)
     cfg.run_name = getattr(args, "run_name", "")
     return cfg
@@ -460,16 +458,11 @@ async def async_main():
                         default=config.CONCURRENT_GAMES)
     parser.add_argument("--collect_games", type=int, default=config.COLLECT_GAMES_PER_BATCH)
     parser.add_argument("--max_steps", "-ms", type=int, default=1_000_000)
-    parser.add_argument("--eval_interval", "-ei", type=int,
-                        default=config.CHECKPOINT_STEPS)
     parser.add_argument("--eval_games", "-eg", type=int,
                         default=config.EVALUATION_GAMES)
     parser.add_argument("--eval_concurrent", "-ec", type=int,
                         default=config.EVALUATION_CONCURRENT_GAMES)
     parser.add_argument("--batch_size", "-bs", type=int, default=config.BATCH_SIZE)
-    parser.add_argument("--checkpoint_interval", "-ci", type=int,
-                        default=config.CHECKPOINT_STEPS)
-
     args = parser.parse_args()
 
     print("=" * 60)

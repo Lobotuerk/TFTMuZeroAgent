@@ -55,7 +55,7 @@ trap cleanup SIGINT SIGTERM EXIT
 echo "============================================================"
 echo "Starting GPU Training Server..."
 echo "============================================================"
-PYTHON_GIL=0 ./run_tft.sh "$PYTHON_EXEC" main.py --mode train_server --checkpoint_interval 200 $EXTRA_ARGS &
+PYTHON_GIL=0 ./run_tft.sh "$PYTHON_EXEC" main.py --mode train_server $EXTRA_ARGS &
 SERVER_PID=$!
 
 echo "============================================================"
