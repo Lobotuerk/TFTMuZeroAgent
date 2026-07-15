@@ -21,6 +21,7 @@ from training_orchestrator import (
 )
 
 from Models.MuZero_torch_agent import MuZeroNetwork as TFTNetwork
+from Models.inference_server import UDSInferenceServer
 
 
 def _build_config(args) -> TrainingConfig:
@@ -124,6 +125,28 @@ async def train_server_mode(args):
     if not os.path.isfile("./checkpoint/best_model.pth"):
         torch.save(orch.current_model.model.state_dict(), "./checkpoint/best_model.pth")
 
+    # Create best_model agent for inference server
+    orch.best_model = MuZeroAgent(
+        action_size=3,
+        action_limits=config.ACTION_DIM,
+        obs_size=config.OBSERVATION_SIZE,
+        simulations=config.NUM_SIMULATIONS,
+        global_buffer=orch.global_buffer,
+        config_obj=cfg,
+    )
+    if os.path.isfile("./checkpoint/best_model.pth"):
+        orch.best_model.model.load_state_dict(torch.load("./checkpoint/best_model.pth"))
+        print("Loaded best_model.pth to inference server best model.")
+
+    # Start UDS inference server
+    inference_models = {
+        "latest": orch.current_model.model,
+        "best": orch.best_model.model,
+    }
+    inference_server = UDSInferenceServer("/tmp/tft_muzero_inference.sock", inference_models)
+    server_task = asyncio.create_task(inference_server.start())
+    print("UDS Inference server started on /tmp/tft_muzero_inference.sock")
+
     async def handle_experience(request):
         experience_type = request.headers.get("X-Experience-Type", "")
         if experience_type not in ("gameplay", "combat"):
@@ -219,6 +242,11 @@ async def train_server_mode(args):
     except KeyboardInterrupt:
         print("\nTraining server stopped.")
     finally:
+        server_task.cancel()
+        try:
+            await server_task
+        except asyncio.CancelledError:
+            pass
         await runner.cleanup()
         orch._train_executor.shutdown(wait=False)
     return True
@@ -254,7 +282,68 @@ async def worker_mode(args):
     if is_collector:
         orch._build_logger = lambda: None
 
-    orch.setup(is_collector=is_collector, is_evaluator=is_evaluator)
+    # Use remote inference for all worker roles
+    uds_path = "/tmp/tft_muzero_inference.sock"
+
+    if is_collector:
+        # Replace local model with remote inference
+        from Models.MuZero_torch_agent import MuZeroAgent as RemoteAgent
+        orch._training_agents = []
+        collection_agent = RemoteAgent(
+            action_size=3,
+            action_limits=config.ACTION_DIM,
+            obs_size=config.OBSERVATION_SIZE,
+            simulations=config.NUM_SIMULATIONS,
+            global_buffer=orch.global_buffer,
+            config_obj=cfg,
+            use_remote_inference=True,
+            uds_path=uds_path,
+            model_version="latest",
+        )
+        orch._training_agents = [collection_agent]
+        orch.current_model = collection_agent
+
+        from Models.agent_manager import create_custom_agent_setup
+        agent_configs = [(collection_agent, 8)]
+        orch.agent_manager, _ = create_custom_agent_setup(
+            agent_configs,
+            max_batch_size=cfg.max_batch_size,
+            batch_timeout_ms=5.0,
+            gpu_memory_fraction=0.8,
+            metrics_collector=orch.metrics_collector,
+        )
+        orch.env_manager = orch._create_env_manager(
+            cfg.concurrent_games,
+            profiling=orch.profiling,
+            metrics_collector=orch.metrics_collector,
+        )
+        orch.benchmark = None
+
+    elif is_evaluator:
+        # Create two remote agents: one for latest, one for best
+        from Models.MuZero_torch_agent import MuZeroAgent as RemoteAgent
+        orch.best_model = RemoteAgent(
+            action_size=3,
+            action_limits=config.ACTION_DIM,
+            obs_size=config.OBSERVATION_SIZE,
+            simulations=config.NUM_SIMULATIONS,
+            global_buffer=orch.global_buffer,
+            config_obj=cfg,
+            use_remote_inference=True,
+            uds_path=uds_path,
+            model_version="best",
+        )
+        orch.current_model = RemoteAgent(
+            action_size=3,
+            action_limits=config.ACTION_DIM,
+            obs_size=config.OBSERVATION_SIZE,
+            simulations=config.NUM_SIMULATIONS,
+            global_buffer=orch.global_buffer,
+            config_obj=cfg,
+            use_remote_inference=True,
+            uds_path=uds_path,
+            model_version="latest",
+        )
 
     timeout = aiohttp.ClientTimeout(total=30, connect=10)
 
@@ -273,33 +362,8 @@ async def worker_mode(args):
                         else:
                             raise
             if worker_role == "collector":
-                print(f"[Worker {worker_id}] Starting collection loop...")
+                print(f"[Worker {worker_id}] Starting collection loop with remote inference...")
                 while True:
-                    resp = await _request_with_retry("GET", f"{server_url}/api/v1/weights/best")
-                    async with resp:
-                        if resp.status == 200:
-                            try:
-                                resp_json = await resp.json()
-                                weights_bytes = base64.b64decode(resp_json["weights"])
-                                weights = torch.load(io.BytesIO(weights_bytes), map_location="cpu")
-                                if orch.current_model is not None:
-                                    orch.current_model.model.load_state_dict(weights)
-                                for agent in orch._training_agents:
-                                    agent.update_weights(weights)
-                                server_promo_count = resp_json.get("promotion_count", 0)
-                                if not hasattr(orch, "last_promotion_count"):
-                                    orch.last_promotion_count = server_promo_count
-                                elif server_promo_count > orch.last_promotion_count:
-                                    print(f"[Worker {worker_id}] New best model promoted. Clearing local buffers.")
-                                    orch.global_buffer.clear_gameplay_buffer()
-                                    orch.global_buffer.clear_combat_buffer()
-                                    orch.last_promotion_count = server_promo_count
-                            except Exception as e:
-                                print(f"[Worker {worker_id}] Error loading weights: {e}")
-                        else:
-                            body = await resp.text()
-                            print(f"[Worker {worker_id}] Failed to fetch weights (status {resp.status}): {body[:200]}")
-
                     print(f"[Worker {worker_id}] Starting a batch of {cfg.concurrent_games} game(s)...")
                     await orch.env_manager.run_fixed_games(orch.agent_manager, cfg.concurrent_games)
 
@@ -355,58 +419,12 @@ async def worker_mode(args):
                     await asyncio.sleep(1.0)
 
             elif worker_role == "evaluator":
-                print(f"[Worker {worker_id}] Starting evaluator loop...")
-                last_modified = ""
+                print(f"[Worker {worker_id}] Starting evaluator loop with remote inference...")
+                eval_step = 0
 
                 while True:
-                    headers = {}
-                    if last_modified:
-                        headers["If-Modified-Since"] = last_modified
-
-                    resp = await _request_with_retry("GET", f"{server_url}/api/v1/weights/latest", headers=headers)
-                    async with resp:
-                        if resp.status == 304:
-                            await asyncio.sleep(5.0)
-                            continue
-                        if resp.status == 404:
-                            body = await resp.text()
-                            print(f"[Worker {worker_id}] Latest weights not found (status 404): {body[:200]}")
-                            await asyncio.sleep(5.0)
-                            continue
-                        if resp.status != 200:
-                            body = await resp.text()
-                            print(f"[Worker {worker_id}] Failed to fetch latest weights (status {resp.status}): {body[:200]}")
-                            await asyncio.sleep(5.0)
-                            continue
-
-                        last_modified = resp.headers.get("Last-Modified", "")
-                        print(f"[Worker {worker_id}] Detected updated weights. Running evaluation...")
-
-                        try:
-                            resp_json = await resp.json()
-                            step = resp_json.get("step", 0)
-                            weights_bytes = base64.b64decode(resp_json["weights"])
-                            latest_weights = torch.load(io.BytesIO(weights_bytes), map_location="cpu")
-                            orch.current_model.model.load_state_dict(latest_weights)
-                        except Exception:
-                            print(f"[Worker {worker_id}] Error loading latest weights")
-                            await asyncio.sleep(2.0)
-                            continue
-
-                    best_resp = await _request_with_retry("GET", f"{server_url}/api/v1/weights/best")
-                    async with best_resp:
-                        if best_resp.status == 200:
-                            try:
-                                best_json = await best_resp.json()
-                                best_bytes = base64.b64decode(best_json["weights"])
-                                best_weights = torch.load(io.BytesIO(best_bytes), map_location="cpu")
-                                orch.best_model.model.load_state_dict(best_weights)
-                            except Exception:
-                                pass
-                        else:
-                            orch.best_model.model.load_state_dict(latest_weights)
-
-                    results = await orch.evaluate(step=step)
+                    print(f"[Worker {worker_id}] Running evaluation with remote inference...")
+                    results = await orch.evaluate(step=eval_step)
                     current_mean = results["current_placement"]
                     best_mean = results["best_placement"]
 

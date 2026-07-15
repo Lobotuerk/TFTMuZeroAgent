@@ -8,6 +8,7 @@ import config
 # MCTS and Model imports
 from Models.MCTS_torch import EnhancedMCTS, create_enhanced_mcts
 from Models.MuZero_torch_model import MuZeroNetwork
+from Models.inference_client import RemoteMuZeroNetwork
 
 # Enhanced buffer system
 from Models.replay_buffer import ReplayBuffer
@@ -49,7 +50,10 @@ class MuZeroAgent(BaseAgent):
                  obs_size: Optional[int] = None,
                  simulations: Optional[int] = None,
                  weights: Optional[Dict[str, Any]] = None,
-                 training: bool = True):
+                 training: bool = True,
+                 use_remote_inference: bool = False,
+                 uds_path: Optional[str] = None,
+                 model_version: str = "latest"):
         super().__init__(agent_name, global_buffer)
 
         self.config = config_obj if config_obj is not None else config
@@ -69,16 +73,24 @@ class MuZeroAgent(BaseAgent):
         self.simulations = simulations if simulations is not None else getattr(self.config, 'NUM_SIMULATIONS', 10)
         
         # Model and MCTS initialization
-        self.model = MuZeroNetwork()
-        
-        # Load weights if provided
-        if weights is not None:
-            self.load_weights_from_state_dict(weights)
-        
+        if use_remote_inference:
+            if uds_path is None:
+                uds_path = "/tmp/tft_muzero_inference.sock"
+            self.model = RemoteMuZeroNetwork(uds_path, model_version=model_version)
+        else:
+            self.model = MuZeroNetwork()
+            # Load weights if provided
+            if weights is not None:
+                self.load_weights_from_state_dict(weights)
+
+            # Move model to GPU if available
+            if torch.cuda.is_available():
+                self.model.to('cuda')
+
         # Initialize Enhanced MCTS with action dimensions from schema/config
         # For TFTSet4Gym: ACTION_DIM = [7, 37, 37], so policy_size = sum(ACTION_DIM) = 81
         policy_size = sum(self.action_limits)
-        
+
         self.mcts = EnhancedMCTS(
             sample_size=80,
             action_size=self.action_size,  # Read from ACTION_DIM
@@ -86,13 +98,9 @@ class MuZeroAgent(BaseAgent):
             policy_size=policy_size,  # Calculate policy size based on action dimensions
             network=self.model
         )
-        
+
         # Control exploration noise: added during training, disabled during evaluation
         self.mcts.training = training
-
-        # Move model to GPU if available
-        if torch.cuda.is_available():
-            self.model.to('cuda')
         
 
 
@@ -168,7 +176,9 @@ class MuZeroAgent(BaseAgent):
         return results
 
     def load_weights_from_state_dict(self, weights: Dict[str, Any]):
-        """Load model weights from a state dict"""
+        """Load model weights from a state dict (no-op for remote inference)"""
+        if isinstance(self.model, RemoteMuZeroNetwork):
+            return
         device = next(self.model.parameters()).device
         state_dict = {k: torch.as_tensor(v).to(device) for k, v in weights.items()}
         self.model.load_state_dict(state_dict)
@@ -228,7 +238,9 @@ class MuZeroAgent(BaseAgent):
         return self.model.state_dict()
     
     def update_weights(self, weights):
-        """Update model weights"""
+        """Update model weights (no-op for remote inference)"""
+        if isinstance(self.model, RemoteMuZeroNetwork):
+            return
         self.model.load_state_dict(weights)
 
     def save_model(self, episode):
