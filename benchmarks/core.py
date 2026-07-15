@@ -447,6 +447,13 @@ class BenchmarkRunner:
                     )
                     metrics.record_action(agent_name, env.agent_manager.last_action_times.get(pid, 0.0))
 
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    self._gpu_memory_samples.append(torch.cuda.memory_allocated() / (1024 * 1024))
+            except ImportError:
+                pass
+
             step_count += 1
 
         agent_manager = env.agent_manager

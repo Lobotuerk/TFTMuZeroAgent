@@ -114,37 +114,54 @@ def main(argv=None):
 
 def _run_regression_gates(runner: BenchmarkRunner, args) -> None:
     """Run deterministic regression gates when seed is provided."""
-    import json
-    import os
+    import sys
 
     print("\n=== Running Regression Gates ===")
     gates_passed = 0
     gates_failed = 0
 
     # Gate 1: Determinism Score
-    _run_determinism_gate(runner, args)
+    if _run_determinism_gate(runner, args):
+        gates_passed += 1
+    else:
+        gates_failed += 1
 
     # Gate 2: Embedding Fidelity
-    _run_embedding_fidelity_gate()
+    if _run_embedding_fidelity_gate():
+        gates_passed += 1
+    else:
+        gates_failed += 1
 
     # Gate 3: Config Freeze Check
-    _run_config_freeze_gate()
+    if _run_config_freeze_gate():
+        gates_passed += 1
+    else:
+        gates_failed += 1
 
     # Gate 4: GPU Memory Stability
-    _run_gpu_memory_gate(runner)
+    if _run_gpu_memory_gate(runner):
+        gates_passed += 1
+    else:
+        gates_failed += 1
 
     # Gate 5: Inference Latency P95
-    _run_latency_gate()
+    if _run_latency_gate():
+        gates_passed += 1
+    else:
+        gates_failed += 1
 
     print(f"\nRegression gates: {gates_passed} passed, {gates_failed} failed")
     print("=== Regression Gates Complete ===\n")
 
+    if gates_failed > 0:
+        print("ERROR: One or more regression gates failed!")
+        sys.exit(1)
 
-def _run_determinism_gate(runner: BenchmarkRunner, args) -> None:
-    """Run benchmark twice with same seed, assert 100% identical JSON output."""
+
+def _run_determinism_gate(runner: BenchmarkRunner, args) -> bool:
+    """Run benchmark twice with same seed, assert 100% identical JSON output (excluding timing/resource variance)."""
     import json
-    import os
-    import tempfile
+    import copy
 
     print("[Gate 1] Determinism Score: running benchmark twice with same seed...")
 
@@ -170,15 +187,31 @@ def _run_determinism_gate(runner: BenchmarkRunner, args) -> None:
     results1 = runner1.run()
     results2 = runner2.run()
 
-    # Exclude timestamp from comparison
-    results1['metadata']['timestamp'] = ''
-    results2['metadata']['timestamp'] = ''
+    def _sanitize_results(res: dict) -> dict:
+        d = copy.deepcopy(res)
+        if 'metadata' in d and 'timestamp' in d['metadata']:
+            d['metadata']['timestamp'] = ''
+        if 'system' in d:
+            d['system'] = {}
+        if 'performance' in d:
+            d['performance'] = {}
+        if 'agents' in d:
+            for agent_name, agent_metrics in d['agents'].items():
+                if 'time_per_action_ms_avg' in agent_metrics:
+                    agent_metrics['time_per_action_ms_avg'] = 0.0
+                if 'time_per_action_ms_median' in agent_metrics:
+                    agent_metrics['time_per_action_ms_median'] = 0.0
+        return d
 
-    json1 = json.dumps(results1, sort_keys=True)
-    json2 = json.dumps(results2, sort_keys=True)
+    sanitized1 = _sanitize_results(results1)
+    sanitized2 = _sanitize_results(results2)
+
+    json1 = json.dumps(sanitized1, sort_keys=True)
+    json2 = json.dumps(sanitized2, sort_keys=True)
 
     if json1 == json2:
         print("  PASS: Determinism Score = 100% (identical outputs)")
+        return True
     else:
         print("  FAIL: Determinism Score < 100% (outputs differ)")
         # Find first difference
@@ -186,39 +219,57 @@ def _run_determinism_gate(runner: BenchmarkRunner, args) -> None:
             if c1 != c2:
                 print(f"  First difference at char {i}: '{json1[max(0,i-20):i+20]}' vs '{json2[max(0,i-20):i+20]}'")
                 break
+        return False
 
 
-def _run_embedding_fidelity_gate() -> None:
+def _run_embedding_fidelity_gate() -> bool:
     """Run one forward pass of RepNetwork with fixed input, verify cosine similarity > 0.999."""
     print("[Gate 2] Embedding Fidelity: testing RepNetwork forward pass determinism...")
 
     try:
         import torch
+        import config
+        from utils.seeding import set_seed
         from Models.MuZero_torch_model import RepNetwork
 
-        input_size = 28892
-        hidden = 512
-        output_size = 256
-        encoding_size = 81
+        # Set seed to ensure deterministic model initialization
+        set_seed(42)
+        input_size = config.OBSERVATION_SIZE
+        output_size = config.HIDDEN_STATE_SIZE
+        hidden = config.HIDDEN_STATE_SIZE
+        encoding_size = 1
 
-        rep = RepNetwork(input_size, [hidden], output_size, encoding_size)
+        rep = RepNetwork(input_size, [hidden] * 5, output_size, encoding_size)
         rep.eval()
 
-        fixed_input = torch.randn(1, input_size)
-        with torch.no_grad():
-            output1 = rep(fixed_input)
-            output2 = rep(fixed_input)
+        g = torch.Generator()
+        g.manual_seed(42)
+        fixed_input = torch.randn(1, input_size, generator=g)
 
-        cos_sim = torch.nn.functional.cosine_similarity(output1, output2).item()
+        with torch.no_grad():
+            output = rep(fixed_input)
+
+        # Slice to the first 10 elements where we have a golden reference
+        output_slice = output[0, :10]
+        golden_ref = torch.tensor([
+            2.1708884239196777, 1.2993295192718506, 1.4511878490447998, 2.477022647857666,
+            0.709712564945221, 2.1889896392822266, 1.132667064666748, 3.605569362640381,
+            1.1374775171279907, 3.419039249420166
+        ], dtype=output_slice.dtype, device=output_slice.device)
+
+        cos_sim = torch.nn.functional.cosine_similarity(output_slice.unsqueeze(0), golden_ref.unsqueeze(0)).item()
         if cos_sim > 0.999:
             print(f"  PASS: Embedding Fidelity cosine similarity = {cos_sim:.6f}")
+            return True
         else:
             print(f"  FAIL: Embedding Fidelity cosine similarity = {cos_sim:.6f} (threshold: 0.999)")
+            return False
     except Exception as e:
-        print(f"  SKIP: Embedding Fidelity gate failed ({e})")
+        print(f"  FAIL: Embedding Fidelity gate failed with error: {e}")
+        return False
 
 
-def _run_config_freeze_gate() -> None:
+def _run_config_freeze_gate() -> bool:
     """Assert that crucial config keys are present and match expected types."""
     print("[Gate 3] Config Freeze Check: validating required config keys...")
 
@@ -262,27 +313,30 @@ def _run_config_freeze_gate() -> None:
 
     if all_ok:
         print(f"  PASS: All {len(required_keys)} required config keys present with correct types")
+    return all_ok
 
 
-def _run_gpu_memory_gate(runner: BenchmarkRunner) -> None:
+def _run_gpu_memory_gate(runner: BenchmarkRunner) -> bool:
     """Check GPU memory stddev is within threshold."""
     print("[Gate 4] GPU Memory Stability: checking memory stddev...")
 
     samples = runner._gpu_memory_samples
     if len(samples) < 2:
         print("  SKIP: Insufficient GPU memory samples")
-        return
+        return True
 
     stddev = float(np.std(samples))
     threshold = 50.0  # MB
 
     if stddev < threshold:
         print(f"  PASS: GPU memory stddev = {stddev:.2f} MB (threshold: {threshold} MB)")
+        return True
     else:
         print(f"  FAIL: GPU memory stddev = {stddev:.2f} MB (threshold: {threshold} MB)")
+        return False
 
 
-def _run_latency_gate() -> None:
+def _run_latency_gate() -> bool:
     """Check inference latency P95 is within budget."""
     print("[Gate 5] Inference Latency P95: checking against baseline...")
 
@@ -294,6 +348,7 @@ def _run_latency_gate() -> None:
     # For now, this is a structural gate that validates the metric collection path exists
     # Actual P95 comparison requires a stored baseline JSON
     print(f"  PASS: Latency gate structure validated (baseline P95: {BASELINE_P95_MS}ms, threshold: {BASELINE_P95_MS * THRESHOLD_FACTOR}ms)")
+    return True
 
 
 if __name__ == '__main__':
