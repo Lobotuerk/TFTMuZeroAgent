@@ -883,29 +883,60 @@ class TrainingOrchestrator:
 
     async def evaluate(self, step: Optional[int] = None) -> Dict[str, float]:
         """Run evaluation games between current and best model."""
+        from Models.inference_client import RemoteMuZeroNetwork
         current_step = step if step is not None else self.training_step
         print(f"\nEVALUATE at step {current_step}")
 
-        eval_current = MuZeroAgent(
-            action_size=3,
-            action_limits=config.ACTION_DIM,
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS,
-            global_buffer=None,
-            weights=copy.deepcopy(self.current_model.get_weights()),
-            config_obj=self.cfg,
-            training=False,
-        )
-        eval_best = MuZeroAgent(
-            action_size=3,
-            action_limits=config.ACTION_DIM,
-            obs_size=config.OBSERVATION_SIZE,
-            simulations=config.NUM_SIMULATIONS,
-            global_buffer=None,
-            weights=copy.deepcopy(self.best_model.get_weights()),
-            config_obj=self.cfg,
-            training=False,
-        )
+        # Use remote inference if current/best models use it
+        if isinstance(self.current_model.model, RemoteMuZeroNetwork):
+            eval_current = MuZeroAgent(
+                action_size=3,
+                action_limits=config.ACTION_DIM,
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=None,
+                config_obj=self.cfg,
+                training=False,
+                use_remote_inference=True,
+                uds_path=self.current_model.model.socket_path,
+                model_version=self.current_model.model.model_version,
+            )
+        else:
+            eval_current = MuZeroAgent(
+                action_size=3,
+                action_limits=config.ACTION_DIM,
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=None,
+                weights=copy.deepcopy(self.current_model.get_weights()),
+                config_obj=self.cfg,
+                training=False,
+            )
+
+        if isinstance(self.best_model.model, RemoteMuZeroNetwork):
+            eval_best = MuZeroAgent(
+                action_size=3,
+                action_limits=config.ACTION_DIM,
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=None,
+                config_obj=self.cfg,
+                training=False,
+                use_remote_inference=True,
+                uds_path=self.best_model.model.socket_path,
+                model_version=self.best_model.model.model_version,
+            )
+        else:
+            eval_best = MuZeroAgent(
+                action_size=3,
+                action_limits=config.ACTION_DIM,
+                obs_size=config.OBSERVATION_SIZE,
+                simulations=config.NUM_SIMULATIONS,
+                global_buffer=None,
+                weights=copy.deepcopy(self.best_model.get_weights()),
+                config_obj=self.cfg,
+                training=False,
+            )
         random_agent = RandomAgent("EvalRandom")
         cultist_agent = CultistAgent()
         divine_agent = DivineAgent()
