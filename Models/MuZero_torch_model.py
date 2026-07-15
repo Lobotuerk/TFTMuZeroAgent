@@ -434,35 +434,36 @@ class RepNetwork(torch.nn.Module):
         offset = 0
 
         # 1. Board: vectorized across all slots
-        board_shape = x[:, offset:offset + BOARD_DIM].view(-1, BOARD_SLOTS, PER_SLOT_DIM)
+        board_slice = x[:, offset:offset + BOARD_DIM].contiguous()
+        board_shape = board_slice.view(-1, BOARD_SLOTS, PER_SLOT_DIM)
         offset += BOARD_DIM
-        board_flat = board_shape.view(-1, PER_SLOT_DIM)
+        board_flat = board_shape.reshape(-1, PER_SLOT_DIM)
         board_embed = self._encode_slot(board_flat)
         board_repr = board_embed.view(-1, BOARD_SLOTS * 122)
 
         # 2. Bench champions: vectorized across all slots
-        bench_champ_shape = x[:, offset:offset + BENCH_CHAMP_DIM].view(
-            -1, BENCH_CHAMP_SLOTS, PER_SLOT_DIM)
+        bench_champ_slice = x[:, offset:offset + BENCH_CHAMP_DIM].contiguous()
+        bench_champ_shape = bench_champ_slice.view(-1, BENCH_CHAMP_SLOTS, PER_SLOT_DIM)
         offset += BENCH_CHAMP_DIM
-        bench_champ_flat = bench_champ_shape.view(-1, PER_SLOT_DIM)
+        bench_champ_flat = bench_champ_shape.reshape(-1, PER_SLOT_DIM)
         bench_champ_embed = self._encode_slot(bench_champ_flat)
         bench_champ_repr = bench_champ_embed.view(-1, BENCH_CHAMP_SLOTS * 122)
 
         # 3. Bench items: vectorized across all slots
-        bench_item_shape = x[:, offset:offset + BENCH_ITEM_DIM].view(
-            -1, BENCH_ITEM_SLOTS, ITEM_EMBED_DIM)
+        bench_item_slice = x[:, offset:offset + BENCH_ITEM_DIM].contiguous()
+        bench_item_shape = bench_item_slice.view(-1, BENCH_ITEM_SLOTS, ITEM_EMBED_DIM)
         offset += BENCH_ITEM_DIM
-        bench_item_flat = bench_item_shape.view(-1, ITEM_EMBED_DIM)
+        bench_item_flat = bench_item_shape.reshape(-1, ITEM_EMBED_DIM)
         active_mask = (bench_item_flat.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
         item_id = torch.clamp(torch.round(bench_item_flat[:, 0]).long(), 0, NUM_ITEMS - 1)
         item_embed = self.item_embedding(item_id) * active_mask
         bench_items_repr = item_embed.view(-1, BENCH_ITEM_SLOTS * ITEM_EMBED_DIM)
 
         # 4. Shop champions: vectorized across all slots
-        shop_shape = x[:, offset:offset + SHOP_CHAMP_DIM].view(
-            -1, SHOP_CHAMP_SLOTS, CHAMPION_EMBED_DIM)
+        shop_slice = x[:, offset:offset + SHOP_CHAMP_DIM].contiguous()
+        shop_shape = shop_slice.view(-1, SHOP_CHAMP_SLOTS, CHAMPION_EMBED_DIM)
         offset += SHOP_CHAMP_DIM
-        shop_flat = shop_shape.view(-1, CHAMPION_EMBED_DIM)
+        shop_flat = shop_shape.reshape(-1, CHAMPION_EMBED_DIM)
         active_mask = (shop_flat.abs().sum(dim=1, keepdim=True) >= 1e-6).float()
         champ_id = torch.clamp(torch.round(shop_flat[:, 0]).long(), 0, NUM_CHAMPIONS - 1)
         champ_embed = self.champion_embedding(champ_id) * active_mask
@@ -485,10 +486,10 @@ class RepNetwork(torch.nn.Module):
         offset += PLAYER_STATE_DIM
 
         # 9. Opponent boards: vectorized across opponents and slots
-        opp_boards_shape = x[:, offset:offset + OPPONENT_BOARDS_DIM].view(
-            -1, NUM_OPPONENTS, BOARD_SLOTS, PER_SLOT_DIM)
+        opp_boards_slice = x[:, offset:offset + OPPONENT_BOARDS_DIM].contiguous()
+        opp_boards_shape = opp_boards_slice.view(-1, NUM_OPPONENTS, BOARD_SLOTS, PER_SLOT_DIM)
         offset += OPPONENT_BOARDS_DIM
-        opp_flat = opp_boards_shape.view(-1, BOARD_SLOTS, PER_SLOT_DIM)
+        opp_flat = opp_boards_shape.reshape(-1, PER_SLOT_DIM)
         opp_embed = self._encode_slot(opp_flat)
         opp_boards_repr = opp_embed.view(-1, NUM_OPPONENTS * BOARD_SLOTS * 122)
 
