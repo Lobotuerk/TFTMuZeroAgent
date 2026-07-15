@@ -81,6 +81,7 @@ jobs:
             --steps-per-game 20 \
             --agent-setup muzero_vs_random \
             --mcts-simulations 5 \
+            --seed 42 \
             --output benchmarks/results/ci-benchmark.json
 
       - name: Upload benchmark results

@@ -429,6 +429,17 @@ class RandomAgent(BaseAgent):
         """Select a random valid action."""
         return [np.random.randint(0, 6), np.random.randint(0, 37), np.random.randint(0, 28)]
 
+
+class SeededRandomAgent(BaseAgent):
+    def __init__(self, agent_name="SeededRandomAgent", global_buffer=None, save_data=False, seed=42):
+        super().__init__(agent_name, global_buffer, save_data=save_data)
+        self._rng = np.random.default_rng(seed)
+
+    def _select_action_impl(self, obs, action_mask, reward=None, terminated=None, precomputed_results=None):
+        """Select a random valid action using a seeded RNG."""
+        return [int(self._rng.integers(0, 6)), int(self._rng.integers(0, 37)), int(self._rng.integers(0, 28))]
+
+
 class BuyingAgent(BaseAgent):
     def __init__(self, units_to_buy, agent_name="BuyingAgent", global_buffer=None, save_data=False):
         super().__init__(agent_name, global_buffer, save_data=save_data)
