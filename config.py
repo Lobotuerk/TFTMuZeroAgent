@@ -15,6 +15,7 @@ PB_C_BASE = 19652
 PB_C_INIT = 1.25
 DISCOUNT = 0.97
 TRAINING_STEPS = 1e10
+SEED = 42
 
 # Resolve observation size dynamically based on installed/imported TFTSet4Gym schema
 try:

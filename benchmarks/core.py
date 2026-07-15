@@ -225,6 +225,7 @@ class BenchmarkRunner:
         agent_setup: str = "muzero_vs_random",
         mcts_simulations: int = 50,
         deep_mcts: bool = False,
+        seed: Optional[int] = None,
     ):
         self.use_mock_env = use_mock_env
         self.num_games = num_games
@@ -232,7 +233,9 @@ class BenchmarkRunner:
         self.agent_setup = agent_setup
         self.mcts_simulations = mcts_simulations
         self.deep_mcts = deep_mcts
+        self.seed = seed
         self._metrics_store = MetricsStore()
+        self._gpu_memory_samples: List[float] = []
 
     def run(self) -> Dict[str, Any]:
         import asyncio
@@ -240,6 +243,10 @@ class BenchmarkRunner:
 
     async def arun(self) -> Dict[str, Any]:
         from utils.profiling import MetricsCollector
+
+        if self.seed is not None:
+            from utils.seeding import set_seed
+            set_seed(self.seed)
 
         system_start = SystemMetrics.get_process_memory_info()
         mem_percent_start = SystemMetrics.get_system_memory_percent()
@@ -251,6 +258,9 @@ class BenchmarkRunner:
         env_factory = self._create_env_factory()
         agent_manager, _ = self._create_agent_setup(metrics_collector)
 
+        if self.seed is not None:
+            self._disable_mcts_dirichlet_noise(agent_manager)
+
         if mcts_profiler:
             mcts_profiler.__enter__()
 
@@ -259,6 +269,12 @@ class BenchmarkRunner:
             await self._run_games(env_factory, agent_manager)
             total_duration = time.perf_counter() - total_start
         finally:
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    self._gpu_memory_samples.append(torch.cuda.memory_allocated() / (1024 * 1024))
+            except ImportError:
+                pass
             if mcts_profiler:
                 mcts_profiler.__exit__(None, None, None)
 
@@ -289,6 +305,7 @@ class BenchmarkRunner:
                     gpu_start.get('max_allocated_mb', 0.0),
                     gpu_peak.get('max_allocated_mb', 0.0),
                 ),
+                'gpu_memory_stddev_mb': self._compute_gpu_memory_stddev(),
             },
             'performance': {
                 'total_duration_s': total_duration,
@@ -328,6 +345,7 @@ class BenchmarkRunner:
                 'mcts_simulations': self.mcts_simulations,
                 'use_mock_env': self.use_mock_env,
                 'deep_mcts': self.deep_mcts,
+                'seed': self.seed,
             },
         }
 
@@ -353,6 +371,17 @@ class BenchmarkRunner:
 
         if self.agent_setup == "muzero_vs_random":
             try:
+                if self.seed is not None:
+                    from Models.agent_manager import create_custom_agent_setup
+                    from Models.MuZero_torch_agent import MuZeroAgent
+                    from Models.Common_agents import SeededRandomAgent
+                    agents = (
+                        [(MuZeroAgent(agent_name=f"MuZero_{i}"), 1)
+                         for i in range(1)]
+                        + [(SeededRandomAgent(f"Random_{i}", seed=self.seed), 1)
+                           for i in range(7)]
+                    )
+                    return create_custom_agent_setup(agents)
                 return create_muzero_vs_random_setup(
                     num_muzero=1,
                     num_random=7,
@@ -418,7 +447,37 @@ class BenchmarkRunner:
                     )
                     metrics.record_action(agent_name, env.agent_manager.last_action_times.get(pid, 0.0))
 
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    self._gpu_memory_samples.append(torch.cuda.memory_allocated() / (1024 * 1024))
+            except ImportError:
+                pass
+
             step_count += 1
 
         agent_manager = env.agent_manager
         await agent_manager.flush_all_buffers(final_values=rewards, game_id=game_id)
+
+    def _compute_gpu_memory_stddev(self) -> float:
+        if len(self._gpu_memory_samples) < 2:
+            return 0.0
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return float(np.std(self._gpu_memory_samples))
+        except ImportError:
+            pass
+        return 0.0
+
+    def _disable_mcts_dirichlet_noise(self, agent_manager) -> None:
+        """Set training=False on all MCTS instances to disable Dirichlet noise."""
+        agents = getattr(agent_manager, '_agents', [])
+        for agent_entry in agents:
+            if isinstance(agent_entry, tuple) and len(agent_entry) >= 2:
+                agent = agent_entry[0]
+            else:
+                agent = agent_entry
+            mcts = getattr(agent, 'mcts', None)
+            if mcts is not None:
+                mcts.training = False
