@@ -416,7 +416,7 @@ class BenchmarkRunner:
                         agent_type, 'agent_name',
                         getattr(type(agent_type), '__name__', str(agent_type))
                     )
-                    metrics.record_action(agent_name, 0.0)
+                    metrics.record_action(agent_name, env.agent_manager.last_action_times.get(pid, 0.0))
 
             step_count += 1
 

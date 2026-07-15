@@ -358,6 +358,7 @@ class EnhancedAgentManager:
 
         self.inference_times = defaultdict(list)
         self.batch_sizes = defaultdict(list)
+        self.last_action_times = {}
 
     def register_agent(self, agent_instance: Any, player_ids: List[str]):
         agent_type = agent_instance
@@ -385,6 +386,13 @@ class EnhancedAgentManager:
                 f"max players ({config.NUM_PLAYERS})"
             )
 
+    async def _measure_task(self, task, pid):
+        t0 = time.perf_counter()
+        res = await task
+        elapsed = time.perf_counter() - t0
+        self.last_action_times[pid] = elapsed
+        return res
+
     async def get_actions(self,
                           observations: Dict[str, Dict],
                           rewards: Dict[str, float],
@@ -399,15 +407,23 @@ class EnhancedAgentManager:
                 continue
             mask = obs.get('action_mask', np.ones(sum(config.ACTION_DIM), dtype=bool))
             unique_pid = f"{game_id}_{player_id}" if game_id else player_id
-            task = self.batch_processor.request_action(
-                agent_type,
-                obs['tensor'],
-                mask,
-                rewards.get(player_id, 0.0),
-                terminated.get(player_id, False),
-                player_id=unique_pid,
-            )
-            tasks.append(task)
+            agent_instance = self.agents.get(agent_type)
+            if agent_instance is not None and not hasattr(agent_instance, 'model'):
+                flat_obs = self.batch_processor._obs_to_flat(obs['tensor'])
+                async def _non_nn_action(a, o, m, p):
+                    return a.batch_select_action([o], [m], player_ids=[p])
+                raw_task = _non_nn_action(agent_instance, flat_obs, mask, unique_pid)
+                tasks.append(self._measure_task(raw_task, player_id))
+            else:
+                task = self.batch_processor.request_action(
+                    agent_type,
+                    obs['tensor'],
+                    mask,
+                    rewards.get(player_id, 0.0),
+                    terminated.get(player_id, False),
+                    player_id=unique_pid,
+                )
+                tasks.append(self._measure_task(task, player_id))
             player_ids.append(player_id)
 
         results = await asyncio.gather(*tasks)
