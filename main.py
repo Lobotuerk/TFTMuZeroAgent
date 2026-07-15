@@ -139,6 +139,7 @@ async def train_server_mode(args):
 
         skip_memory_buffer = False
         if mem.percent > threshold:
+            orch.global_buffer.drain_memory_to_disk()
             skip_memory_buffer = True
             print(f"[Server] Memory threshold exceeded ({mem.percent}% > {threshold}%). Spill-to-disk active (bypassing in-memory buffer).")
 

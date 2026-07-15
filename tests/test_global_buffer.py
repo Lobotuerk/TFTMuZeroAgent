@@ -270,7 +270,7 @@ def test_add_gameplay_experience_skip_memory_buffer(buffer_with_temp_path, tmp_p
     samples = _make_gameplay_sample() * 10
     buf.add_gameplay_experience(samples, skip_memory_buffer=True)
     pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
-    assert len(pkl_files) == 2
+    assert len(pkl_files) == 3
     assert buf.get_gameplay_buffer_size() == 0
 
 
@@ -284,11 +284,16 @@ def test_read_gameplay_batch_from_disk(buffer_with_temp_path, tmp_path):
     assert len(batch1) == 7
     assert len(batch1[0]) == 4
     pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
-    assert len(pkl_files) == 1
+    assert len(pkl_files) == 2
     assert buf.available_gameplay_batch() is True
     batch2 = buf.read_gameplay_batch()
     assert batch2 is not None
     assert len(batch2[0]) == 4
+    pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
+    assert len(pkl_files) == 1
+    assert buf.available_gameplay_batch() is False
+    batch3 = buf.read_gameplay_batch()
+    assert batch3 is None
     pkl_files = list(tmp_path.glob("gameplay/*.pkl"))
     assert len(pkl_files) == 0
     assert buf.available_gameplay_batch() is False

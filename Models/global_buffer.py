@@ -218,34 +218,72 @@ class GlobalBuffer:
                 with open(filepath, "wb") as f:
                     pickle.dump(batch_data, f)
 
-        if leftover > 0 and not skip_memory_buffer:
+        if leftover > 0:
             leftover_data = converted[num_batches * batch_size:]
-            self.gameplay_buffer.add(leftover_data)
+            if skip_memory_buffer:
+                os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
+                filename = f"batch_{time.time_ns()}_{uuid.uuid4().hex}.pkl"
+                filepath = os.path.join(config.GAMEPLAY_BUFFER_PATH, filename)
+                with open(filepath, "wb") as f:
+                    pickle.dump(leftover_data, f)
+            else:
+                self.gameplay_buffer.add(leftover_data)
+
+    def _load_from_disk_until_batch(self):
+        """Reads .pkl files from disk and adds to gameplay_buffer until batch_size is reached."""
+        if not os.path.exists(config.GAMEPLAY_BUFFER_PATH):
+            return
+        while len(self.gameplay_buffer) < self.batch_size:
+            files = sorted([f for f in os.listdir(config.GAMEPLAY_BUFFER_PATH) if f.endswith(".pkl")])
+            if not files:
+                break
+            filepath = os.path.join(config.GAMEPLAY_BUFFER_PATH, files[0])
+            try:
+                with open(filepath, "rb") as f:
+                    batch_samples = pickle.load(f)
+                os.remove(filepath)
+                self.gameplay_buffer.add(batch_samples)
+            except Exception as e:
+                print(f"Error reading/deleting batch file {filepath}: {e}")
+                if os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except Exception:
+                        pass
+                break
+
+    def drain_memory_to_disk(self):
+        """Flushes the entire in-memory gameplay_buffer to disk as .pkl files and clears the buffer."""
+        if len(self.gameplay_buffer) < self.batch_size:
+            return
+        os.makedirs(config.GAMEPLAY_BUFFER_PATH, exist_ok=True)
+        items = list(self.gameplay_buffer)
+        batch_size = self.batch_size
+        num_batches = len(items) // batch_size
+        leftover = len(items) % batch_size
+
+        for i in range(num_batches):
+            batch_data = items[i * batch_size : (i + 1) * batch_size]
+            filename = f"batch_{time.time_ns()}_{uuid.uuid4().hex}.pkl"
+            filepath = os.path.join(config.GAMEPLAY_BUFFER_PATH, filename)
+            with open(filepath, "wb") as f:
+                pickle.dump(batch_data, f)
+
+        if leftover > 0:
+            leftover_data = items[num_batches * batch_size:]
+            filename = f"batch_{time.time_ns()}_{uuid.uuid4().hex}.pkl"
+            filepath = os.path.join(config.GAMEPLAY_BUFFER_PATH, filename)
+            with open(filepath, "wb") as f:
+                pickle.dump(leftover_data, f)
+
+        self.gameplay_buffer.clear()
 
     def available_gameplay_batch(self):
-        if os.path.exists(config.GAMEPLAY_BUFFER_PATH):
-            files = [f for f in os.listdir(config.GAMEPLAY_BUFFER_PATH) if f.endswith(".pkl")]
-            if len(files) > 0:
-                return True
+        self._load_from_disk_until_batch()
         return len(self.gameplay_buffer) >= self.batch_size
 
     def read_gameplay_batch(self):
-        if os.path.exists(config.GAMEPLAY_BUFFER_PATH):
-            files = sorted([f for f in os.listdir(config.GAMEPLAY_BUFFER_PATH) if f.endswith(".pkl")])
-            if len(files) > 0:
-                filepath = os.path.join(config.GAMEPLAY_BUFFER_PATH, files[0])
-                try:
-                    with open(filepath, "rb") as f:
-                        batch_samples = pickle.load(f)
-                    os.remove(filepath)
-                    return self.gameplay_buffer._format_batch(batch_samples)
-                except Exception as e:
-                    print(f"Error reading/deleting batch file {filepath}: {e}")
-                    if os.path.exists(filepath):
-                        try:
-                            os.remove(filepath)
-                        except Exception:
-                            pass
+        self._load_from_disk_until_batch()
         return self.gameplay_buffer.sample(self.batch_size)
 
     def clear_all_gameplay_data(self):
