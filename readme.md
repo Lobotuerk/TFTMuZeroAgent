@@ -81,4 +81,3 @@ CPU parallelism during environment simulation uses separate OS processes via `mu
 ## Community and Contributions
 This project aims to push the boundaries of AI in complex games like TFT. Contributions, questions, and discussions are welcome!
 - **Discord**: [Join our community](https://discord.gg/cPKwGU7dbU)
-- **Contact**: slucoris@gmail.com
